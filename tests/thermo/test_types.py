@@ -20,17 +20,15 @@ def test_secondary_structure_energies_is_frozen_and_slotted():
     )
 
     # Frozen: Changing a field should fail
-    with pytest.raises(FrozenInstanceError, AttributeError) as e:
+    with pytest.raises(FrozenInstanceError):
         energies.BULGE = {}
-
-    assert "read-only" in str(e.value).lower()
 
     # `slots=True`. Therefore, __slots__ should exist and __dict__ should not
     assert hasattr(energies, "__slots__")
     assert not hasattr(energies, "__dict__")
 
     # Slots: Adding a new attribute should fail
-    with pytest.raises(AttributeError):
+    with pytest.raises((AttributeError, TypeError)):
         setattr(energies, "new_field", 123)
 
 

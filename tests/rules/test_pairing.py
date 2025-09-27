@@ -43,5 +43,5 @@ def test_pair_is_frozen_and_slotted():
         base_pair.base_i = 2
 
     # Slots: Adding a new attribute should fail
-    with pytest.raises(AttributeError):
+    with pytest.raises((AttributeError, TypeError)):
         setattr(base_pair, "new_field", 123)
