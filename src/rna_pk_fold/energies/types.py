@@ -41,8 +41,8 @@ class SecondaryStructureEnergies:
         Internal mismatch nearest-neighbor terms for small internal loops
         (1×1 mismatches).
     NN : PairEnergies
-        Minimal nearest-neighbor stack table using `"ij/kl"` keys
-        (left 5'→3' dimer `"ij"`, right 3'→5' dimer `"kl"`). These capture
+        Minimal nearest-neighbor stack table using `"XY/ZW"` keys
+        (left 5'→3' dimer `"XY"`, right 3'→5' dimer `"ZW"`). These capture
         stacking energetics of adjacent base pairs
         (e.g., `"AU/UA"`, `"GC/CG"`).
     TERMINAL_MM : PairEnergies
