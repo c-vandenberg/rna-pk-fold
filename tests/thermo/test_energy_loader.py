@@ -25,7 +25,7 @@ def test_load_returns_rna_bundle():
     assert bundle.HAIRPIN and isinstance(bundle.HAIRPIN, dict)
     assert bundle.BULGE and isinstance(bundle.BULGE, dict)
     assert bundle.INTERNAL and isinstance(bundle.INTERNAL, dict)
-    assert isinstance(bundle.COMPLEMENT, dict)
+    assert isinstance(bundle.COMPLEMENT_BASES, dict)
     assert isinstance(bundle.MULTILOOP, tuple) and len(bundle.MULTILOOP) == 4
 
 
@@ -46,7 +46,7 @@ def test_complement_map_has_expected_pairs_and_N():
     'N' should map to 'N' to preserve ambiguity through complement lookups.
     """
     rna_energies = SecondaryStructureEnergyLoader.load()
-    complement_bases = rna_energies.COMPLEMENT
+    complement_bases = rna_energies.COMPLEMENT_BASES
     for k, v in [("A", "U"), ("U", "A"), ("G", "C"), ("C", "G"), ("N", "N")]:
         assert complement_bases[k] == v
 
@@ -144,7 +144,7 @@ def test_class_method_allows_subclass_override_of_build():
             # Return a modified copy with a distinct value to prove override is used
             return SecondaryStructureEnergies(
                 BULGE=base_energy_loader.BULGE,
-                COMPLEMENT=base_energy_loader.COMPLEMENT,
+                COMPLEMENT_BASES=base_energy_loader.COMPLEMENT_BASES,
                 DANGLES=base_energy_loader.DANGLES,
                 HAIRPIN=base_energy_loader.HAIRPIN,
                 MULTILOOP=(9.9, 9.9, 9.9, 9.9),  # changed

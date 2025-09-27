@@ -31,7 +31,7 @@ class SecondaryStructureEnergies:
     ----------
     BULGE : LoopEnergies
         Bulge loop baseline by total loop length (nt).
-    COMPLEMENT : BasePairMap
+    COMPLEMENT_BASES : BasePairMap
         Map of canonical complements for given nucleic acid class.
     DANGLES : PairEnergies
         Dangling-end contributions where one side has a single unpaired
@@ -66,7 +66,7 @@ class SecondaryStructureEnergies:
       500 nucleotides
     """
     BULGE: LoopEnergies
-    COMPLEMENT: BasePairMap
+    COMPLEMENT_BASES: BasePairMap
     DANGLES: PairEnergies
     HAIRPIN: LoopEnergies
     MULTILOOP: MultiLoopCoeffs

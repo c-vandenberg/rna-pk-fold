@@ -145,7 +145,7 @@ class SecondaryStructureEnergyLoader:
 
         return SecondaryStructureEnergies(
             BULGE=bulge,
-            COMPLEMENT=complement,
+            COMPLEMENT_BASES=complement,
             DANGLES=dangles,
             HAIRPIN=hairpin,
             MULTILOOP=multiloop,

@@ -8,7 +8,7 @@ from rna_pk_fold.thermo.types import SecondaryStructureEnergies
 def test_secondary_structure_energies_is_frozen_and_slotted():
     energies = SecondaryStructureEnergies(
         BULGE={1: (10.6, 21.9)},
-        COMPLEMENT={"A": "U", "U": "A", "G": "C", "C": "G", "N": "N"},
+        COMPLEMENT_BASES={"A": "U", "U": "A", "G": "C", "C": "G", "N": "N"},
         DANGLES={"A./UA": (-0.5, -0.6)},
         HAIRPIN={3: (1.3, -13.2)},
         MULTILOOP=(2.5, 0.1, 0.4, 2.0),
