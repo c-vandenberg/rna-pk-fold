@@ -2,7 +2,7 @@ import math
 import pytest
 from dataclasses import FrozenInstanceError
 
-from rna_pk_fold.thermo.types import SecondaryStructureEnergies
+from rna_pk_fold.energies import SecondaryStructureEnergies
 
 
 def test_secondary_structure_energies_is_frozen_and_slotted():

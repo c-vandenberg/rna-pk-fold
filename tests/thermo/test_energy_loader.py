@@ -1,8 +1,8 @@
 import math
 import pytest
 
-from rna_pk_fold.thermo.energies import SecondaryStructureEnergyLoader
-from rna_pk_fold.thermo.types import SecondaryStructureEnergies
+from rna_pk_fold.energies import SecondaryStructureEnergyLoader
+from rna_pk_fold.energies import SecondaryStructureEnergies
 
 
 def test_load_returns_rna_bundle():

@@ -1,5 +1,4 @@
-from rna_pk_fold.thermo.energies import SecondaryStructureEnergyLoader
-from rna_pk_fold.thermo.types import (
+from rna_pk_fold.energies.types import (
     Cache,
     BasePairMap,
     MultiLoopCoeffs,
@@ -7,6 +6,7 @@ from rna_pk_fold.thermo.types import (
     LoopEnergies,
     SecondaryStructureEnergies
 )
+from rna_pk_fold.energies.energy_loader import SecondaryStructureEnergyLoader
 
 __all__ = [
     "Cache",
