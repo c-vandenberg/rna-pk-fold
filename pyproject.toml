@@ -1,0 +1,35 @@
+# pyproject.toml
+
+[build-system]
+requires = [
+    "setuptools>=61.0",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rna-pk-fold"
+version = "0.0.1"
+description = "<you-pypi-package-description>"
+readme = "README.md"
+license = { text = "MIT License" }
+authors = [
+    { name = "Christopher van den Berg", email = "cvandenberg1105@googlemail.com" }
+]
+keywords = []
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+]
+requires-python = ">=3.10"
+dependencies = [
+]
+
+[project.urls]
+Repository = "https://github.com/your-username/your-package-name"
+"Bug Tracker" = "https://github.com/your-username/your-package-name/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
