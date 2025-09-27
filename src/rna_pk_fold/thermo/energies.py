@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Literal
-from .types import (
+from rna_pk_fold.thermo import (
     SecondaryStructureEnergies,
     BasePairMap,
     MultiLoopCoeffs,
