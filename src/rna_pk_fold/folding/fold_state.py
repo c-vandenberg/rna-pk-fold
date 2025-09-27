@@ -20,15 +20,15 @@ class FoldState:
         or bifurcations).
     v_matrix : TriMatrix[float]
         Optimal energy for spans where i pairs with j (pair-closed contributions).
-    w_backptr : TriMatrix[BackPointer]
+    w_back_ptr : TriMatrix[BackPointer]
         Back-pointers for W matrix cells (i.e. how W[i,j] was derived).
-    v_backptr : TriMatrix[BackPointer]
+    v_back_ptr : TriMatrix[BackPointer]
         Back-pointers for V matrix cells (i.e. how V[i,j] was derived).
     """
     w_matrix: TriMatrix[float]
     v_matrix: TriMatrix[float]
-    w_backptr: TriMatrix[BackPointer]
-    v_backptr: TriMatrix[BackPointer]
+    w_back_ptr: TriMatrix[BackPointer]
+    v_back_ptr: TriMatrix[BackPointer]
 
 
 def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> FoldState:
@@ -58,12 +58,12 @@ def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> FoldStat
     """
     w_matrix = TriMatrix[float](seq_len, init_energy)
     v_matrix = TriMatrix[float](seq_len, init_energy)
-    w_backptr = TriMatrix[BackPointer](seq_len, BackPointer())
-    v_backptr = TriMatrix[BackPointer](seq_len, BackPointer())
+    w_back_ptr = TriMatrix[BackPointer](seq_len, BackPointer())
+    v_back_ptr = TriMatrix[BackPointer](seq_len, BackPointer())
 
     return FoldState(
         w_matrix=w_matrix,
         v_matrix=v_matrix,
-        w_backptr=w_backptr,
-        v_backptr=v_backptr,
+        w_back_ptr=w_back_ptr,
+        v_back_ptr=v_back_ptr,
     )
