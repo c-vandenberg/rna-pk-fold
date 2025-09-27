@@ -19,6 +19,7 @@ def test_secondary_structure_energies_is_frozen_and_slotted():
         SPECIAL_HAIRPINS=None,
     )
 
+    # Frozen: Changing a field should fail
     with pytest.raises(FrozenInstanceError, AttributeError) as e:
         energies.BULGE = {}
 
@@ -27,6 +28,10 @@ def test_secondary_structure_energies_is_frozen_and_slotted():
     # `slots=True`. Therefore, __slots__ should exist and __dict__ should not
     assert hasattr(energies, "__slots__")
     assert not hasattr(energies, "__dict__")
+
+    # Slots: Adding a new attribute should fail
+    with pytest.raises(AttributeError):
+        setattr(energies, "new_field", 123)
 
 
 def test_delta_g_helper_matches_formula():

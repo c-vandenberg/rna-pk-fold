@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Final
 
-from rna_pk_fold.utils.base_utils import normalize_base
+from rna_pk_fold.utils.nucleotide_utils import normalize_base
 
 # Minimum number of unpaired nucleotides required in a hairpin loop.
 # For RNA, most algorithms enforce >= 3.
