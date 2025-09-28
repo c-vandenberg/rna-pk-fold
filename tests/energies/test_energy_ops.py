@@ -165,7 +165,7 @@ def test_multiloop_linear_energy_formula(rna_energy_bundle):
     --------
     - `multiloop_linear_energy(2, 3, E)` == 3.9 for the current MULTILOOP tuple.
     """
-    multiloop_delta_g = multiloop_linear_energy(branches=2, unpaired=3, energies=rna_energy_bundle)
+    multiloop_delta_g = multiloop_linear_energy(branches=2, unpaired_bases=3, energies=rna_energy_bundle)
     assert math.isclose(multiloop_delta_g, 3.9, rel_tol=1e-12)
 
 
@@ -179,5 +179,5 @@ def test_multiloop_linear_energy_zero_unpaired_adds_bonus(rna_energy_bundle):
     --------
     - `multiloop_linear_energy(1, 0, E)` == 4.6 for the current MULTILOOP tuple.
     """
-    multiloop_delta_g = multiloop_linear_energy(branches=1, unpaired=0, energies=rna_energy_bundle)
+    multiloop_delta_g = multiloop_linear_energy(branches=1, unpaired_bases=0, energies=rna_energy_bundle)
     assert math.isclose(multiloop_delta_g, 4.6, rel_tol=1e-12)

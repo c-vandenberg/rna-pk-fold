@@ -196,7 +196,7 @@ def internal_loop_energy(
 
 def multiloop_linear_energy(
     branches: int,
-    unpaired: int,
+    unpaired_bases: int,
     energies: SecondaryStructureEnergies
 ) -> float:
     """
@@ -217,7 +217,7 @@ def multiloop_linear_energy(
     ----------
     branches : int
         Number of entering helices in the multiloop.
-    unpaired : int
+    unpaired_bases : int
         Number of unpaired nucleotides inside the multiloop.
     energies : SecondaryStructureEnergies
         Parameter bundle.
@@ -228,6 +228,6 @@ def multiloop_linear_energy(
         Free energy ΔG (kcal/mol) for the multiloop.
     """
     coeff_a, coeff_b, coeff_c, coeff_d = energies.MULTILOOP
-    bonus = coeff_d if unpaired == 0 else 0.0
+    bonus = coeff_d if unpaired_bases == 0 else 0.0
 
-    return coeff_a + coeff_b * branches + coeff_c * unpaired + bonus
+    return coeff_a + coeff_b * branches + coeff_c * unpaired_bases + bonus

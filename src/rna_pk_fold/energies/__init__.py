@@ -4,9 +4,10 @@ from rna_pk_fold.energies.types import (
     MultiLoopCoeffs,
     PairEnergies,
     LoopEnergies,
-    SecondaryStructureEnergies
+    SecondaryStructureEnergies,
 )
 from rna_pk_fold.energies.energy_loader import SecondaryStructureEnergyLoader
+from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModelProtocol
 
 __all__ = [
     "Cache",
@@ -15,5 +16,6 @@ __all__ = [
     "PairEnergies",
     "LoopEnergies",
     "SecondaryStructureEnergies",
-    "SecondaryStructureEnergyLoader"
+    "SecondaryStructureEnergyLoader",
+    "SecondaryStructureEnergyModelProtocol",
 ]
