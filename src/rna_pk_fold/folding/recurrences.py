@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Protocol
 
 from rna_pk_fold.folding import (HairpinFn, StackFn, InternalFn, MultiloopFn,
                                  FoldState, BackPointer, BacktrackOp)
