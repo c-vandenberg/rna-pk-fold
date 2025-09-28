@@ -98,12 +98,6 @@ def test_fill_matrix_v_sets_inf_when_cannot_pair(fake_energy_model_factory):
         multiloop=lambda branches, unpaired: float("inf"),
     )
 
-    # Stubs
-    hairpin = lambda i, j, s, energies, temp: 1.0
-    stack = lambda i, j, k, l, s, energies, temp: float("inf")
-    internal = lambda i, j, k, l, s, energies, temp: float("inf")
-    multi = lambda branches, unpaired, energies: float("inf")
-
     folding_eng = SecondaryStructureFoldingEngine(
         energy_model=energy_model,
         config=RecurrenceConfig(),

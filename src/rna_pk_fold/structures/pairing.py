@@ -9,9 +9,9 @@ class Pair:
 
     Parameters
     ----------
-    i : int
+    base_i : int
         Left index (0-based).
-    j : int
+    base_j : int
         Right index (0-based), must satisfy j > i in valid uses.
 
     Notes

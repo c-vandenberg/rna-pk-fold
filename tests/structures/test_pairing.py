@@ -1,7 +1,7 @@
 import pytest
 from dataclasses import FrozenInstanceError
 
-from rna_pk_fold.rules.pairing import Pair
+from rna_pk_fold.structures.pairing import Pair
 
 
 def test_pair_properties_span_and_loop_len():
