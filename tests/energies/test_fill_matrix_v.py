@@ -18,16 +18,16 @@ def minimal_energies():
 
     Notes
     -----
-    The folding engine forwards this object to adapter callables;
-    the tests supply stub functions that don't actually use the
-    energy tables, so empty dicts are fine.
+    We give MULTILOOP coefficients large-ish values so the multiloop-closing
+    option (a + WM[i+1][j-1]) does not accidentally beat the constructed
+    hairpin/internal scenarios in these tests.
     """
     return SecondaryStructureEnergies(
         BULGE={},
         COMPLEMENT_BASES={},
         DANGLES={},
         HAIRPIN={},
-        MULTILOOP=(0.0, 0.0, 0.0, 0.0),
+        MULTILOOP=(50.0, 10.0, 10.0, 0.0),
         INTERNAL={},
         INTERNAL_MM={},
         NN={},
@@ -39,9 +39,8 @@ def minimal_energies():
 @pytest.fixture
 def fake_energy_model_factory(minimal_energies):
     """
-    Factory for a configurable fake energy model that conforms to
-    SecondaryStructureEnergyModelProtocol. Each test can supply simple
-    callables to define hairpin/stack/internal/multiloop behavior.
+    Factory for a configurable fake energy model that conforms to the
+    `SecondaryStructureEnergyModelProtocol` surface used by the engine.
     """
     class FakeEnergyModel:
         def __init__(self, params, hairpin_fn, stack_fn, internal_fn, multiloop_fn, temp_k=310.15):
@@ -107,10 +106,10 @@ def test_fill_matrix_v_sets_inf_when_cannot_pair(fake_energy_model_factory):
 
     folding_eng = SecondaryStructureFoldingEngine(
         energy_model=energy_model,
-        config=RecurrenceConfig(enable_multiloop_placeholder=False),
+        config=RecurrenceConfig(),
     )
 
-    folding_eng.fill_matrix_v(seq, state)
+    folding_eng.fill_all_matrices(seq, state)
 
     assert math.isinf(state.v_matrix.get(0, 3))
     assert state.v_back_ptr.get(0, 3).operation is BacktrackOp.NONE
@@ -139,10 +138,10 @@ def test_fill_matrix_v_picks_hairpin_when_finite(fake_energy_model_factory):
 
     folding_eng = SecondaryStructureFoldingEngine(
         energy_model=energy_model,
-        config=RecurrenceConfig(enable_multiloop_placeholder=False),
+        config=RecurrenceConfig(),
     )
 
-    folding_eng.fill_matrix_v(seq, state)
+    folding_eng.fill_all_matrices(seq, state)
 
     cell_value = state.v_matrix.get(0, 4)
     back_ptr  = state.v_back_ptr.get(0, 4)
@@ -175,7 +174,7 @@ def test_fill_matrix_v_prefers_internal_over_hairpin_when_better(fake_energy_mod
     seq_len = len(seq)
     state = make_fold_state(seq_len)
 
-    # Hairpin: cheap for the inner (2,3) so V[2,3] becomes small; expensive elsewhere
+    # Hairpin: Cheap for the inner (2,3) so V[2,3] becomes small. Outer hairpin is expensive
     def hairpin(i, j, s):
         return 0.5 if (i, j) == (2, 3) else 10.0
 
@@ -188,10 +187,10 @@ def test_fill_matrix_v_prefers_internal_over_hairpin_when_better(fake_energy_mod
 
     folding_eng = SecondaryStructureFoldingEngine(
         energy_model=energy_model,
-        config=RecurrenceConfig(enable_multiloop_placeholder=False),
+        config=RecurrenceConfig(),
     )
 
-    folding_eng.fill_matrix_v(seq, state)
+    folding_eng.fill_all_matrices(seq, state)
 
     outer_pair = state.v_matrix.get(0, 5)
     inner_pair = state.v_matrix.get(2, 3)  # This is filled earlier due to bottom-up spans

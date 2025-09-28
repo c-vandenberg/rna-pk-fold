@@ -10,13 +10,14 @@ def test_make_fold_state_shapes_and_defaults():
 
     Expected
     --------
-    - W/V matrices have shape (N, N) and default to `+∞`.
-    - Back-pointer matrices have shape (N, N) and default to `BackPointer()` with `operation=NONE`.
+    - W, V, and WM matrices have shape (N, N).
+    - W and V matrices default to `+∞`.
+    - WM default to +∞ off-diagonal, and 0.0 on the diagonal.
+    - All back-pointer matrices default to BackPointer() with operation NONE.
 
     Notes
     -----
-    - Energy matrices should be +inf by default.
-    - Back-pointer matrices should be BackPointer() with operation NONE.
+    - WM is a multiloop accumulator; the diagonal WM[i,i] is seeded as 0.0.
     """
     seq_len = 8
     fold_state = make_fold_state(seq_len)
@@ -27,8 +28,10 @@ def test_make_fold_state_shapes_and_defaults():
     # Shapes
     assert fold_state.w_matrix.shape == (seq_len, seq_len)
     assert fold_state.v_matrix.shape == (seq_len, seq_len)
+    assert fold_state.wm_matrix.shape == (seq_len, seq_len)
     assert fold_state.w_back_ptr.shape == (seq_len, seq_len)
     assert fold_state.v_back_ptr.shape == (seq_len, seq_len)
+    assert fold_state.wm_back_ptr.shape == (seq_len, seq_len)
 
     # Default values
     for i in range(seq_len):
@@ -36,10 +39,18 @@ def test_make_fold_state_shapes_and_defaults():
             assert math.isinf(fold_state.w_matrix.get(i, j))
             assert math.isinf(fold_state.v_matrix.get(i, j))
 
+            # WM default: Diagonal 0.0, off-diagonal +inf
+            if i == j:
+                assert fold_state.wm_matrix.get(i, j) == 0.0
+            else:
+                assert math.isinf(fold_state.wm_matrix.get(i, j))
+
             bp_w = fold_state.w_back_ptr.get(i, j)
             bp_v = fold_state.v_back_ptr.get(i, j)
+            bp_wm = fold_state.wm_back_ptr.get(i, j)
             assert isinstance(bp_w, BackPointer) and bp_w.operation is BacktrackOp.NONE
             assert isinstance(bp_v, BackPointer) and bp_v.operation is BacktrackOp.NONE
+            assert isinstance(bp_wm, BackPointer) and bp_wm.operation is BacktrackOp.NONE
 
 
 def test_fold_state_set_get_energy_and_backpointer():
@@ -52,22 +63,27 @@ def test_fold_state_set_get_energy_and_backpointer():
     - Back-pointers round-trip equivalently.
     """
     seq_len = 5
-    st = make_fold_state(seq_len)
+    fold_state = make_fold_state(seq_len)
 
     # Set energies
-    st.w_matrix.set(1, 4, -3.25)
-    st.v_matrix.set(2, 3, -1.5)
+    fold_state.w_matrix.set(1, 4, -3.25)
+    fold_state.v_matrix.set(2, 3, -1.5)
+    fold_state.wm_matrix.set(0, 4, 7.0)
 
     # Set back-pointers
     bp_w = BackPointer(operation=BacktrackOp.UNPAIRED_LEFT, note="left unpaired")
     bp_v = BackPointer(operation=BacktrackOp.STACK, inner=(3, 6))
+    bp_wm = BackPointer(operation=BacktrackOp.MULTI_ATTACH, split_k=2)
 
-    st.w_back_ptr.set(1, 4, bp_w)
-    st.v_back_ptr.set(2, 3, bp_v)
+    fold_state.w_back_ptr.set(1, 4, bp_w)
+    fold_state.v_back_ptr.set(2, 3, bp_v)
+    fold_state.wm_back_ptr.set(0, 4, bp_wm)
 
     # Verify round-trip
-    assert st.w_matrix.get(1, 4) == -3.25
-    assert st.v_matrix.get(2, 3) == -1.5
+    assert fold_state.w_matrix.get(1, 4) == -3.25
+    assert fold_state.v_matrix.get(2, 3) == -1.5
+    assert fold_state.wm_matrix.get(0, 4) == 7.0
 
-    assert st.w_back_ptr.get(1, 4) == bp_w
-    assert st.v_back_ptr.get(2, 3) == bp_v
+    assert fold_state.w_back_ptr.get(1, 4) == bp_w
+    assert fold_state.v_back_ptr.get(2, 3) == bp_v
+    assert fold_state.wm_back_ptr.get(0, 4) == bp_wm

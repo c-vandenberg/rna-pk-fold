@@ -17,7 +17,7 @@ class SecondaryStructureFoldingEngine:
     energy_model: SecondaryStructureEnergyModelProtocol
     config: RecurrenceConfig
 
-    def fill_all(self, seq: str, state: FoldState) -> None:
+    def fill_all_matrices(self, seq: str, state: FoldState) -> None:
         """
         Fill WM and V bottom-up by span. For each span d:
           1) compute WM[i][j] (uses V on smaller spans)
