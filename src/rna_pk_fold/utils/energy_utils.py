@@ -4,8 +4,29 @@ from typing import Mapping, Optional, Tuple
 
 def calculate_delta_g(delta_h_delta_s: Optional[tuple[float, float]], temp_k: float) -> float:
     """
-    Calculate ΔG from tuple (ΔH, ΔS) at temperature `temp_k` (Kelvin).
-    If the tuple is None, return +∞.
+    Compute Gibbs free energy change, ΔG, from enthalpy/entropy at a temperature.
+
+    Uses the thermodynamic relation `ΔG = ΔH − T * (ΔS / 1000)`
+    Where:
+        - ΔH is in kcal/mol
+        - ΔS is in cal/(K·mol)
+        - T is in Kelvin.
+
+    The division by 1000 converts ΔS to kcal/(K·mol).
+
+    Parameters
+    ----------
+    delta_h_delta_s : tuple[float, float] or None
+        Two-tuple `(ΔH, ΔS)` with units `kcal/mol` and `cal/(K·mol)` respectively.
+        If `None`, the value is considered unavailable and `+∞` is returned.
+    temp_k : float
+        Absolute temperature in Kelvin.
+
+    Returns
+    -------
+    float
+        Free energy change in `kcal/mol`. Returns `float('inf')` if
+        `delta_h_delta_s` is `None`.
     """
     if delta_h_delta_s is None:
         return float("inf")

@@ -8,6 +8,10 @@ def test_pair_properties_span_and_loop_len():
     """
     Validate `span` and `loop_len` computed properties.
 
+    Expected
+    --------
+    - For (i,j)=(2,6): `span` == 5 and `loop_len` == 3.
+
     Notes
     -----
     For a pair (i, j):
@@ -22,6 +26,10 @@ def test_pair_properties_span_and_loop_len():
 def test_pair_as_tuple_returns_coordinates():
     """
     Ensure `as_tuple` returns the (i, j) indices.
+
+    Expected
+    --------
+    - For (i,j)=(10,20), `as_tuple()` returns `(10, 20)`.
     """
     base_pair = Pair(base_i=10, base_j=20)
     assert base_pair.as_tuple() == (10, 20)

@@ -12,6 +12,10 @@ def test_can_pair_allows_watson_crick_and_wobble():
     """
     Test whether canonical and wobble pairs are allowed.
 
+    Expected
+    --------
+    - Returns True for AU, UA, GC, CG, GU, UG.
+
     Notes
     -----
     Allowed (RNA): AU, UA, GC, CG, GU, UG.
@@ -24,6 +28,11 @@ def test_can_pair_allows_watson_crick_and_wobble():
 def test_can_pair_is_case_insensitive_and_handles_T_as_U():
     """
     Verify bases are normalized to uppercase and T is treated as U.
+
+    Expected
+    --------
+    - Case-insensitive matching works (e.g., 'a' with 'u').
+    - 'T' is treated as 'U' (e.g., A–T returns True).
     """
     # Case-insensitive
     assert can_pair("a", "u")
@@ -36,6 +45,11 @@ def test_can_pair_is_case_insensitive_and_handles_T_as_U():
 def test_can_pair_rejects_invalid_inputs_and_ambiguity():
     """
     Ensure invalid or ambiguous inputs fail fast.
+
+    Expected
+    --------
+    - Non-strings, non-length-1 strings, and ambiguity code 'N' all return False.
+    - Disallowed pairs (e.g., A–G, C–U) return False.
     """
     # Non-strings
     assert can_pair(None, "A") is False
@@ -63,6 +77,10 @@ def test_can_pair_rejects_invalid_inputs_and_ambiguity():
 def test_hairpin_size_formula(base_i, base_j, expected):
     """
     Check the hairpin size formula ``j - i - 1``.
+
+    Expected
+    --------
+    - `hairpin_size(i, j)` equals `j - i - 1` for each parametrized case.
     """
     assert hairpin_size(base_i, base_j) == expected
 
@@ -70,6 +88,10 @@ def test_hairpin_size_formula(base_i, base_j, expected):
 def test_is_min_hairpin_size_uses_default_threshold():
     """
     Validate default minimum hairpin size threshold.
+
+    Expected
+    --------
+    - With default `MIN_HAIRPIN_UNPAIRED == 3`, `(0,4)` is allowed and `(0,3)` is not.
     """
     i, j = 0, 4  # loop length = 3
     assert MIN_HAIRPIN_UNPAIRED == 3
@@ -80,6 +102,10 @@ def test_is_min_hairpin_size_uses_default_threshold():
 def test_is_min_hairpin_size_with_custom_threshold():
     """
     Validate custom minimum threshold argument.
+
+    Expected
+    --------
+    - With `min_unpaired=4`, `(0,4)` is not allowed; `(0,5)` is allowed.
     """
     assert is_min_hairpin_size(0, 4, min_unpaired=4) is False
     assert is_min_hairpin_size(0, 5, min_unpaired=4) is True

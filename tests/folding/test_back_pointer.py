@@ -7,6 +7,10 @@ from rna_pk_fold.folding.back_pointer import BackPointer, BacktrackOp
 def test_backtrackop_members_exist():
     """
     Enum must contain the expected traceback operations.
+
+    Expected
+    --------
+    - Members include NONE, HAIRPIN, BIFURCATION, UNPAIRED_LEFT, PSEUDOKNOT.
     """
     # Spot-check a few members
     assert BacktrackOp.NONE.name == "NONE"
@@ -19,6 +23,11 @@ def test_backtrackop_members_exist():
 def test_backpointer_defaults_and_fields():
     """
     BackPointer should default to NONE and have empty optional fields.
+
+    Expected
+    --------
+    - `operation` is `BacktrackOp.NONE`.
+    - `split_k`, `inner`, and `note` are `None`.
     """
     back_ptr = BackPointer()
     assert back_ptr.operation is BacktrackOp.NONE
@@ -49,6 +58,10 @@ def test_backpointer_is_frozen_and_slotted():
 def test_backpointer_custom_values():
     """
     Construct a non-default BackPointer and verify its content.
+
+    Expected
+    --------
+    - Fields reflect the provided `operation`, `split_k`, `inner`, and `note`.
     """
     back_ptr = BackPointer(
         operation=BacktrackOp.BIFURCATION,

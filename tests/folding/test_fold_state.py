@@ -8,6 +8,11 @@ def test_make_fold_state_shapes_and_defaults():
     """
     Create a FoldState and verify matrix sizes and default initialization.
 
+    Expected
+    --------
+    - W/V matrices have shape (N, N) and default to `+∞`.
+    - Back-pointer matrices have shape (N, N) and default to `BackPointer()` with `operation=NONE`.
+
     Notes
     -----
     - Energy matrices should be +inf by default.
@@ -40,6 +45,11 @@ def test_make_fold_state_shapes_and_defaults():
 def test_fold_state_set_get_energy_and_backpointer():
     """
     Round-trip set/get on both energy and back-pointer matrices.
+
+    Expected
+    --------
+    - Values set via `set(i,j,...)` are retrieved identically via `get(i,j)`.
+    - Back-pointers round-trip equivalently.
     """
     seq_len = 5
     st = make_fold_state(seq_len)

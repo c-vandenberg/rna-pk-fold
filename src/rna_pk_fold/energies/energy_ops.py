@@ -19,7 +19,8 @@ def hairpin_energy(
 
     Computes:
     - loop length L = j - i - 1
-    - baseline hairpin contribution from E.HAIRPIN using a size anchor (clamped)
+    - baseline hairpin contribution from SecondaryStructureEnergies.HAIRPIN
+      using a size anchor (clamped)
     - Returns +∞ if L < MIN_HAIRPIN_UNPAIRED (disallowed) or indices invalid.
 
     Parameters
@@ -124,13 +125,13 @@ def internal_loop_energy(
     -----
     - Bulge: one of a or b is 0
         size = a + b
-        baseline from energies.BULGE[size] (clamped to last anchor).
+        baseline from SecondaryStructureEnergies.BULGE[size] (clamped to last anchor).
         (Typical refinements like adding the adjacent stack when size==1
         can be added later.)
 
     - Internal loop: a > 0 and b > 0
         size = a + b
-        baseline from energies.INTERNAL[size] (clamped).
+        baseline from SecondaryStructureEnergies.INTERNAL[size] (clamped).
         Special 1×1 mismatch: if a==b==1, try E.INTERNAL_MM key using the
         2-nt motifs adjacent to the closing pair (if present).
 
@@ -199,7 +200,8 @@ def multiloop_linear_energy(
     energies: SecondaryStructureEnergies
 ) -> float:
     """
-    Linear multiloop model ΔG using E.MULTILOOP coefficients (a, b, c, d).
+    Linear multiloop model ΔG using SecondaryStructureEnergies.MULTILOOP
+    coefficients (a, b, c, d).
 
     Model (seqfold-style)
     ---------------------
@@ -207,8 +209,8 @@ def multiloop_linear_energy(
 
     Notes
     -----
-    - E.MULTILOOP coefficients are treated as free-energy terms (ΔG) rather
-      than (ΔH, ΔS) pairs. Temperature is ignored here.
+    - SecondaryStructureEnergies.MULTILOOP coefficients are treated as
+      free-energy terms (ΔG) rather than (ΔH, ΔS) pairs. Temperature is ignored here.
     - This matches the common "linear multiloop" surrogate used in practice.
 
     Parameters

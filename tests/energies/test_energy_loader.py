@@ -9,9 +9,12 @@ def test_load_returns_rna_bundle():
     """
     Verify that `load("RNA")` returns a populated RNA energy bundle.
 
-    Returns
-    -------
-    None
+    Expected
+    --------
+    - Return value is a `SecondaryStructureEnergies` instance.
+    - NN, HAIRPIN, BULGE, INTERNAL are present and non-empty dicts.
+    - COMPLEMENT_BASES is a dict.
+    - MULTILOOP is a 4-tuple.
 
     Notes
     -----
@@ -32,6 +35,10 @@ def test_load_returns_rna_bundle():
 def test_only_rna_supported():
     """
     Ensure attempting to load DNA currently raises a ValueError.
+
+    Expected
+    --------
+    - Calling `SecondaryStructureEnergyLoader.load("DNA")` raises `ValueError`.
     """
     with pytest.raises(ValueError):
         SecondaryStructureEnergyLoader.load("DNA")
@@ -40,6 +47,11 @@ def test_only_rna_supported():
 def test_complement_map_has_expected_pairs_and_N():
     """
     Validate canonical RNA complements and the 'N' ambiguity mapping.
+
+    Expected
+    --------
+    - 'A'→'U', 'U'→'A', 'G'→'C', 'C'→'G'.
+    - 'N'→'N' (ambiguity preserved).
 
     Notes
     -----
@@ -54,6 +66,11 @@ def test_complement_map_has_expected_pairs_and_N():
 def test_nn_contains_expected_entries_and_types():
     """
     Check representative nearest-neighbor entries and value types.
+
+    Expected
+    --------
+    - Each specified NN key exists.
+    - Each value is a 2-tuple (ΔH, ΔS) of numbers.
 
     Notes
     -----
@@ -80,6 +97,11 @@ def test_terminal_and_dangles_present():
     """
     Confirm presence of terminal mismatch and dangling-end parameters.
 
+    Expected
+    --------
+    - "UA/UA" exists in TERMINAL_MM.
+    - At least one DANGLES key contains a '.' character.
+
     Notes
     -----
     Dangles use '.' in keys to denote a single unpaired nucleotide.
@@ -97,6 +119,11 @@ def test_delta_g_at_37C_matches_known_stack_within_tolerance():
     """
     Compute ΔG at 37 °C for a known stack and compare to an expected value.
 
+    Expected
+    --------
+    - For NN["AU/UA"], ΔG at 310.15 K is approximately -1.30 kcal/mol
+      (abs. tolerance ~ 0.05).
+
     Notes
     -----
     Uses the relation ΔG = ΔH - T * (ΔS / 1000) with T = 310.15 K.
@@ -112,6 +139,11 @@ def test_delta_g_at_37C_matches_known_stack_within_tolerance():
 def test_multiloop_coefficients_shape_and_values():
     """
     Validate multiloop coefficient tuple shape and numeric types.
+
+    Expected
+    --------
+    - MULTILOOP has length 4.
+    - All elements are numeric (int or float).
     """
     rna_energies = SecondaryStructureEnergyLoader.load()
     a, c1, c2, d = rna_energies.MULTILOOP
@@ -122,6 +154,10 @@ def test_multiloop_coefficients_shape_and_values():
 def test_special_hairpins_default_none():
     """
     SPECIAL_HAIRPINS should default to None in the base parameter set.
+
+    Expected
+    --------
+    - `SPECIAL_HAIRPINS is None`.
     """
     rna_energies = SecondaryStructureEnergyLoader.load()
     assert rna_energies.SPECIAL_HAIRPINS is None
@@ -135,6 +171,10 @@ def test_class_method_allows_subclass_override_of_build():
     -----
     The class method `load` should dispatch to the subclass's static
     `_build_rna()` implementation, allowing project-specific tweaks.
+
+    Expected
+    --------
+    - `MyLoader.load("RNA")` returns a bundle whose `MULTILOOP` is `(9.9, 9.9, 9.9, 9.9)`.
     """
     class MyLoader(SecondaryStructureEnergyLoader):
         @staticmethod

@@ -8,6 +8,11 @@ def test_trimatrix_init_shape_and_defaults():
     """
     Validate TriMatrix shape and default fill behavior.
 
+    Expected
+    --------
+    - `shape` equals `(N, N)` and `size == N`.
+    - All `i <= j` cells are initialized to the fill value.
+
     Notes
     -----
     - Shape should be (N, N).
@@ -28,6 +33,11 @@ def test_trimatrix_init_shape_and_defaults():
 def test_trimatrix_set_get_roundtrip():
     """
     Ensure set/get updates a single cell correctly.
+
+    Expected
+    --------
+    - Setting `(1,3)` to a value is retrieved exactly via `get(1,3)`.
+    - Other cells remain at the initial fill value.
     """
     seq_len = 4
     tri_matrix = TriMatrix[float](seq_len, float("inf"))
@@ -44,6 +54,11 @@ def test_trimatrix_set_get_roundtrip():
 def test_trimatrix_invalid_indices_raise():
     """
     Verify invalid index access raises IndexError.
+
+    Expected
+    --------
+    - Accessing any of the listed invalid index pairs raises `IndexError`
+      for both `get` and `set`.
 
     Cases
     -----
@@ -72,6 +87,11 @@ def test_trimatrix_invalid_indices_raise():
 def test_trimatrix_iter_upper_indices_count_and_coverage():
     """
     Ensure iter_upper_indices() yields exactly N(N+1)/2 cells and covers all i<=j.
+
+    Expected
+    --------
+    - Set of yielded pairs equals all `(i,j)` with `0 <= i <= j < N`
+      and has cardinality `N(N+1)/2`.
     """
     seq_len = 6
     tri_matrix = TriMatrix[int](seq_len, 0)
@@ -88,6 +108,10 @@ def test_trimatrix_iter_upper_indices_count_and_coverage():
 def test_trimatrix_generic_object_storage():
     """
     TriMatrix should support arbitrary value types (not just scalars).
+
+    Expected
+    --------
+    - Objects (e.g., lists) can be stored and retrieved unchanged.
     """
     n = 3
     tri_matrix = TriMatrix[list](n, fill=[])

@@ -6,6 +6,15 @@ from rna_pk_fold.energies import SecondaryStructureEnergies
 
 
 def test_secondary_structure_energies_is_frozen_and_slotted():
+    """
+    Validate dataclass immutability and slotted behavior.
+
+    Expected
+    --------
+    - Assigning to any field raises `FrozenInstanceError`.
+    - Object has `__slots__` and no `__dict__`.
+    - Adding a new attribute raises `AttributeError` or `TypeError`.
+    """
     energies = SecondaryStructureEnergies(
         BULGE={1: (10.6, 21.9)},
         COMPLEMENT_BASES={"A": "U", "U": "A", "G": "C", "C": "G", "N": "N"},
@@ -33,6 +42,14 @@ def test_secondary_structure_energies_is_frozen_and_slotted():
 
 
 def test_delta_g_helper_matches_formula():
+    """
+    ΔG helper must match the analytical formula.
+
+    Expected
+    --------
+    - `SecondaryStructureEnergies.delta_g(dh, ds, T)` equals
+      `dh - T * (ds/1000)` within tight tolerance.
+    """
     # ΔG = ΔH - T * (ΔS/1000)
     delta_h, delta_s = (-7.7, -20.6)         # kcal/mol, cal/(K·mol)
     temp = 310.15                            # 37°C in Kelvin
