@@ -31,12 +31,15 @@ class SecondaryStructureFoldingEngine:
             for i in range(0, n - d):
                 j = i + d
 
-                # ---------- Matrix WM: Multiloop Accumulator (content between i..j) ----------
+                # ---------- 1. Matrix WM: Multiloop Accumulator (content between i..j) ----------
                 self._fill_wm_cell(seq, i, j, state, b, c)
 
-                # ---------- Matrix V: Paired Spans (only if length >= 2) ----------
+                # ---------- 2. Matrix V: Paired Spans (only if length >= 2) ----------
                 if d >= 1:
                     self._fill_v_cell(seq, i, j, state, a)
+
+                # ---------- 3. Matrix W: ----------
+                self._fill_w_cell(i, j, state)
 
     @staticmethod
     def _fill_wm_cell(seq: str, i: int, j: int,
@@ -136,3 +139,56 @@ class SecondaryStructureFoldingEngine:
 
         v_matrix.set(i, j, best)
         v_back_ptr.set(i, j, best_bp)
+
+    @staticmethod
+    def _fill_w_cell(i: int, j: int, state: FoldState) -> None:
+        """
+        Fill W[i][j] = min(
+            W[i+1][j],         # leave i unpaired
+            W[i][j-1],         # leave j unpaired
+            V[i][j],           # pair i..j
+            min_k W[i][k] + W[k+1][j]   # bifurcation
+        )
+        """
+        w_matrix = state.w_matrix
+        v_matrix = state.v_matrix
+        w_back_ptr = state.w_back_ptr
+
+        # Base case: single cell (i==j) -> nothing to pair; cost 0 by convention
+        if i == j:
+            w_matrix.set(i, j, 0.0)
+            w_back_ptr.set(i, j, BackPointer(operation=BacktrackOp.NONE))
+            return
+
+        best = math.inf
+        best_back_ptr = BackPointer()
+
+        # Case 1: leave i unpaired
+        cand = w_matrix.get(i + 1, j)
+        if cand < best:
+            best = cand
+            best_back_ptr = BackPointer(operation=BacktrackOp.UNPAIRED_LEFT)
+
+        # Case 2: leave j unpaired
+        cand = w_matrix.get(i, j - 1)
+        if cand < best:
+            best = cand
+            best_back_ptr = BackPointer(operation=BacktrackOp.UNPAIRED_RIGHT)
+
+        # Case 3: take V[i][j] (only meaningful when span >= 2)
+        v_ij = v_matrix.get(i, j)
+        if v_ij < best:
+            best = v_ij
+            best_back_ptr = BackPointer(operation=BacktrackOp.PAIR)
+
+        # Case 4: bifurcation
+        for k in range(i, j):
+            left = w_matrix.get(i, k)
+            right = w_matrix.get(k + 1, j)
+            cand = left + right
+            if cand < best:
+                best = cand
+                best_back_ptr = BackPointer(operation=BacktrackOp.BIFURCATION, split_k=k)
+
+        w_matrix.set(i, j, best)
+        w_back_ptr.set(i, j, best_back_ptr)

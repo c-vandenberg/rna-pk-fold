@@ -16,6 +16,7 @@ class BacktrackOp(Enum):
     HAIRPIN         : V[i,j] formed a hairpin closed by (i,j).
     STACK           : V[i,j] formed by stacking on V[i+1,j-1].
     INTERNAL        : V[i,j] formed an internal/bulge loop with inner pair (k,l).
+    PAIR            : W[i,j] chose the paired state V[i,j].
     BIFURCATION     : W[i,j] split into W[i,k] + W[k+1,j].
     MULTI_ATTACH    : V/W case where a helix attaches into a multiloop context.
     UNPAIRED_LEFT   : W[i,j] best by leaving i unpaired (use W[i+1,j]).
@@ -26,6 +27,7 @@ class BacktrackOp(Enum):
     HAIRPIN = auto()
     STACK = auto()
     INTERNAL = auto()
+    PAIR = auto()
     BIFURCATION = auto()
     MULTI_ATTACH = auto()
     UNPAIRED_LEFT = auto()
