@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from rna_pk_fold.structures import TriMatrix
 from rna_pk_fold.folding import BackPointer
 
-__all__ = ["FoldState", "make_fold_state"]
-
 
 @dataclass(frozen=True, slots=True)
 class FoldState:
@@ -27,8 +25,10 @@ class FoldState:
     """
     w_matrix: TriMatrix[float]
     v_matrix: TriMatrix[float]
+    wm_matrix: TriMatrix[float]
     w_back_ptr: TriMatrix[BackPointer]
     v_back_ptr: TriMatrix[BackPointer]
+    wm_back_ptr: TriMatrix[BackPointer]
 
 
 def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> FoldState:
@@ -58,12 +58,21 @@ def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> FoldStat
     """
     w_matrix = TriMatrix[float](seq_len, init_energy)
     v_matrix = TriMatrix[float](seq_len, init_energy)
+    wm_matrix = TriMatrix[float](seq_len, init_energy)
+
     w_back_ptr = TriMatrix[BackPointer](seq_len, BackPointer())
     v_back_ptr = TriMatrix[BackPointer](seq_len, BackPointer())
+    wm_back_ptr = TriMatrix[BackPointer](seq_len, BackPointer())
+
+    # bBse case for WM diagonals: Zero cost to have an empty interior
+    for i in range(seq_len):
+        wm_matrix.set(i, i, 0.0)
 
     return FoldState(
         w_matrix=w_matrix,
         v_matrix=v_matrix,
+        wm_matrix=wm_matrix,
         w_back_ptr=w_back_ptr,
         v_back_ptr=v_back_ptr,
+        wm_back_ptr=wm_back_ptr
     )
