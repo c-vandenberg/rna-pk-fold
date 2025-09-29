@@ -6,6 +6,11 @@ metadata:
 
 # ------------------------------------------------------
 # COMPLEMENT BASES
+# Notes:
+# - Map of canonical complements for RNA:
+#   `{"A":"U","U":"A","G":"C","C":"G","N":"N"}`.
+# - `N` represents an IUPAC ambiguity (unknown) nucleotide;
+#   its complement is kept as `N`
 # ------------------------------------------------------
 complements:
   A: U
@@ -89,6 +94,9 @@ bulge_loop:
 # ------------------------------------------------------
 # HAIRPIN LOOPS (as a function of loop length nt)
 # Measurements: ΔG37 (kcal/mol) and ΔH (kcal/mol)
+# Notes:
+# - For lengths outside the table, typical practice is
+#   to use Jacobson–Stockmayer extrapolation
 # ------------------------------------------------------
 hairpin_loops:
   3:  { dh:  1.30, dg:  5.40 }
@@ -159,6 +167,12 @@ internal_loops:
 # INTERNAL MISMATCHES - Closing-Pair × Nucleotide Grid
 # (1×1 internal mismatches)
 # Measurements: ΔG37 (kcal/mol) and ΔH (kcal/mol)
+# Notes:
+# - In this format , each closing pair has a
+#   nucleotide×nucleotide matrix giving the energy when
+#   that pair is adjacent to one nucleotide on the left
+#   side and one on the right side.
+# - This is the classic 1×1 mismatch
 # ------------------------------------------------------
 internal_mismatches:
   pairs: [CG, GC, GU, UG, AU, UA, NS]
@@ -254,6 +268,12 @@ internal_mismatches:
 # TERMINAL MISMATCHES - Closing-Pair × Nucleotide Grid
 # (Helix end mismatches)
 # Measurements: ΔG37 (kcal/mol) and ΔH (kcal/mol)
+# Notes:
+# - In this format , each closing pair has a
+#   nucleotide×nucleotide matrix giving the energy when
+#   that pair is adjacent to one nucleotide on the left
+#   side and one on the right side.
+# - This is the classic 1×1 mismatch
 # ------------------------------------------------------
 terminal_mismatches:
   pairs: [CG, GC, GU, UG, AU, UA, NN]
@@ -348,9 +368,12 @@ terminal_mismatches:
 # ------------------------------------------------------
 # DANGLES (5' and 3') (pair rows × nucleotide columns)
 # Measurements: ΔG37 (kcal/mol) and ΔH (kcal/mol)
-# Keys the loader will generate:
-#   dangle5:  "<Nuc>./<Pair>"   e.g., "A./CG"
-#   dangle3:  "<Pair>/.<Nuc>"   e.g., "CG/.A"
+# Notes:
+# - These are where one side has a single unpaired
+#   nucleotide adjacent to a closing pair
+# - Keys the loader will generate:
+#     dangle5:  "<Nuc>./<Pair>"   e.g., "A./CG"
+#     dangle3:  "<Pair>/.<Nuc>"   e.g., "CG/.A"
 # ------------------------------------------------------
 dangle5_matrix:
   rows: [CG, GC, GU, UG, AU, UA, NN]

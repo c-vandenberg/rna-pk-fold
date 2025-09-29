@@ -1,12 +1,12 @@
 metadata:
-  source: """
+  source: "
   1. Xia, T. et al. (1998). Thermodynamic parameters for an expanded nearest
      neighbor model for formation of RNA duplexes with Watson–Crick base pairs.
      Biochemistry, 37(42), 14719–14735.
   2. Mathews, D. H., Sabina, J., Zuker, M., & Turner, D. H. (1999). Expanded
      sequence dependence of thermodynamic parameters provides robust prediction
      of RNA secondary structure. J. Mol. Biol., 288(5), 911–940.
-  """
+  "
   temperature_kelvin: 310.15   # 37 °C
   notes: |
     This file encodes the exact values that were hardcoded in SecondaryStructureEnergyLoader.
@@ -14,6 +14,11 @@ metadata:
 
 # ------------------------------------------------------
 # COMPLEMENT BASES
+# Notes:
+# - Map of canonical complements for RNA:
+#   `{"A":"U","U":"A","G":"C","C":"G","N":"N"}`.
+# - `N` represents an IUPAC ambiguity (unknown) nucleotide;
+#   its complement is kept as `N`
 # ------------------------------------------------------
 complements:
   A: U
@@ -40,26 +45,40 @@ multiloop:
 # - Missing data points are set to null.
 # ------------------------------------------------------
 stacks_matrix:
-  rows: [CG, GC, GU, UG, AU, UA, NN]
-  cols: [CG, GC, GU, UG, AU, UA, NN]
+  rows: [CG, GC, GU, UG, AU, UA, CA, AC, AG, UU, CU, GG, GA, NN]
+  cols: [CG, GC, GU, UG, AU, UA, CA, AC, AG, UU, CU, GG, GA, NN]
 
-  dh:   # CG       GC       GU       UG       AU       UA       NN
-    - [  null,  -10.60,  -5.61,    null,    null,    null,    null ]  # CG
-    - [ -14.90,   null,    null,    null,    null,    null,    null ]  # GC
-    - [ -12.59,   null,    null,  -14.59,   null,    null,    null ]  # GU
-    - [  null,    null,   -9.26,    null,   -6.99,   null,    null ]  # UG
-    - [  null,    null,    null,   -8.81,   null,   -7.70,    null ]  # AU
-    - [  null,    null,    null,    null,   -7.70,   null,    null ]  # UA
-    - [  null,    null,    null,    null,    null,    null,    null ]  # NN
+  dh:   #    CG        GC        GU        UG        AU        UA        CA        AC        AG        UU        CU        GG        GA        NN
+    - [  null,   -10.60,   -5.61,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # CG
+    - [  -14.90,  null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # GC
+    - [  -12.59,  null,     null,    -14.59,   null,    null,   -11.40,   null,    null,    null,    null,    null,    null,    null ]  # GU
+    - [   null,    null,    -9.26,    null,   -6.99,    null,    null,   -10.40,   null,    null,    null,    null,    null,    null ]  # UG
+    - [   null,    null,     null,    -8.81,   null,    -7.70,   null,    null,    null,    null,    null,    null,    null,    null ]  # AU
+    - [   null,    null,     null,     null,   -7.70,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # UA
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # CA
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # AC
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,   -3.21,   null,    null,    null,    null ]  # AG
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # UU
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,   -12.11,  null,    null ]  # CU
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,   -13.47,  -8.33,    null,    null,    null ]  # GG
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,   -12.83,  null,    null,    null,    null ]  # GA
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # NN
 
-  ds:   # CG       GC       GU       UG       AU       UA       NN
-    - [  null,  -26.4,   -13.5,     null,    null,    null,    null ]  # CG
-    - [ -37.1,    null,    null,    null,    null,    null,    null ]  # GC
-    - [ -32.5,    null,    null,   -51.2,    null,    null,    null ]  # GU
-    - [  null,    null,   -30.8,     null,  -19.3,    null,    null ]  # UG
-    - [  null,    null,    null,   -24.0,    null,  -20.6,    null ]  # AU
-    - [  null,    null,    null,    null,  -20.6,    null,    null ]  # UA
-    - [  null,    null,    null,    null,    null,    null,    null ]  # NN
+  ds:   #    CG        GC        GU        UG        AU        UA        CA        AC        AG        UU        CU        GG        GA        NN
+    - [  null,   -26.4,   -13.5,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # CG
+    - [  -37.1,   null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # GC
+    - [  -32.5,   null,     null,    -51.2,    null,    null,   -29.7,    null,    null,    null,    null,    null,    null,    null ]  # GU
+    - [   null,    null,    -30.8,     null,  -19.3,    null,    null,   -26.8,    null,    null,    null,    null,    null,    null ]  # UG
+    - [   null,    null,     null,    -24.0,    null,  -20.6,    null,    null,    null,    null,    null,    null,    null,    null ]  # AU
+    - [   null,    null,     null,     null,  -20.6,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # UA
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # CA
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # AC
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,   -8.6,     null,    null,    null,    null ]  # AG
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # UU
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,   -32.2,   null,    null ]  # CU
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,   -44.9,   -21.9,    null,    null,    null ]  # GG
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,   -37.3,    null,    null,    null,    null ]  # GA
+    - [   null,    null,     null,     null,    null,    null,    null,    null,    null,    null,    null,    null,    null,    null ]  # NN
 
 # ----------------------------------------------------------------
 # BULGE LOOPS (as a function of loop length nt)
@@ -75,6 +94,9 @@ bulge_loops:
 # ----------------------------------------------------------------
 # HAIRPIN LOOPS (as a function of loop length nt)
 # Measurements: ΔH (kcal/mol) and ΔS (cal/(K·mol)
+# Notes:
+# - For lengths outside the table, typical practice is
+#   to use Jacobson–Stockmayer extrapolation
 # ----------------------------------------------------------------
 hairpin_loops:
   3:  { dh:  1.30, ds: -13.2 }
@@ -145,6 +167,11 @@ terminal_mismatches:
 #   dangle5:  "<Nuc>./<Pair>"   e.g., "A./CG"
 #   dangle3:  "<Pair>/.<Nuc>"   e.g., "CG/.A"
 # Notes:
+# - These are where one side has a single unpaired
+#   nucleotide adjacent to a closing pair
+# - Keys the loader will generate:
+#     dangle5:  "<Nuc>./<Pair>"   e.g., "A./CG"
+#     dangle3:  "<Pair>/.<Nuc>"   e.g., "CG/.A"
 # - Only the following entries are populated:
 #     "A./UA" → dangle5[UA, A] = (dg_37 = -0.314, dh = -0.50)
 #     "UA/A." → dangle3[UA, A] = (dg_37 = -0.314, dh = -0.50)
