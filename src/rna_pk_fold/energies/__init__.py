@@ -7,7 +7,7 @@ from rna_pk_fold.energies.types import (
     SecondaryStructureEnergies,
 )
 from rna_pk_fold.energies.energy_loader import SecondaryStructureEnergyLoader
-from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModelProtocol
+from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModelProtocol, SecondaryStructureEnergyModel
 
 __all__ = [
     "Cache",
@@ -18,4 +18,5 @@ __all__ = [
     "SecondaryStructureEnergies",
     "SecondaryStructureEnergyLoader",
     "SecondaryStructureEnergyModelProtocol",
+    "SecondaryStructureEnergyModel"
 ]
