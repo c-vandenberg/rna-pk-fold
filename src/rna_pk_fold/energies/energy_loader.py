@@ -1,4 +1,6 @@
 from __future__ import annotations
+import yaml
+from pathlib import Path
 
 from typing import Literal
 
@@ -47,6 +49,12 @@ class SecondaryStructureEnergyLoader:
         return cls._build_rna()
 
     @staticmethod
+    def _load_thermo_from_yaml(path: str | Path):
+        thermo_data = yaml.safe_load(Path(path).read_text())
+
+        return thermo_data
+
+    @staticmethod
     def _build_rna() -> SecondaryStructureEnergies:
         """
         Construct RNA thermodynamic tables (starter subset).
@@ -72,7 +80,7 @@ class SecondaryStructureEnergyLoader:
         complement: BasePairMap = {"A": "U", "U": "A", "G": "C", "C": "G", "N": "N"}
 
         # Minimal nearest-neighbor stack table using `"ij/kl"` keys
-        nn: PairEnergies = {
+        nn_stack: PairEnergies = {
             "AU/UA": (-7.7, -20.6),
             "UA/AU": (-7.7, -20.6),
             "GC/CG": (-14.9, -37.1),
@@ -92,18 +100,6 @@ class SecondaryStructureEnergyLoader:
             "UG/GU": (-9.26, -30.8),
         }
 
-        # Internal mismatch nearest-neighbor terms for small internal loops
-        # (1×1 mismatches)
-        internal_mm: PairEnergies = {
-            "UU/AG": (-12.8, -37.1),
-            "GU/UA": (-2.3, -5.5),
-        }
-
-        # Terminal mismatch penalties/bonuses applied at helix ends.
-        terminal_mm: PairEnergies = {
-            "UA/UA": (0.0, 0.0),
-            "AA/UA": (-3.9, -10.0),
-        }
 
         # Dangling-end contributions where one side has a single unpaired
         # nucleotide adjacent to a closing pair. Keys can include `"."`
@@ -152,8 +148,8 @@ class SecondaryStructureEnergyLoader:
             HAIRPIN=hairpin,
             MULTILOOP=multiloop,
             INTERNAL=internal,
-            INTERNAL_MM=internal_mm,
-            NN=nn,
-            TERMINAL_MM=terminal_mm,
+            NN_STACK=nn_stack,
+            INTERNAL_MISMATCH=internal_mm,
+            TERMINAL_MISMATCH=terminal_mm,
             SPECIAL_HAIRPINS=None,
         )

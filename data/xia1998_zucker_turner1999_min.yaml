@@ -1,0 +1,197 @@
+metadata:
+  source: """
+  1. Xia, T. et al. (1998). Thermodynamic parameters for an expanded nearest
+     neighbor model for formation of RNA duplexes with Watson–Crick base pairs.
+     Biochemistry, 37(42), 14719–14735.
+  2. Mathews, D. H., Sabina, J., Zuker, M., & Turner, D. H. (1999). Expanded
+     sequence dependence of thermodynamic parameters provides robust prediction
+     of RNA secondary structure. J. Mol. Biol., 288(5), 911–940.
+  """
+  temperature_kelvin: 310.15   # 37 °C
+  notes: |
+    This file encodes the exact values that were hardcoded in SecondaryStructureEnergyLoader.
+    Units: ΔH in kcal/mol, ΔS in cal/(K·mol). ΔG°37 is computed as ΔH − T_ref * (ΔS/1000).
+
+# ------------------------------------------------------
+# COMPLEMENT BASES
+# ------------------------------------------------------
+complements:
+  A: U
+  U: A
+  G: C
+  C: G
+  N: N
+
+# ----------------------------------------------------------------
+# MULTILOOP PARAMETERS (affine model)
+# ΔG = a + b * (#branches) + c * (#unpaired) + d (optional)
+# ----------------------------------------------------------------
+multiloop:
+  a: 2.5
+  b: 0.1
+  c: 0.4
+  d: 2.0
+
+# ------------------------------------------------------
+# NEAREST-NEIGHBOUR STACKS
+# Measurements: ΔH (kcal/mol) and ΔS (cal/(K·mol)
+# Notes:
+# - Matrix indices use closing-pair dimers (rows × cols).
+# - Missing data points are set to null.
+# ------------------------------------------------------
+stacks_matrix:
+  rows: [CG, GC, GU, UG, AU, UA, NN]
+  cols: [CG, GC, GU, UG, AU, UA, NN]
+
+  dh:   # CG       GC       GU       UG       AU       UA       NN
+    - [  null,  -10.60,  -5.61,    null,    null,    null,    null ]  # CG
+    - [ -14.90,   null,    null,    null,    null,    null,    null ]  # GC
+    - [ -12.59,   null,    null,  -14.59,   null,    null,    null ]  # GU
+    - [  null,    null,   -9.26,    null,   -6.99,   null,    null ]  # UG
+    - [  null,    null,    null,   -8.81,   null,   -7.70,    null ]  # AU
+    - [  null,    null,    null,    null,   -7.70,   null,    null ]  # UA
+    - [  null,    null,    null,    null,    null,    null,    null ]  # NN
+
+  ds:   # CG       GC       GU       UG       AU       UA       NN
+    - [  null,  -26.4,   -13.5,     null,    null,    null,    null ]  # CG
+    - [ -37.1,    null,    null,    null,    null,    null,    null ]  # GC
+    - [ -32.5,    null,    null,   -51.2,    null,    null,    null ]  # GU
+    - [  null,    null,   -30.8,     null,  -19.3,    null,    null ]  # UG
+    - [  null,    null,    null,   -24.0,    null,  -20.6,    null ]  # AU
+    - [  null,    null,    null,    null,  -20.6,    null,    null ]  # UA
+    - [  null,    null,    null,    null,    null,    null,    null ]  # NN
+
+# ----------------------------------------------------------------
+# BULGE LOOPS (as a function of loop length nt)
+# Measurements: ΔH (kcal/mol) and ΔS (cal/(K·mol)
+# ----------------------------------------------------------------
+bulge_loops:
+  1:  { dh: 10.60, ds: 21.9 }
+  2:  { dh:  7.10, ds: 13.9 }
+  4:  { dh:  7.10, ds: 11.3 }
+  10: { dh:  7.10, ds:  7.1 }
+  30: { dh:  7.10, ds:  3.2 }
+
+# ----------------------------------------------------------------
+# HAIRPIN LOOPS (as a function of loop length nt)
+# Measurements: ΔH (kcal/mol) and ΔS (cal/(K·mol)
+# ----------------------------------------------------------------
+hairpin_loops:
+  3:  { dh:  1.30, ds: -13.2 }
+  4:  { dh:  4.80, ds:  -2.6 }
+  6:  { dh: -2.90, ds: -26.8 }
+  10: { dh:  5.00, ds:  -4.8 }
+  30: { dh:  5.00, ds:  -8.7 }
+
+# ----------------------------------------------------------------
+# INTERNAL LOOPS (as a function of loop length nt)
+# Measurements: ΔH (kcal/mol) and ΔS (cal/(K·mol)
+# ----------------------------------------------------------------
+internal_loops:
+  4:  { dh: -7.20, ds: -26.8 }
+  6:  { dh: -1.30, ds: -10.6 }
+  10: { dh: -1.30, ds: -12.3 }
+  30: { dh: -1.30, ds: -16.1 }
+
+# ----------------------------------------------------------------
+# INTERNAL MISMATCHES (1×1) — "XY/ZW" sparse matrix
+# Measurements: ΔH (kcal/mol) and ΔS (cal/(K·mol)
+# Notes:
+# - Row = 5'→3' dimer on the left strand (XY)
+# - Col = 3'→5' dimer on the right strand (ZW)
+# - Same orientation rule as stacks_matrix
+# - Missing data points are set to null.
+# ----------------------------------------------------------------
+internal_mismatches:
+  rows: [ UU, GU ]
+  cols: [ AG, UA ]
+
+  dh:
+    #        AG       UA
+    - [ -12.80,   null ]   # UU / *
+    - [ null,     -2.30 ]  # GU / *
+
+  ds:
+    #        AG       UA
+    - [ -37.1,    null ]   # UU / *
+    - [ null,     -5.5 ]   # GU / *
+
+# ------------------------------------------------------
+# TERMINAL MISMATCHES (Helix ends) — "XY/ZW" sparse matrix
+# Measurements: ΔH (kcal/mol) and ΔS (cal/(K·mol))
+# Notes:
+# - Row = 5'→3' dimer on the left strand (XY)
+# - Col = 3'→5' dimer on the right strand (ZW)
+# - Only specified intersections are filled; others are null/omitted
+# ------------------------------------------------------
+terminal_mismatches:
+  rows: [UA, AA]
+  cols: [AA, UA]
+
+  dh:
+    #   AA    UA
+    - [ null, 0.00 ]   # UA
+    - [ null, -3.90 ]  # AA
+
+  ds:
+    #   AA    UA
+    - [ null, 0.0 ]   # UA
+    - [ null, -10.0 ] # AA
+
+# ------------------------------------------------------
+# DANGLES (5' and 3') (pair rows × nucleotide columns)
+# Measurements: ΔG37 (kcal/mol) and ΔH (kcal/mol)
+# Keys the loader will generate:
+#   dangle5:  "<Nuc>./<Pair>"   e.g., "A./CG"
+#   dangle3:  "<Pair>/.<Nuc>"   e.g., "CG/.A"
+# Notes:
+# - Only the following entries are populated:
+#     "A./UA" → dangle5[UA, A] = (dg_37 = -0.314, dh = -0.50)
+#     "UA/A." → dangle3[UA, A] = (dg_37 = -0.314, dh = -0.50)
+# - All other cells are null
+# ------------------------------------------------------
+dangle5_matrix:
+  rows: [CG, GC, GU, UG, AU, UA, NN]
+  cols: [N, A, C, G, U]
+  dh: #  N    A     C     G     U
+    - [ null, null, null, null, null ]  # CG
+    - [ null, null, null, null, null ]  # GC
+    - [ null, null, null, null, null ]  # GU
+    - [ null, null, null, null, null ]  # UG
+    - [ null, null, null, null, null ]  # AU
+    - [ null, -0.50, null, null, null ]  # UA  (A./UA)
+    - [ null, null, null, null, null ]  # NN
+  ds: #  N    A     C     G     U
+    - [ null, null, null, null, null ]  # CG
+    - [ null, null, null, null, null ]  # GC
+    - [ null, null, null, null, null ]  # GU
+    - [ null, null, null, null, null ]  # UG
+    - [ null, null, null, null, null ]  # AU
+    - [ null, -0.60, null, null, null ]  # UA  (A./UA)
+    - [ null, null, null, null, null ]  # NN
+
+dangle3_matrix:
+  rows: [CG, GC, GU, UG, AU, UA, NN]
+  cols: [N, A, C, G, U]
+  dh: #  N    A     C     G     U
+    - [ null, null, null, null, null ]  # CG
+    - [ null, null, null, null, null ]  # GC
+    - [ null, null, null, null, null ]  # GU
+    - [ null, null, null, null, null ]  # UG
+    - [ null, null, null, null, null ]  # AU
+    - [ null, -0.50, null, null, null ]  # UA  (UA/.A)
+    - [ null, null, null, null, null ]  # NN
+  ds: #  N    A     C     G     U
+    - [ null, null, null, null, null ]  # CG
+    - [ null, null, null, null, null ]  # GC
+    - [ null, null, null, null, null ]  # GU
+    - [ null, null, null, null, null ]  # UG
+    - [ null, null, null, null, null ]  # AU
+    - [ null, -0.60, null, null, null ]  # UA  (A./UA)
+    - [ null, null, null, null, null ]  # NN
+
+# ----------------------------------------------------------------
+# SPECIAL HAIRPINS (none in baseline)
+# ----------------------------------------------------------------
+special_hairpins: {}
+

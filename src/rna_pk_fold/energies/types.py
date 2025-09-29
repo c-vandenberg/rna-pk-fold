@@ -8,6 +8,8 @@ BasePairMap = Mapping[str, str]
 MultiLoopCoeffs = Tuple[float, float, float, float]
 PairEnergies = Dict[str, Tuple[float, float]]
 LoopEnergies = Dict[int, Tuple[float, float]]
+InternalMismatchEnergies = dict[str, dict[str, dict[str, tuple[float, float]]]]
+TerminalMismatchEnergies = dict[str, dict[str, dict[str, tuple[float, float]]]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,15 +39,15 @@ class SecondaryStructureEnergies:
     INTERNAL : LoopEnergies
         Internal loop baseline by total loop length (nt), excluding
         1×1 which are handled via `internal_mm`.
-    INTERNAL_MM : PairEnergies
-        Internal mismatch nearest-neighbor terms for small internal loops
-        (1×1 mismatches).
-    NN : PairEnergies
+    NN_STACK : PairEnergies
         Minimal nearest-neighbor stack table using `"XY/ZW"` keys
         (left 5'→3' dimer `"XY"`, right 3'→5' dimer `"ZW"`). These capture
         stacking energetics of adjacent base pairs
         (e.g., `"AU/UA"`, `"GC/CG"`).
-    TERMINAL_MM : PairEnergies
+    INTERNAL_MISMATCH : InternalMismatchEnergies
+        Internal mismatch nearest-neighbor terms for small internal loops
+        (1×1 mismatches).
+    TERMINAL_MISMATCH : TerminalMismatchEnergies
         Terminal mismatch penalties/bonuses applied at helix ends.
     SPECIAL_HAIRPINS : PairEnergies, optional
         Sequence-specific hairpin entries
@@ -62,9 +64,9 @@ class SecondaryStructureEnergies:
     HAIRPIN: LoopEnergies
     MULTILOOP: MultiLoopCoeffs
     INTERNAL: LoopEnergies
-    INTERNAL_MM: PairEnergies
-    NN: PairEnergies
-    TERMINAL_MM: PairEnergies
+    NN_STACK: PairEnergies
+    INTERNAL_MISMATCH: InternalMismatchEnergies
+    TERMINAL_MISMATCH: TerminalMismatchEnergies
     SPECIAL_HAIRPINS: Optional[PairEnergies] = None
 
     @staticmethod

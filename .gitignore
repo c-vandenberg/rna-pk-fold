@@ -81,9 +81,6 @@ cython_debug/
 # ** Project-Specific Ignored Files **
 # ------------------------------
 
-# Raw, Cached, and Testing Data
-/data/*
-
 # Database Files
 /data/database/
 
