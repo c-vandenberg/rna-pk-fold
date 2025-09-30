@@ -18,10 +18,16 @@ def hairpin_energy(
     Hairpin loop ΔG for a putative closing pair (i, j).
 
     Computes:
-    - loop length L = j - i - 1
-    - baseline hairpin contribution from SecondaryStructureEnergies.HAIRPIN
-      using a size anchor (clamped)
-    - Returns +∞ if L < MIN_HAIRPIN_UNPAIRED (disallowed) or indices invalid.
+    1. Length baseline from energies.HAIRPIN at loop length L = j - i - 1
+       (returns +∞ if L < MIN_HAIRPIN_UNPAIRED or missing)
+    2. Terminal-mismatch term at the closing pair using flattened key.
+       key = `f"{L_nt}{X}/{Y}{R_nt}"`, where:
+         - `X` = `seq[i]`
+         - `Y` = seq[j]
+         - `L_nt` = `seq[i+1]`  (left loop neighbor)
+         - `R_nt` = `seq[j-1] ` (right loop neighbor)
+    3. Small AU/GU end penalty (+0.5 kcal/mol) if closing pair is AU/UA/GU/UG
+       and you do not encode such penalties elsewhere.
 
     Parameters
     ----------
@@ -47,9 +53,41 @@ def hairpin_energy(
     if hairpin_len < MIN_HAIRPIN_UNPAIRED:
         return float("inf")
 
-    base = lookup_loop_anchor(energies.HAIRPIN, hairpin_len)
+    # 1) Baseline hairpin energies by length
+    base_hp_energies = lookup_loop_anchor(energies.HAIRPIN, hairpin_len)
+    if base_hp_energies is None:
+        return float("inf")
 
-    return calculate_delta_g(base, temp_k)
+    delta_g = calculate_delta_g(base_hp_energies, temp_k)
+
+    # 2) Terminal mismatch at the closing pair
+    base_x = normalize_base(seq[base_i])
+    base_y = normalize_base(seq[base_j])
+    left_neighbour = normalize_base(seq[base_i + 1]) if (base_i + 1) < base_j else "E"
+    right_neighbour = normalize_base(seq[base_j - 1]) if (base_j - 1) > base_i else "E"
+
+    # Flattened key: "LX/YR"
+    terminal_mm_key = f"{left_neighbour}{base_x}/{base_y}{right_neighbour}"
+    terminal_mm_energies = energies.TERMINAL_MISMATCH.get(terminal_mm_key)
+    if terminal_mm_energies is not None:
+        delta_h, delta_s = terminal_mm_energies
+        delta_g += SecondaryStructureEnergies.delta_g(delta_h, delta_s, temp_k)
+
+    # 3) AU/GU end penalty (temporary until it is added in YAML file)
+    #   - Because AU and GU pairs are weaker at helix ends and the Turner models
+    #     compensate for that with a small terminal penalty (≈ +0.5 kcal/mol at 37 °C).
+    #   - If this penalty isn't included, short stems closed by AU/GU get over-stabilized,
+    #     and hairpins that shouldn't be paired will be predicted.
+    #   - Why this penalty exists:
+    #       * End Effects: A helix end is missing one stacking neighbor, so the closing pair
+    #         is less stabilized than a pair in the interior.
+    #       * Pair Strength: GC (3 H-bonds) is intrinsically stronger than AU/GU wobble pair (2 H-bonds).
+    #         Therefore, the “missing” outside stack hurts AU/GU ends more. We therefore add a small
+    #         destabilizing term when the terminal closing pair is AU/UA/GU/UG.
+    if (base_x + base_y) in ("AU", "UA", "GU", "UG"):
+        delta_g += 0.5
+
+    return delta_g
 
 
 def stack_energy(

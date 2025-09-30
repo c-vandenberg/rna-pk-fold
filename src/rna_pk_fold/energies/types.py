@@ -68,5 +68,8 @@ class SecondaryStructureEnergies:
     SPECIAL_HAIRPINS: Optional[PairEnergies] = None
 
     @staticmethod
-    def delta_g(dh: float, ds: float, temp_kelvin: float) -> float:
-        return dh - temp_kelvin * (ds / 1000.0)
+    def delta_g(delta_h: float, delta_s: float, temp_k: float) -> float:
+        if delta_h is None or delta_s is None:
+            return float("inf")
+
+        return delta_h - temp_k * (delta_s / 1000.0)
