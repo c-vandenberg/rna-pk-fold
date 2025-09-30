@@ -4,11 +4,14 @@ import subprocess
 from typing import List, Set, Tuple
 
 import pytest
+from importlib.resources import files as ir_files
 pytestmark = pytest.mark.integration
 
+import rna_pk_fold
 from rna_pk_fold.folding import make_fold_state
 from rna_pk_fold.folding.recurrences import SecondaryStructureFoldingEngine, RecurrenceConfig
-from rna_pk_fold.energies import SecondaryStructureEnergies, SecondaryStructureEnergyModel
+from rna_pk_fold.energies import (SecondaryStructureEnergies, SecondaryStructureEnergyModel,
+                                  SecondaryStructureEnergyLoader)
 from rna_pk_fold.folding.traceback import traceback_nested
 
 # ---------- Helpers ----------
@@ -68,22 +71,11 @@ def run_rnafold(seq: str) -> Tuple[str, float]:
 @pytest.fixture(scope="module")
 def energy_model():
     """
-    Provide your real SecondaryStructureEnergyModel (with tables reasonably
-    aligned to Vienna/Turner) or a wrapper that conforms to your protocol.
-
-    Example:
-        from rna_pk_fold.energies import SecondaryStructureEnergyModel, load_params
-        return SecondaryStructureEnergyModel(params=load_params(...), temp_k=310.15)
-
-    For now, raise if not configured.
+    Load the Turner 2004 (minimal) parameters from packaged YAML and
+    construct the SecondaryStructureEnergyModel at 310.15 K.
     """
-
-    # Minimal placeholder (NOT matching Vienna). Replace with your actual tables!
-    params = SecondaryStructureEnergies(
-        BULGE={}, COMPLEMENT_BASES={}, DANGLES={}, HAIRPIN={},
-        MULTILOOP=(3.4, 0.4, 0.1, 0.0),  # example dummy values
-        INTERNAL={}, INTERNAL_MM={}, NN={}, TERMINAL_MM={}, SPECIAL_HAIRPINS=None,
-    )
+    yaml_path = ir_files(rna_pk_fold) / "data" / "turner2004_min.yaml"
+    params = SecondaryStructureEnergyLoader.load(kind="RNA", yaml_path=yaml_path)
     return SecondaryStructureEnergyModel(params=params, temp_k=310.15)
 
 @pytest.fixture(scope="module")

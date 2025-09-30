@@ -82,7 +82,7 @@ cython_debug/
 # ------------------------------
 
 # Database Files
-/data/database/
+/src/rna_pk_fold/data/database/
 
 # Logs Directory
 /var/log/

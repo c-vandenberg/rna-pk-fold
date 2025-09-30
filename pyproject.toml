@@ -34,3 +34,6 @@ Repository = "https://github.com/your-username/your-package-name"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["rna_pk_fold*"]
+
+[tool.setuptools.package-data]
+"rna_pk_fold.data" = ["*.yaml"]
