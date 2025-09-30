@@ -12,6 +12,7 @@ from rna_pk_fold.folding import make_fold_state
 from rna_pk_fold.folding.recurrences import SecondaryStructureFoldingEngine, RecurrenceConfig
 from rna_pk_fold.energies import (SecondaryStructureEnergies, SecondaryStructureEnergyModel,
                                   SecondaryStructureEnergyLoader)
+from rna_pk_fold.utils.nucleotide_utils import dimer_key
 from rna_pk_fold.folding.traceback import traceback_nested
 
 # ---------- Helpers ----------

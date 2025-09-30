@@ -100,7 +100,7 @@ def stack_energy(
     if key is None:
         return float("inf")
 
-    dh_ds = energies.NN.get(key)
+    dh_ds = energies.NN_STACK.get(key)
 
     return calculate_delta_g(dh_ds, temp_k)
 
@@ -180,8 +180,8 @@ def internal_loop_energy(
                 left = normalize_base(seq[base_i + 1]) + normalize_base(seq[base_k - 1])
                 right = normalize_base(seq[base_j - 1]) + normalize_base(seq[base_l + 1])
                 key = f"{left}/{right}"
-                if key in energies.INTERNAL_MM:
-                    return calculate_delta_g(energies.INTERNAL_MM[key], temp_k)
+                if key in energies.INTERNAL_MISMATCH:
+                    return calculate_delta_g(energies.INTERNAL_MISMATCH[key], temp_k)
             except IndexError:
                 # fall back to baseline if neighbors not available
                 pass
