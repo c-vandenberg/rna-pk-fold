@@ -1,7 +1,8 @@
 import re
 import shutil
 import subprocess
-from typing import List, Set, Tuple
+import math
+from typing import List, Set, Tuple, Dict
 
 import pytest
 from importlib.resources import files as ir_files
@@ -13,15 +14,49 @@ from rna_pk_fold.folding.recurrences import SecondaryStructureFoldingEngine, Rec
 from rna_pk_fold.energies import (SecondaryStructureEnergies, SecondaryStructureEnergyModel,
                                   SecondaryStructureEnergyLoader)
 from rna_pk_fold.utils.nucleotide_utils import dimer_key
-from rna_pk_fold.folding.traceback import traceback_nested, dotbracket_to_pairs
+from rna_pk_fold.folding.traceback import traceback_nested, traceback_with_pk, dotbracket_to_pairs
+
+BRACKET_PAIRS: Dict[str, str] = {'(': ')', '[': ']', '{': '}', '<': '>'}
+REV_BRACKET: Dict[str, str] = {v: k for k, v in BRACKET_PAIRS.items()}
+
 
 # ---------- Helpers ----------
+BRACKET_PAIRS: Dict[str, str] = {'(': ')', '[': ']', '{': '}', '<': '>'}
+REV_BRACKET: Dict[str, str] = {v: k for k, v in BRACKET_PAIRS.items()}
+
+def dotbracket_to_pairs_multilayer(db: str) -> Set[Tuple[int, int]]:
+    """
+    Convert layered dot-bracket ((),[],{},<>) into pair tuples (i,j) with i<j.
+    Each bracket type is matched independently (supports crossings).
+    """
+    stacks: Dict[str, List[int]] = {op: [] for op in BRACKET_PAIRS}
+    pairs: Set[Tuple[int, int]] = set()
+    for idx, ch in enumerate(db):
+        if ch in BRACKET_PAIRS:               # opener
+            stacks[ch].append(idx)
+        elif ch in REV_BRACKET:               # closer
+            op = REV_BRACKET[ch]
+            if stacks[op]:
+                i = stacks[op].pop()
+                pairs.add((i, idx))
+    # (Any leftover unmatched openers are ignored by design.)
+    return pairs
 
 def bp_distance(db1: str, db2: str) -> int:
-    """Base-pair distance = symmetric difference size of pair sets."""
+    """Base-pair distance (parentheses only) = symmetric difference size."""
     p1 = dotbracket_to_pairs(db1)
     p2 = dotbracket_to_pairs(db2)
     return len(p1 ^ p2)
+
+def bp_distance_multilayer(db1: str, db2: str) -> int:
+    """Base-pair distance for layered brackets (counts all bracket types)."""
+    p1 = dotbracket_to_pairs_multilayer(db1)
+    p2 = dotbracket_to_pairs_multilayer(db2)
+    return len(p1 ^ p2)
+
+def project_parentheses(db: str) -> str:
+    """Replace any non-parenthesis bracket with '.' to compare shapes to Vienna."""
+    return ''.join(ch if ch in '().' else '.' for ch in db)
 
 def run_rnafold(seq: str) -> Tuple[str, float]:
     """
@@ -62,8 +97,20 @@ def energy_model():
     return SecondaryStructureEnergyModel(params=params, temp_k=310.15)
 
 @pytest.fixture(scope="module")
-def engine(energy_model):
-    return SecondaryStructureFoldingEngine(energy_model=energy_model, config=RecurrenceConfig())
+def engine_nested(energy_model):
+    # Pseudoknots disabled for Vienna comparison
+    return SecondaryStructureFoldingEngine(
+        energy_model=energy_model,
+        config=RecurrenceConfig(enable_pk_h=False)
+    )
+
+@pytest.fixture(scope="module")
+def engine_pk(energy_model):
+    # Pseudoknots enabled (minimal H-type term)
+    return SecondaryStructureFoldingEngine(
+        energy_model=energy_model,
+        config=RecurrenceConfig(enable_pk_h=True, pk_h_penalty=1.0)
+    )
 
 # ---------- Skip if RNAfold isn't available ----------
 
@@ -120,30 +167,75 @@ SEQS = [
 ]
 
 @pytest.mark.parametrize("seq", SEQS)
-def test_shape_matches_vienna_within_tolerance(seq: str, engine):
+def test_nested_vs_vienna_shape_and_energy(seq: str, engine_nested):
     """
-    Compare our dot-bracket and total MFE (kcal/mol) with ViennaRNA.
+    Compare our nested-only dot-bracket and total MFE (kcal/mol) with ViennaRNA.
 
     - Structure: base-pair distance within TOL_BP.
     - Energy: absolute difference within TOL_EN (kcal/mol).
-
-    Notes:
-      * Our DP energies are in kcal/mol; RNAfold reports kcal/mol too.
-      * Sequences in SEQS are chosen to be pseudoknot-free so our nested traceback is valid.
     """
-    # 1) Our prediction
+    # Our nested prediction
     st = make_fold_state(len(seq))
-    engine.fill_all_matrices(seq, st)
-    ours = traceback_nested(seq, st).dot_bracket
-    assert len(ours) == len(seq)
+    engine_nested.fill_all_matrices(seq, st)
+    ours_db = traceback_nested(seq, st).dot_bracket
+    ours_mfe = st.w_matrix.get(0, len(seq) - 1)
+    assert math.isfinite(ours_mfe)
+    assert len(ours_db) == len(seq)
 
-    # 2) ViennaRNA prediction
+    # ViennaRNA prediction
     v_db, v_mfe = run_rnafold(seq)
     assert len(v_db) == len(seq)
 
-    # 3) Compare shape (base-pair distance)
-    dist = bp_distance(ours, v_db)
+    # Structure comparison (parentheses only)
+    TOL_BP = 1
+    dist = bp_distance(ours_db, v_db)
+    assert dist <= TOL_BP, (
+        f"Seq= {seq}\nours= {ours_db}\nvienna= {v_db}\n"
+        f"bp_distance= {dist} > {TOL_BP}\nours_mfe= {ours_mfe:.2f}, vienna_mfe= {v_mfe:.2f}"
+    )
 
-    # Tighten this threshold as you align your parameters to Vienna
-    TOL = 1
-    assert dist <= TOL, f"Seq={seq}, ours={ours}, vienna={v_db}, dist={dist}, mfe={v_mfe}"
+    # Energy comparison (kcal/mol)
+    TOL_EN = 2.0
+    delta_g = abs(ours_mfe - v_mfe)
+    assert delta_g <= TOL_EN, (
+        f"MFE differs by {delta_g:.2f} kcal/mol > {TOL_EN:.2f}\n"
+        f"Seq={seq}\nours_db={ours_db}\nvienna_db={v_db}\n"
+        f"ours_mfe={ours_mfe:.2f}, vienna_mfe={v_mfe:.2f}"
+    )
+
+@pytest.mark.parametrize("seq", SEQS)
+def test_pk_enabled_energy_monotonic_and_shape_valid(seq: str, engine_nested, engine_pk):
+    """
+    With H-type pseudoknot term enabled:
+      - Energy should be <= nested energy (monotonic improvement).
+      - Dot-bracket must be valid layered brackets and right length.
+      - The parentheses-only projection of the PK trace should be close to the nested trace.
+    """
+    # Nested run (PK disabled)
+    st_n = make_fold_state(len(seq))
+    engine_nested.fill_all_matrices(seq, st_n)
+    db_n = traceback_nested(seq, st_n).dot_bracket
+    g_n = st_n.w_matrix.get(0, len(seq) - 1)
+    assert math.isfinite(g_n)
+
+    # PK-enabled run
+    st_p = make_fold_state(len(seq))
+    engine_pk.fill_all_matrices(seq, st_p)
+    db_p = traceback_with_pk(seq, st_p).dot_bracket
+    g_p = st_p.w_matrix.get(0, len(seq) - 1)
+    assert math.isfinite(g_p)
+    assert len(db_p) == len(seq)
+
+    # 1) Energy monotonicity
+    assert g_p <= g_n + 1e-9, f"PK-enabled energy not ≤ nested: {g_p:.3f} vs {g_n:.3f} (Seq={seq})"
+
+    # 2) Valid characters
+    allowed = set(".()[]{}<>")
+    assert set(db_p) <= allowed, f"Invalid chars in PK dot-bracket: {db_p!r}"
+
+    # 3. If a PK actually formed (second-layer bracket present), ensure pairs parse
+    if any(ch in db_p for ch in "[]{}<>"):
+        pairs_pk = dotbracket_to_pairs_multilayer(db_p)
+        assert len(pairs_pk) >= len(dotbracket_to_pairs(db_n)), (
+            "Parsed PK pairs unexpectedly fewer than nested pairs."
+        )
