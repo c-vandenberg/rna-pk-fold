@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Sequence
 
 __all__ = ["BacktrackOp", "BackPointer"]
+
+Interval = Tuple[int, int]
 
 
 class BacktrackOp(Enum):
@@ -32,7 +34,7 @@ class BacktrackOp(Enum):
     MULTI_ATTACH = auto()
     UNPAIRED_LEFT = auto()
     UNPAIRED_RIGHT = auto()
-    PSEUDOKNOT = auto()
+    PSEUDOKNOT_H = auto()
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,16 +45,29 @@ class BackPointer:
     Parameters
     ----------
     operation : BacktrackOp
-        The recurrence operation selected for this cell.
-    split_k : Optional[int]
-        For bifurcations W[i,j] -> W[i,k] + W[k+1,j], record k.
-    inner : Optional[Tuple[int, int]]
-        For internal/stack cases, the inner paired indices, e.g., (i+1, j-1) for STACK,
-        or (k, l) for INTERNAL loops.
-    note : Optional[str]
-        Free-form metadata (e.g., “tri-tetra hairpin”, “multi enter”).
+                The recurrence operation selected for this cell.
+    split_k   : Optional[int]
+                For bifurcations W[i,j] -> W[i,k] + W[k+1,j], record k.
+    inner     : Optional[Tuple[int, int]]
+                For internal/stack cases, the inner paired indices, e.g., (i+1, j-1)
+                for STACK, or (k, l) for INTERNAL loops.
+    inner_2   : the second crossing stem (k,l) (in addition to `inner`)
+    segs      : a tuple/list of up to four W-subintervals to recurse on,
+                e.g. ((i+1,a-1), (a,b-1), (c+1,d-1), (d,j-1))
+    layer     : optional bracket layer hint for rendering (0=(), 1=[], ...)
+    note      : Optional[str]
+                Free-form metadata (e.g., “tri-tetra hairpin”, “multi enter”).
     """
     operation: BacktrackOp = BacktrackOp.NONE
+
+    # Generic fields
     split_k: Optional[int] = None
     inner: Optional[Tuple[int, int]] = None
+
+    # Pseudoknot (H-type) extras
+    inner_2: Optional[Tuple[int, int]] = None
+    segs: Optional[Sequence[Interval]] = None
+    layer: Optional[int] = None
+
+    # Free-form metadata (e.g., “tri-tetra hairpin”, “attach-helix”, “H-type”)
     note: Optional[str] = None
