@@ -1,8 +1,10 @@
 from __future__ import annotations
+import math
 
 from rna_pk_fold.energies.types import SecondaryStructureEnergies
 from rna_pk_fold.utils import calculate_delta_g, lookup_loop_anchor, normalize_base, dimer_key
 from rna_pk_fold.rules.constraints import MIN_HAIRPIN_UNPAIRED
+from rna_pk_fold.utils.nucleotide_utils import pair_str, dangle3_key, dangle5_key
 
 DEFAULT_T_K = 310.15  # 37 °C in Kelvin
 
@@ -21,13 +23,15 @@ def hairpin_energy(
     1. Length baseline from energies.HAIRPIN at loop length L = j - i - 1
        (returns +∞ if L < MIN_HAIRPIN_UNPAIRED or missing)
     2. Terminal-mismatch term at the closing pair using flattened key.
-       key = `f"{L_nt}{X}/{Y}{R_nt}"`, where:
-         - `X` = `seq[i]`
-         - `Y` = seq[j]
-         - `L_nt` = `seq[i+1]`  (left loop neighbor)
-         - `R_nt` = `seq[j-1] ` (right loop neighbor)
-    3. Small AU/GU end penalty (+0.5 kcal/mol) if closing pair is AU/UA/GU/UG
-       and you do not encode such penalties elsewhere.
+        key = `f"{L_nt}{X}/{Y}{R_nt}"`, where:
+            - `X` = `seq[i]`
+            - `Y` = seq[j]
+            - `L_nt` = `seq[i+1]`  (left loop neighbor)
+            - `R_nt` = `seq[j-1] ` (right loop neighbor)
+        Preferentially uses `energies.HAIRPIN_MISMATCH first`; if missing, falls
+        back to `energies.TERMINAL_MISMATCH`.
+    3. (Optional) sequence-specific hairpin term via energies.SPECIAL_HAIRPINS
+       using the loop sequence seq[i+1:j] if present.
 
     Parameters
     ----------
@@ -53,25 +57,33 @@ def hairpin_energy(
     if hairpin_len < MIN_HAIRPIN_UNPAIRED:
         return float("inf")
 
-    # 1) Baseline hairpin energies by length
+    # 1. Baseline hairpin energies by length
     base_hp_energies = lookup_loop_anchor(energies.HAIRPIN, hairpin_len)
     if base_hp_energies is None:
         return float("inf")
 
     delta_g = calculate_delta_g(base_hp_energies, temp_k)
 
-    # 2) Terminal mismatch at the closing pair
+    # 2. Terminal mismatch at the closing pair
     base_x = normalize_base(seq[base_i])
     base_y = normalize_base(seq[base_j])
     left_neighbour = normalize_base(seq[base_i + 1]) if (base_i + 1) < base_j else "E"
     right_neighbour = normalize_base(seq[base_j - 1]) if (base_j - 1) > base_i else "E"
 
     # Flattened key: "LX/YR"
-    terminal_mm_key = f"{left_neighbour}{base_x}/{base_y}{right_neighbour}"
-    terminal_mm_energies = energies.TERMINAL_MISMATCH.get(terminal_mm_key)
-    if terminal_mm_energies is not None:
-        delta_h, delta_s = terminal_mm_energies
+    mm_key = f"{left_neighbour}{base_x}/{base_y}{right_neighbour}"
+
+    # 3. Preferentially use hairpin-specific mismatches; Fall back to terminal
+    #    mismatches if `energies.HAIRPIN_MISMATCH` is missing.
+    hairpin_mm = energies.HAIRPIN_MISMATCH.get(mm_key)
+    if hairpin_mm is not None:
+        delta_h, delta_s  = hairpin_mm
         delta_g += SecondaryStructureEnergies.delta_g(delta_h, delta_s, temp_k)
+    else:
+        terminal_mm_energies = energies.EXTERIOR_MISMATCH.get(mm_key)
+        if terminal_mm_energies is not None:
+            delta_h, delta_s = terminal_mm_energies
+            delta_g += SecondaryStructureEnergies.delta_g(delta_h, delta_s, temp_k)
 
     # 3) AU/GU end penalty (temporary until it is added in YAML file)
     #   - Because AU and GU pairs are weaker at helix ends and the Turner models
@@ -84,8 +96,8 @@ def hairpin_energy(
     #       * Pair Strength: GC (3 H-bonds) is intrinsically stronger than AU/GU wobble pair (2 H-bonds).
     #         Therefore, the “missing” outside stack hurts AU/GU ends more. We therefore add a small
     #         destabilizing term when the terminal closing pair is AU/UA/GU/UG.
-    if (base_x + base_y) in ("AU", "UA", "GU", "UG"):
-        delta_g += 0.5
+    #if (base_x + base_y) in ("AU", "UA", "GU", "UG"):
+    #    delta_g += 0.5
 
     return delta_g
 
@@ -202,7 +214,12 @@ def internal_loop_energy(
     if (a == 0) ^ (b == 0):
         size = a + b
         base = lookup_loop_anchor(energies.BULGE, size)
-        return calculate_delta_g(base, temp_k)
+        delta_g = calculate_delta_g(base, temp_k)
+        if size == 1:
+            key = _stack_key_bulge1(seq, base_i, base_j, base_k, base_l)
+            delta_g += calculate_delta_g(energies.NN_STACK.get(key), temp_k)
+
+        return delta_g
 
     # Internal loop (including 1x1)
     if a > 0 and b > 0:
@@ -215,18 +232,29 @@ def internal_loop_energy(
             # left-unpaired next to i -> seq[i+1], right-unpaired next to j -> seq[j-1]
             # combined with inner-pair flank nucleotides: seq[k-1], seq[l+1] if valid.
             try:
-                left = normalize_base(seq[base_i + 1]) + normalize_base(seq[base_k - 1])
-                right = normalize_base(seq[base_j - 1]) + normalize_base(seq[base_l + 1])
-                key = f"{left}/{right}"
-                if key in energies.INTERNAL_MISMATCH:
-                    return calculate_delta_g(energies.INTERNAL_MISMATCH[key], temp_k)
+                base_x = normalize_base(seq[base_i])
+                base_y = normalize_base(seq[base_j])
+                left_base = normalize_base(seq[base_i + 1])
+                right_base = normalize_base(seq[base_j - 1])
+                mm_key = f"{left_base}{base_x}/{base_y}{right_base}"
+                mm_dhds = energies.INTERNAL_MISMATCH.get(mm_key)
+                if mm_dhds is not None:
+                    return calculate_delta_g(mm_dhds, temp_k)
             except IndexError:
                 # fall back to baseline if neighbors not available
                 pass
 
         base = lookup_loop_anchor(energies.INTERNAL, size)
+        delta_g = calculate_delta_g(base, temp_k)
 
-        return calculate_delta_g(base, temp_k)
+        # Ninio-style asymmetry penalty: min(NINIO_MAX, NINIO_COEFF * |a-b|)
+        # Use energy-bundle values if present, otherwise reasonable defaults.
+        ninio_coeff = getattr(energies, "NINIO_COEFF", 0.3)  # kcal/mol per nt asymmetry
+        ninio_max = getattr(energies, "NINIO_MAX", 3.0)  # kcal/mol cap
+        asym = abs(a - b)
+        delta_g += min(ninio_max, ninio_coeff * asym)
+
+        return delta_g
 
     # Not an internal/bulge geometry.
     return float("inf")
@@ -269,3 +297,89 @@ def multiloop_linear_energy(
     bonus = coeff_d if unpaired_bases == 0 else 0.0
 
     return coeff_a + coeff_b * branches + coeff_c * unpaired_bases + bonus
+
+
+def exterior_end_bonus(seq: str, i: int, j: int, E: SecondaryStructureEnergies, T: float) -> float:
+    """
+    Vienna --dangles=2 behavior (simplified):
+    choose best (most negative) among: terminal mismatch at exterior,
+    5' dangle, 3' dangle, or 5'+3' dangles together.
+    """
+    n = len(seq)
+    XY = pair_str(seq, i, j)
+    L = normalize_base(seq[i-1]) if i-1 >= 0 else "N"
+    R = normalize_base(seq[j+1]) if j+1 < n else "N"
+
+    # terminal mismatch at exterior (if available)
+    mm_key = f"{L}{XY[0]}/{XY[1]}{R}"
+    g_mm = calculate_delta_g((E.EXTERIOR_MISMATCH or {}).get(mm_key), T)
+
+    # dangles
+    g_d5 = calculate_delta_g(E.DANGLES.get(dangle5_key(L, XY)), T)
+    g_d3 = calculate_delta_g(E.DANGLES.get(dangle3_key(XY, R)), T)
+
+    # pick the most stabilizing option (min ΔG)
+    best = min(g_mm, g_d5 + g_d3, g_d5, g_d3, 0.0)
+    return best if best != float("inf") else 0.0
+
+def multiloop_close_bonus(seq: str, i: int, j: int, E: SecondaryStructureEnergies, T: float) -> float:
+    """
+    When (i,j) closes a multiloop, apply multi_mismatch with loop-adjacent
+    nucleotides L=seq[i+1], R=seq[j-1]. If missing, 0.
+    """
+    if i+1 >= j or not E.MULTI_MISMATCH:
+        return 0.0
+    XY = pair_str(seq, i, j)
+    L = normalize_base(seq[i+1])
+    R = normalize_base(seq[j-1])
+    mm_key = f"{L}{XY[0]}/{XY[1]}{R}"
+    g = calculate_delta_g(E.MULTI_MISMATCH.get(mm_key), T)
+    return 0.0 if g == float("inf") else g
+
+
+def _ninio(a: int, b: int, slope: float = 0.5, cap: float = 3.0) -> float:
+    return min(cap, slope * abs(a - b))
+
+def best_multiloop_end_bonus(i: int, k: int, seq: str,
+                             p: SecondaryStructureEnergies, T: float) -> float:
+    """
+    Return the BEST single end-scheme for the helix (i,k) inside a multiloop:
+      - use 2-sided mismatch_multi if both inner neighbors exist,
+      - else use dangle5 and/or dangle3 (sum of the two single-sides),
+      - else 0.
+    Never combine a two-sided mismatch with single dangles.
+    Neighbors here are *inside* the multiloop: L = seq[i+1], R = seq[k-1].
+    """
+    X = normalize_base(seq[i])
+    Y = normalize_base(seq[k])
+
+    L = normalize_base(seq[i + 1]) if (i + 1) < k else "E"
+    R = normalize_base(seq[k - 1]) if (k - 1) > i else "E"
+
+    # Two-sided multiloop mismatch (preferred when both sides exist)
+    mm_key = f"{L}{X}/{Y}{R}"
+    mm = p.MULTI_MISMATCH.get(mm_key)
+    dg_mm = SecondaryStructureEnergies.delta_g(*mm, T) if mm else float("-inf")
+
+    # Single-side dangles
+    # Keys consistent with your loader docs:
+    #   dangle5: "<Nuc>./<Pair>"  e.g. "A./CG"
+    #   dangle3: "<Pair>/.<Nuc>"  e.g. "CG/.A"
+    d5_key = f"{L}./{X}{Y}"
+    d3_key = f"{X}{Y}/.{R}"
+
+    d5 = p.DANGLES.get(d5_key)
+    d3 = p.DANGLES.get(d3_key)
+
+    dg_d5 = SecondaryStructureEnergies.delta_g(*d5, T) if d5 else float("-inf")
+    dg_d3 = SecondaryStructureEnergies.delta_g(*d3, T) if d3 else float("-inf")
+
+    best_dangles = max(
+        0.0,
+        dg_d5 if math.isfinite(dg_d5) else float("-inf"),
+        dg_d3 if math.isfinite(dg_d3) else float("-inf"),
+        (dg_d5 + dg_d3) if (math.isfinite(dg_d5) and math.isfinite(dg_d3)) else float("-inf")
+    )
+
+    # Pick the best of: two-sided mismatch vs. dangles vs. zero.
+    return max(0.0, dg_mm if math.isfinite(dg_mm) else float("-inf"), best_dangles)

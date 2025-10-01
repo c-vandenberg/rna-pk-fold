@@ -45,7 +45,7 @@ class SecondaryStructureEnergies:
     INTERNAL_MISMATCH : PairEnergies
         Internal mismatch nearest-neighbor terms for small internal loops
         (1×1 mismatches).
-    TERMINAL_MISMATCH : PairEnergies
+    EXTERIOR_MISMATCH : PairEnergies
         Terminal mismatch penalties/bonuses applied at helix ends.
     SPECIAL_HAIRPINS : PairEnergies, optional
         Sequence-specific hairpin entries
@@ -64,7 +64,12 @@ class SecondaryStructureEnergies:
     INTERNAL: LoopEnergies
     NN_STACK: PairEnergies
     INTERNAL_MISMATCH: PairEnergies
-    TERMINAL_MISMATCH: PairEnergies
+    EXTERIOR_MISMATCH: PairEnergies
+    HAIRPIN_MISMATCH: Optional[PairEnergies]
+    MULTI_MISMATCH: Optional[PairEnergies]
+    INT11: Optional[PairEnergies] = None
+    INT21: Optional[PairEnergies] = None
+    INT22: Optional[PairEnergies] = None
     SPECIAL_HAIRPINS: Optional[PairEnergies] = None
 
     @staticmethod

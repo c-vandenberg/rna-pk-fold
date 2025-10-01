@@ -91,7 +91,12 @@ class SecondaryStructureEnergyLoader:
         bulge = parse_loop_table(data, ("bulge_loops", "bulge_loop"), temp_k)
         internal = parse_loop_table(data, ("internal_loops", "internal_loop"), temp_k)
         internal_mm = parse_mismatch(data, "internal_mismatches", temp_k)
-        terminal_mm = parse_mismatch(data, "terminal_mismatches", temp_k)
+        exterior_mm = parse_mismatch(data, "exterior_mismatches", temp_k)
+        hairpin_mm = parse_mismatch(data, "hairpin_mismatches", temp_k)
+        multi_mm = parse_mismatch(data, "multi_mismatch", temp_k)
+        int11 = data.get("internal_11") and parse_mismatch(data, "internal_11", temp_k) or None
+        int21 = data.get("internal_21") and parse_mismatch(data, "internal_21", temp_k) or None
+        int22 = data.get("internal_22") and parse_mismatch(data, "internal_22", temp_k) or None
         special_hairpin = parse_special_hairpins(data, temp_k)
 
         return SecondaryStructureEnergies(
@@ -103,6 +108,11 @@ class SecondaryStructureEnergyLoader:
             INTERNAL=internal,
             NN_STACK=nn_stack,
             INTERNAL_MISMATCH=internal_mm,
-            TERMINAL_MISMATCH=terminal_mm,
+            EXTERIOR_MISMATCH=exterior_mm,
+            HAIRPIN_MISMATCH=hairpin_mm,
+            MULTI_MISMATCH=multi_mm,
+            INT11=int11,
+            INT21=int21,
+            INT22=int22,
             SPECIAL_HAIRPINS=special_hairpin,
         )
