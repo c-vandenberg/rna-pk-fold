@@ -100,7 +100,7 @@ SEQS = [
     "AUGCUAGCUAUGC", # few possible helices
     "AUAUAUAUAU",    # low GC, might stay mostly unpaired
 
-# Hairpins (short loops, clamps)
+    # Hairpins (short loops, clamps)
     "GCAAAGC", "GCAAAAGC", "GCAAAAAGC",
     "AUGGGAU", "AUGGGGAU", "GUAAAAGU", "UGAAAUG",
 
@@ -140,11 +140,14 @@ SEQS = [
 @pytest.mark.parametrize("seq", SEQS)
 def test_shape_matches_vienna_within_tolerance(seq: str, engine):
     """
-    Compare our dot-bracket with Vienna’s MFE dot-bracket.
-    We assert the base-pair distance is within a tolerance.
+    Compare our dot-bracket and total MFE (kcal/mol) with ViennaRNA.
 
-    Start with tolerance=0 if your parameters match Vienna closely.
-    Otherwise set to 1–2 until tables are aligned.
+    - Structure: base-pair distance within TOL_BP.
+    - Energy: absolute difference within TOL_EN (kcal/mol).
+
+    Notes:
+      * Our DP energies are in kcal/mol; RNAfold reports kcal/mol too.
+      * Sequences in SEQS are chosen to be pseudoknot-free so our nested traceback is valid.
     """
     # 1) Our prediction
     st = make_fold_state(len(seq))

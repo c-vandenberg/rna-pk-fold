@@ -11,6 +11,8 @@ from rna_pk_fold.energies.energy_ops import best_multiloop_end_bonus
 @dataclass(slots=True)
 class RecurrenceConfig:
     temp_k: float = 310.15
+    enable_pk_h: bool = False
+    pk_h_penalty: float = 1.0
 
 
 @dataclass(slots=True)
@@ -230,59 +232,60 @@ class SecondaryStructureFoldingEngine:
                 cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
             )
 
-        # ---- Case 5: Minimal H-type pseudoknot ----
+        # ---- Case 5: Minimal H-Type Pseudoknot ----
         # Pattern: i < a < b < c < d < j with stems (i,c) and (b,j).
         # Energy:  V[i,c] + V[b,j] + W[i+1, a-1] + W[a, b-1]
         #          + W[c+1, d-1] + W[d, j-1] + Gw  (pseudoknot penalty)
-        Gw = getattr(self.energy_model.params, "PK_H_PENALTY", 0.0)
-        v_matrix = state.v_matrix
-        w_matrix = state.w_matrix
+        if self.config.enable_pk_h:
+            Gw = getattr(self.energy_model.params, "PK_H_PENALTY", 0.0)
+            v_matrix = state.v_matrix
+            w_matrix = state.w_matrix
 
-        # Light pruning: enumerate c such that V[i,c] is finite; enumerate b such that V[b,j] is finite.
-        # This avoids many hopeless tuples.
-        for c in range(i + 1, j):
-            v_ic = v_matrix.get(i, c)
-            if not math.isfinite(v_ic):
-                continue
-
-            for b in range(i + 1, j):
-                if not (i < b < c < j):
-                    continue
-                v_bj = v_matrix.get(b, j)
-                if not math.isfinite(v_bj):
+            # Light pruning: enumerate c such that V[i,c] is finite; enumerate b such that V[b,j] is finite.
+            # This avoids many hopeless tuples.
+            for c in range(i + 1, j):
+                v_ic = v_matrix.get(i, c)
+                if not math.isfinite(v_ic):
                     continue
 
-                # Now place 'a' and 'd' to carve the four W-segments:
-                # [i+1, a-1], [a, b-1], [c+1, d-1], [d, j-1]
-                # We need i < a <= b (so i+1 <= a <= b), and c < d <= j-1 (so c+1 <= d <= j-1).
-                for a in range(i + 1, b + 1):
-                    left_outer = 0.0 if a <= i + 1 else w_matrix.get(i + 1, a - 1)
-                    left_inner = 0.0 if a > b - 1 else w_matrix.get(a, b - 1)
-
-                    # Early partial sum pruning (optional):
-                    partial_left = v_ic + v_bj + left_outer + left_inner + Gw
-                    if partial_left >= best_energy:
-                        # no need to try d’s if already worse than best
+                for b in range(i + 1, j):
+                    if not (i < b < c < j):
+                        continue
+                    v_bj = v_matrix.get(b, j)
+                    if not math.isfinite(v_bj):
                         continue
 
-                    for d in range(c + 1, j):
-                        right_inner = 0.0 if c + 1 > d - 1 else w_matrix.get(c + 1, d - 1)
-                        right_outer = 0.0 if d > j - 1 else w_matrix.get(d, j - 1)
+                    # Now place 'a' and 'd' to carve the four W-segments:
+                    # [i+1, a-1], [a, b-1], [c+1, d-1], [d, j-1]
+                    # We need i < a <= b (so i+1 <= a <= b), and c < d <= j-1 (so c+1 <= d <= j-1).
+                    for a in range(i + 1, b + 1):
+                        left_outer = 0.0 if a <= i + 1 else w_matrix.get(i + 1, a - 1)
+                        left_inner = 0.0 if a > b - 1 else w_matrix.get(a, b - 1)
 
-                        cand_energy = partial_left + right_inner + right_outer
-                        cand_rank = 0  # prefer structured solution on ties
-                        cand_back_ptr = BackPointer(
-                            operation=BacktrackOp.PSEUDOKNOT_H,
-                            # the two crossing stems:
-                            inner=(i, c),
-                            inner_2=(b, j),
-                            # the four W sub-intervals to recurse on:
-                            segs=((i + 1, a - 1), (a, b - 1), (c + 1, d - 1), (d, j - 1)),
-                            note="H-type"
-                        )
-                        best_energy, best_rank, best_back_ptr = self._compare_candidates(
-                            cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
-                        )
+                        # Early partial sum pruning (optional):
+                        partial_left = v_ic + v_bj + left_outer + left_inner + Gw
+                        if partial_left >= best_energy:
+                            # no need to try d’s if already worse than best
+                            continue
+
+                        for d in range(c + 1, j):
+                            right_inner = 0.0 if c + 1 > d - 1 else w_matrix.get(c + 1, d - 1)
+                            right_outer = 0.0 if d > j - 1 else w_matrix.get(d, j - 1)
+
+                            cand_energy = partial_left + right_inner + right_outer
+                            cand_rank = 0  # prefer structured solution on ties
+                            cand_back_ptr = BackPointer(
+                                operation=BacktrackOp.PSEUDOKNOT_H,
+                                # the two crossing stems:
+                                inner=(i, c),
+                                inner_2=(b, j),
+                                # the four W sub-intervals to recurse on:
+                                segs=((i + 1, a - 1), (a, b - 1), (c + 1, d - 1), (d, j - 1)),
+                                note="H-type"
+                            )
+                            best_energy, best_rank, best_back_ptr = self._compare_candidates(
+                                cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
+                            )
 
         w_matrix.set(i, j, best_energy)
         w_back_ptr.set(i, j, best_back_ptr)
