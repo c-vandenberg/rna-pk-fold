@@ -13,27 +13,9 @@ from rna_pk_fold.folding.recurrences import SecondaryStructureFoldingEngine, Rec
 from rna_pk_fold.energies import (SecondaryStructureEnergies, SecondaryStructureEnergyModel,
                                   SecondaryStructureEnergyLoader)
 from rna_pk_fold.utils.nucleotide_utils import dimer_key
-from rna_pk_fold.folding.traceback import traceback_nested
+from rna_pk_fold.folding.traceback import traceback_nested, dotbracket_to_pairs
 
 # ---------- Helpers ----------
-
-def dotbracket_to_pairs(db: str) -> Set[Tuple[int, int]]:
-    """
-    Convert dot-bracket to a set of 0-based base-pair tuples (i, j) with i<j.
-    Supports only '(' and ')'.
-    """
-    stack: List[int] = []
-    pairs: Set[Tuple[int, int]] = set()
-    for idx, ch in enumerate(db):
-        if ch == '(':
-            stack.append(idx)
-        elif ch == ')':
-            if not stack:
-                # Unbalanced, ignore to keep test robust
-                continue
-            i = stack.pop()
-            pairs.add((i, idx))
-    return pairs
 
 def bp_distance(db1: str, db2: str) -> int:
     """Base-pair distance = symmetric difference size of pair sets."""
