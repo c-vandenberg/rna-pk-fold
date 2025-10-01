@@ -92,6 +92,7 @@ class SecondaryStructureEnergyLoader:
         internal = parse_loop_table(data, ("internal_loops", "internal_loop"), temp_k)
         internal_mm = parse_mismatch(data, "internal_mismatches", temp_k)
         terminal_mm = parse_mismatch(data, "terminal_mismatches", temp_k)
+        hairpin_mm = parse_mismatch(data, "hairpin_mismatches", temp_k)
         special_hairpin = parse_special_hairpins(data, temp_k)
 
         return SecondaryStructureEnergies(
@@ -104,5 +105,6 @@ class SecondaryStructureEnergyLoader:
             NN_STACK=nn_stack,
             INTERNAL_MISMATCH=internal_mm,
             TERMINAL_MISMATCH=terminal_mm,
+            HAIRPIN_MISMATCH=hairpin_mm,
             SPECIAL_HAIRPINS=special_hairpin,
         )

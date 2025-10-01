@@ -67,11 +67,18 @@ def hairpin_energy(
     right_neighbour = normalize_base(seq[base_j - 1]) if (base_j - 1) > base_i else "E"
 
     # Flattened key: "LX/YR"
-    terminal_mm_key = f"{left_neighbour}{base_x}/{base_y}{right_neighbour}"
-    terminal_mm_energies = energies.TERMINAL_MISMATCH.get(terminal_mm_key)
-    if terminal_mm_energies is not None:
-        delta_h, delta_s = terminal_mm_energies
+    mm_key = f"{left_neighbour}{base_x}/{base_y}{right_neighbour}"
+
+    # 3. Preferentially use hairpin-specific mismatches; Fall back to terminal
+    #    mismatches if `energies.HAIRPIN_MISMATCH` is missing.
+    hairpin_mm = energies.HAIRPIN_MISMATCH.get(mm_key)
+    if hairpin_mm is not None:
+        delta_h, delta_s = hairpin_mm
         delta_g += SecondaryStructureEnergies.delta_g(delta_h, delta_s, temp_k)
+    else:
+        terminal_mm_energies = energies.TERMINAL_MISMATCH.get(mm_key)
+        if terminal_mm_energies is not None:
+            delta_h, delta_s = terminal_mm_energies
 
     # 3) AU/GU end penalty (temporary until it is added in YAML file)
     #   - Because AU and GU pairs are weaker at helix ends and the Turner models
@@ -84,8 +91,8 @@ def hairpin_energy(
     #       * Pair Strength: GC (3 H-bonds) is intrinsically stronger than AU/GU wobble pair (2 H-bonds).
     #         Therefore, the “missing” outside stack hurts AU/GU ends more. We therefore add a small
     #         destabilizing term when the terminal closing pair is AU/UA/GU/UG.
-    if (base_x + base_y) in ("AU", "UA", "GU", "UG"):
-        delta_g += 0.5
+    #if (base_x + base_y) in ("AU", "UA", "GU", "UG"):
+    #    delta_g += 0.5
 
     return delta_g
 
