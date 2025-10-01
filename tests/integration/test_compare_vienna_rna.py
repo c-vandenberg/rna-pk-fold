@@ -99,6 +99,42 @@ SEQS = [
     "GGGAAAUCCC",    # classic strong stem with AU loop
     "AUGCUAGCUAUGC", # few possible helices
     "AUAUAUAUAU",    # low GC, might stay mostly unpaired
+
+# Hairpins (short loops, clamps)
+    "GCAAAGC", "GCAAAAGC", "GCAAAAAGC",
+    "AUGGGAU", "AUGGGGAU", "GUAAAAGU", "UGAAAUG",
+
+    # Tetraloops (require SPECIAL_HAIRPINS to match Vienna exactly)
+    "GCGCAAGC", "GCUUCGGC", "GCGGAGGC",
+
+    # Bulges & internal loops
+    "GGCGAACGCC", "GGCGAAUGCC", "GGCAAUUGCC", "GGCACAUUGCC", "GGCAAAUUGCC",
+
+    # Multiloops / branching
+    "GGGAAACCCAAAGGGUUUCCC", "GCGAAUCCGAUUGGCUAAGCG",
+    "GGAUCCGAAGGCUCGAUCC", "GGGAAAUCCAUUGGAUCCCUCC", "GCCGAUACGUAUCGGCGAU",
+
+    # Long/strong helices
+    "GCGCGCGCGCAUUGCGCGCGCGC", "GGGGCCCCGGGGCCCC",
+
+    # Wobble-heavy
+    "GUGUGUGUACACACAC", "UGUGUGAAACACACA", "GUGUAAUUGUGU",
+
+    # AU-rich
+    "AUAUAUAUAU", "AAUAAAUAAAUAA", "AUAUAAUAUAUAUAU",
+
+    # GC-rich
+    "GCGCGCAGCGCGC", "GGCGCCGCGGCC",
+
+    # Randomish short
+    "GCAUCUAUGC", "AUGCUAGCUAUGC", "GGGAAAUCCC", "GCGC",
+    "GGAUACGUACCU", "CGAUGCAGCUAG",
+
+    # Mostly unstructured
+    "AAAAUAAAAUAAAAUAAAA", "UUUUUAAAUUUUUAAAUUUU",
+
+    # Edge cases
+    "AUCCCUA", "GUCCUGU",
 ]
 
 @pytest.mark.parametrize("seq", SEQS)
