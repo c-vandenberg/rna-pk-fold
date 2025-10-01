@@ -307,6 +307,9 @@ def parse_stacks_matrix(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
     for i, r in enumerate(rows):
         for j, c in enumerate(cols):
             delta_h_delta_s = _resolve_cell_thermo(dh_rows, ds_rows, dg_rows, i, j, temp_k)
+            if delta_h_delta_s is None:
+                continue
+
             stack_pair_energies[f"{r}/{c}"] = delta_h_delta_s
 
     return stack_pair_energies
@@ -361,6 +364,9 @@ def _parse_dangle_matrix(
     for i, pair in enumerate(pairs):
         for j, nuc in enumerate(nucs):
             delta_h_delta_s = _resolve_cell_thermo(dh_rows, ds_rows, dg_rows, i, j, temp_k)
+            if delta_h_delta_s is None:
+                continue
+
             dangle_energies[key_fmtr(pair, nuc)] = delta_h_delta_s
 
     return dangle_energies
@@ -488,6 +494,9 @@ def parse_mismatch(data: Mapping[str, Any], section: str, temp_k: float) -> Pair
                         continue
 
                     delta_h_delta_s = _resolve_cell_thermo(dh_matrix, ds_matrix, dg_matrix, i, j, temp_k)
+                    if delta_h_delta_s is None:
+                        continue
+
                     left_right_dimer = f"{base_left}{base_x}/{base_y}{base_right}"
                     mm_energies[left_right_dimer] = delta_h_delta_s
 

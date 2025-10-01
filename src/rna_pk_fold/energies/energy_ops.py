@@ -53,14 +53,14 @@ def hairpin_energy(
     if hairpin_len < MIN_HAIRPIN_UNPAIRED:
         return float("inf")
 
-    # 1) Baseline hairpin energies by length
+    # 1. Baseline hairpin energies by length
     base_hp_energies = lookup_loop_anchor(energies.HAIRPIN, hairpin_len)
     if base_hp_energies is None:
         return float("inf")
 
     delta_g = calculate_delta_g(base_hp_energies, temp_k)
 
-    # 2) Terminal mismatch at the closing pair
+    # 2. Terminal mismatch at the closing pair
     base_x = normalize_base(seq[base_i])
     base_y = normalize_base(seq[base_j])
     left_neighbour = normalize_base(seq[base_i + 1]) if (base_i + 1) < base_j else "E"
