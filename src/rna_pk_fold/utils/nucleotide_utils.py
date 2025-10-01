@@ -96,3 +96,16 @@ def pair_key(base_a: str, base_b: str) -> str:
         Two-character key representing the pair, e.g., ``"AU"`` or ``"GU"``.
     """
     return normalize_base(base_a) + normalize_base(base_b)
+
+
+def dangle5_key(nt: str, pair: str) -> str:
+    return f"{nt}./{pair}"
+
+
+def dangle3_key(pair: str, nt: str) -> str:
+    return f"{pair}/.{nt}"
+
+
+def pair_str(seq: str, i: int, j: int) -> str:
+    return normalize_base(seq[i]) + normalize_base(seq[j])
+

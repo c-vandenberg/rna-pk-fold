@@ -3,6 +3,7 @@ from __future__ import annotations
 from rna_pk_fold.energies.types import SecondaryStructureEnergies
 from rna_pk_fold.utils import calculate_delta_g, lookup_loop_anchor, normalize_base, dimer_key
 from rna_pk_fold.rules.constraints import MIN_HAIRPIN_UNPAIRED
+from rna_pk_fold.utils.nucleotide_utils import pair_str, dangle3_key, dangle5_key
 
 DEFAULT_T_K = 310.15  # 37 °C in Kelvin
 
@@ -26,8 +27,10 @@ def hairpin_energy(
          - `Y` = seq[j]
          - `L_nt` = `seq[i+1]`  (left loop neighbor)
          - `R_nt` = `seq[j-1] ` (right loop neighbor)
-    3. Small AU/GU end penalty (+0.5 kcal/mol) if closing pair is AU/UA/GU/UG
-       and you do not encode such penalties elsewhere.
+    3. Preferentially uses `energies.HAIRPIN_MISMATCH first`; if missing, falls
+        back to `energies.TERMINAL_MISMATCH`.
+    4. (Optional) sequence-specific hairpin term via energies.SPECIAL_HAIRPINS
+       using the loop sequence seq[i+1:j] if present.
 
     Parameters
     ----------
@@ -79,6 +82,7 @@ def hairpin_energy(
         terminal_mm_energies = energies.TERMINAL_MISMATCH.get(mm_key)
         if terminal_mm_energies is not None:
             delta_h, delta_s = terminal_mm_energies
+            delta_g += SecondaryStructureEnergies.delta_g(delta_h, delta_s, temp_k)
 
     # 3) AU/GU end penalty (temporary until it is added in YAML file)
     #   - Because AU and GU pairs are weaker at helix ends and the Turner models
@@ -276,3 +280,27 @@ def multiloop_linear_energy(
     bonus = coeff_d if unpaired_bases == 0 else 0.0
 
     return coeff_a + coeff_b * branches + coeff_c * unpaired_bases + bonus
+
+
+def exterior_end_bonus(seq: str, i: int, j: int, E: SecondaryStructureEnergies, T: float) -> float:
+    """
+    Vienna --dangles=2 behavior (simplified):
+    choose best (most negative) among: terminal mismatch at exterior,
+    5' dangle, 3' dangle, or 5'+3' dangles together.
+    """
+    n = len(seq)
+    XY = pair_str(seq, i, j)
+    L = normalize_base(seq[i-1]) if i-1 >= 0 else "N"
+    R = normalize_base(seq[j+1]) if j+1 < n else "N"
+
+    # terminal mismatch at exterior (if available)
+    mm_key = f"{L}{XY[0]}/{XY[1]}{R}"
+    g_mm = calculate_delta_g((E.TERMINAL_MISMATCH or {}).get(mm_key), T)
+
+    # dangles
+    g_d5 = calculate_delta_g(E.DANGLES.get(dangle5_key(L, XY)), T)
+    g_d3 = calculate_delta_g(E.DANGLES.get(dangle3_key(XY, R)), T)
+
+    # pick the most stabilizing option (min ΔG)
+    best = min(g_mm, g_d5 + g_d3, g_d5, g_d3, 0.0)
+    return best if best != float("inf") else 0.0

@@ -66,6 +66,7 @@ class SecondaryStructureEnergies:
     INTERNAL_MISMATCH: PairEnergies
     TERMINAL_MISMATCH: PairEnergies
     HAIRPIN_MISMATCH: Optional[PairEnergies] = None
+    MULTI_MISMATCH: Optional[PairEnergies] = None
     SPECIAL_HAIRPINS: Optional[PairEnergies] = None
 
     @staticmethod
