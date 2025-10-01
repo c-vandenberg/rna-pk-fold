@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 
 from rna_pk_fold.energies.types import SecondaryStructureEnergies
-from rna_pk_fold.utils import calculate_delta_g, lookup_loop_anchor, normalize_base, dimer_key
+from rna_pk_fold.utils import calculate_delta_g, lookup_loop_baseline_js, normalize_base, dimer_key
 from rna_pk_fold.rules.constraints import MIN_HAIRPIN_UNPAIRED
 from rna_pk_fold.utils.nucleotide_utils import pair_str, dangle3_key, dangle5_key
 
@@ -58,7 +58,7 @@ def hairpin_energy(
         return float("inf")
 
     # 1. Baseline hairpin energies by length
-    base_hp_energies = lookup_loop_anchor(energies.HAIRPIN, hairpin_len)
+    base_hp_energies = lookup_loop_baseline_js(energies.HAIRPIN, hairpin_len)
     if base_hp_energies is None:
         return float("inf")
 
@@ -213,7 +213,7 @@ def internal_loop_energy(
     # Bulge
     if (loop_open_base == 0) ^ (loop_close_base == 0):
         size = loop_open_base + loop_close_base
-        base = lookup_loop_anchor(energies.BULGE, size)
+        base = lookup_loop_baseline_js(energies.BULGE, size)
         return calculate_delta_g(base, temp_k)
 
     # Internal loop (including 1x1)
@@ -236,7 +236,7 @@ def internal_loop_energy(
                 # fall back to baseline if neighbors not available
                 pass
 
-        base = lookup_loop_anchor(energies.INTERNAL, size)
+        base = lookup_loop_baseline_js(energies.INTERNAL, size)
 
         return calculate_delta_g(base, temp_k)
 

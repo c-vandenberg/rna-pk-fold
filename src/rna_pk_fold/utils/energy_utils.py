@@ -1,5 +1,10 @@
 from __future__ import annotations
+from math import log
 from typing import Mapping, Optional, Tuple
+
+# Ideal Gas Constant in cal mol⁻¹ K⁻¹
+# 8.3145112 J K-1 mol-1 = 1.9872159 cal mol⁻¹ K⁻¹
+R_CAL = 1.98720425864083e-3
 
 
 def calculate_delta_g(delta_h_delta_s: Optional[tuple[float, float]], temp_k: float) -> float:
@@ -35,18 +40,26 @@ def calculate_delta_g(delta_h_delta_s: Optional[tuple[float, float]], temp_k: fl
     return delta_h - temp_k * (delta_s / 1000.0)
 
 
-def lookup_loop_anchor(
+def lookup_loop_baseline_js(
     table: Mapping[int, Tuple[float, float]],
     size: int,
+    *,
+    alpha: float = 1.75,
 ) -> Optional[Tuple[float, float]]:
     """
-    Fetch a loop baseline (ΔH, ΔS) for a given loop size using an anchor+clamp policy.
+    Fetch a loop baseline (ΔH, ΔS) for a given loop size, using Jacobson–Stockmayer
+    (JS) extrapolation when `size` is not tabulated.
 
-    The tables for hairpin/bulge/internal loops are typically sparse (values at
-    selected sizes). This helper returns:
-      - The exact (ΔH, ΔS) if `size` is present;
-      - otherwise the entry at the largest key `<= size` (clamp down);
-      - `None` if `size` is smaller than the smallest key (invalid/too small),
+    The tables for hairpin/bulge/internal loops are typically given as tabulated
+    values at selected sizes. This helper returns:
+      - Returns the exact (ΔH, ΔS) if `size` is present;
+      - Else anchor at the largest key `a` such that a <= size, apply the JS
+        extrapolation to calculate (ΔH, ΔS):
+                ΔH(n) = ΔH(a)
+                ΔS(n) = ΔS(a) − α · R · ln(n/a)        (R in cal/(K·mol))
+            * This yields ΔG(n) = ΔG(a) + α · R_kcal · T · ln(n/a) for any T, where
+              R_kcal = R/1000, consistent with ΔG = ΔH − T·ΔS/1000.
+      - Return `None` if `size` is smaller than the smallest key (invalid/too small),
         or if the table is empty.
 
     Parameters
@@ -55,11 +68,13 @@ def lookup_loop_anchor(
         Loop baseline table keyed by integer loop size (nt).
     size : int
         Requested loop size.
+    alpha : float
+        Jacobson–Stockmayer loop-entropy coefficient.
 
     Returns
     -------
     Optional[tuple[float, float]]
-        The (ΔH, ΔS) pair or `None` if no valid anchor exists.
+        The (ΔH, ΔS) pair or `None` if table or anchor is not valid.
 
     Notes
     -----
@@ -68,13 +83,17 @@ def lookup_loop_anchor(
     """
     if not table:
         return None
+
     if size in table:
         return table[size]
-    # clamp to the largest key <= size
-    keys = sorted(table.keys())
-    if size < keys[0]:
+
+    # Anchor = largest tabulated size <= requested size
+    anchor = max((k for k in table.keys() if k <= size), default=None)
+    if anchor is None:
         return None
 
-    le = [k for k in keys if k <= size]
+    delta_h_a, delta_s_a = table[anchor]
+    delta_h_n = delta_h_a
+    delta_s_n = delta_s_a - alpha * R_CAL * log(size / anchor)
 
-    return table[max(le)] if le else None
+    return delta_h_n, delta_s_n
