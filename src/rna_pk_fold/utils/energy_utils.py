@@ -34,6 +34,7 @@ def calculate_delta_g(delta_h_delta_s: Optional[tuple[float, float]], temp_k: fl
 
     return delta_h - temp_k * (delta_s / 1000.0)
 
+
 def lookup_loop_anchor(
     table: Mapping[int, Tuple[float, float]],
     size: int,

@@ -5,6 +5,7 @@ import math
 from rna_pk_fold.folding import FoldState, BackPointer, BacktrackOp
 from rna_pk_fold.energies import SecondaryStructureEnergyModelProtocol
 from rna_pk_fold.rules import can_pair, MIN_HAIRPIN_UNPAIRED
+from rna_pk_fold.energies.energy_ops import best_multiloop_end_bonus
 
 
 @dataclass(slots=True)
@@ -87,9 +88,12 @@ class SecondaryStructureFoldingEngine:
             v_ik = v_matrix.get(i, k)
             if math.isinf(v_ik):
                 continue
+            end_bonus = 0.0
+            if self.energy_model.params.MULTI_MISMATCH is not None:
+                end_bonus = best_multiloop_end_bonus(i, k, seq, self.energy_model.params, self.config.temp_k)
 
             tail = 0.0 if k + 1 > j else wm_matrix.get(k + 1, j)
-            cand_energy = branch_cost_b + v_ik + tail
+            cand_energy = branch_cost_b + v_ik + end_bonus + tail
             cand_rank = 0
             cand_back_ptr = BackPointer(
                 operation=BacktrackOp.MULTI_ATTACH, inner=(i, k), split_k=k, note="attach-helix"

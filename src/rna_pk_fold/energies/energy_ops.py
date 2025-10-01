@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 
 from rna_pk_fold.energies.types import SecondaryStructureEnergies
 from rna_pk_fold.utils import calculate_delta_g, lookup_loop_anchor, normalize_base, dimer_key
@@ -202,25 +203,25 @@ def internal_loop_energy(
         Free energy ΔG (kcal/mol) for the bulge or internal loop
         (+∞ on invalid geometry or missing data).
     """
-    n = len(seq)
-    if not (0 <=  base_i < base_k <= base_l < base_j < n):
+    seq_len = len(seq)
+    if not (0 <=  base_i < base_k <= base_l < base_j < seq_len):
         return float("inf")
 
-    a = base_k - base_i - 1
-    b = base_j - base_l - 1
+    loop_open_base = base_k - base_i - 1
+    loop_close_base = base_j - base_l - 1
 
     # Bulge
-    if (a == 0) ^ (b == 0):
-        size = a + b
+    if (loop_open_base == 0) ^ (loop_close_base == 0):
+        size = loop_open_base + loop_close_base
         base = lookup_loop_anchor(energies.BULGE, size)
         return calculate_delta_g(base, temp_k)
 
     # Internal loop (including 1x1)
-    if a > 0 and b > 0:
-        size = a + b
+    if loop_open_base > 0 and loop_close_base > 0:
+        size = loop_open_base + loop_close_base
 
         # Special 1×1 internal mismatch if we have the motif:
-        if a == 1 and b == 1:
+        if loop_open_base == 1 and loop_close_base == 1:
             # Build a key like "XY/ZW" using the two unpaired nucleotides
             # adjacent to the inner pair. A simple representative:
             # left-unpaired next to i -> seq[i+1], right-unpaired next to j -> seq[j-1]
@@ -282,25 +283,104 @@ def multiloop_linear_energy(
     return coeff_a + coeff_b * branches + coeff_c * unpaired_bases + bonus
 
 
-def exterior_end_bonus(seq: str, i: int, j: int, E: SecondaryStructureEnergies, T: float) -> float:
+def exterior_end_bonus(
+    seq: str,
+    base_i: int,
+    base_j:  int,
+    energies: SecondaryStructureEnergies,
+    temp_k: float
+) -> float:
     """
     Vienna --dangles=2 behavior (simplified):
     choose best (most negative) among: terminal mismatch at exterior,
     5' dangle, 3' dangle, or 5'+3' dangles together.
     """
-    n = len(seq)
-    XY = pair_str(seq, i, j)
-    L = normalize_base(seq[i-1]) if i-1 >= 0 else "N"
-    R = normalize_base(seq[j+1]) if j+1 < n else "N"
+    seq_len = len(seq)
+    xy_pair = pair_str(seq, base_i, base_j)
+    left_base = normalize_base(seq[base_i - 1]) if base_i - 1 >= 0 else "N"
+    right_base = normalize_base(seq[base_j + 1]) if base_j + 1 < seq_len else "N"
 
     # terminal mismatch at exterior (if available)
-    mm_key = f"{L}{XY[0]}/{XY[1]}{R}"
-    g_mm = calculate_delta_g((E.TERMINAL_MISMATCH or {}).get(mm_key), T)
+    mm_key = f"{left_base}{xy_pair[0]}/{xy_pair[1]}{right_base}"
+    delta_g_mm = calculate_delta_g((energies.TERMINAL_MISMATCH or {}).get(mm_key), temp_k)
 
     # dangles
-    g_d5 = calculate_delta_g(E.DANGLES.get(dangle5_key(L, XY)), T)
-    g_d3 = calculate_delta_g(E.DANGLES.get(dangle3_key(XY, R)), T)
+    delta_g_d5 = calculate_delta_g(energies.DANGLES.get(dangle5_key(left_base, xy_pair)), temp_k)
+    delta_g_d3 = calculate_delta_g(energies.DANGLES.get(dangle3_key(xy_pair, right_base)), temp_k)
 
     # pick the most stabilizing option (min ΔG)
-    best = min(g_mm, g_d5 + g_d3, g_d5, g_d3, 0.0)
+    best = min(delta_g_mm, delta_g_d5 + delta_g_d3, delta_g_d5, delta_g_d3, 0.0)
+
     return best if best != float("inf") else 0.0
+
+
+def multiloop_close_bonus(
+    seq: str,
+    base_i: int,
+    base_j: int,
+    energies: SecondaryStructureEnergies,
+    temp_k: float
+) -> float:
+    """
+    When (i,j) closes a multiloop, apply multi_mismatch with loop-adjacent
+    nucleotides L=seq[i+1], R=seq[j-1]. If missing, 0.
+    """
+    if base_i+1 >= base_j or not energies.MULTI_MISMATCH:
+        return 0.0
+    xy_pair = pair_str(seq, base_i, base_j)
+    left_base = normalize_base(seq[base_i + 1])
+    right_base = normalize_base(seq[base_j - 1])
+    mm_key = f"{left_base}{xy_pair[0]}/{xy_pair[1]}{right_base}"
+    g = calculate_delta_g(energies.MULTI_MISMATCH.get(mm_key), temp_k)
+
+    return 0.0 if g == float("inf") else g
+
+
+def best_multiloop_end_bonus(
+    base_i: int,
+    base_k: int,
+    seq: str,
+    energies: SecondaryStructureEnergies,
+    temp_k: float
+) -> float:
+    """
+    Return the BEST single end-scheme for the helix (i,k) inside a multiloop:
+      - use 2-sided mismatch_multi if both inner neighbors exist,
+      - else use dangle5 and/or dangle3 (sum of the two single-sides),
+      - else 0.
+    Never combine a two-sided mismatch with single dangles.
+    Neighbors here are *inside* the multiloop: L = seq[i+1], R = seq[k-1].
+    """
+    if not energies.MULTI_MISMATCH:
+        return 0.0
+
+    base_x = normalize_base(seq[base_i])
+    base_y = normalize_base(seq[base_k])
+
+    left_base = normalize_base(seq[base_i + 1]) if (base_i + 1) < base_k else "E"
+    right_base = normalize_base(seq[base_k - 1]) if (base_k - 1) > base_i else "E"
+
+    # Two-sided multiloop mismatch (preferred when both sides exist)
+    mm_key = f"{left_base}{base_x}/{base_y}{right_base}"
+    dg_mm = calculate_delta_g(energies.MULTI_MISMATCH.get(mm_key), temp_k)
+
+    # Single-side dangles
+    # Keys consistent with your loader docs:
+    #   dangle5: "<Nuc>./<Pair>"  e.g. "A./CG"
+    #   dangle3: "<Pair>/.<Nuc>"  e.g. "CG/.A"
+    d5_key = f"{left_base}./{base_x}{base_y}"
+    d3_key = f"{base_x}{base_y}/.{right_base}"
+
+    delta_g_d5 = calculate_delta_g(energies.DANGLES.get(d5_key), temp_k)
+    delta_g_d3 = calculate_delta_g(energies.DANGLES.get(d3_key), temp_k)
+
+    both = (delta_g_d5 + delta_g_d3) if (math.isfinite(delta_g_d5) and math.isfinite(delta_g_d3)) else float("inf")
+    best = min(
+        0.0,
+        dg_mm if math.isfinite(dg_mm) else float("inf"),
+        delta_g_d5 if math.isfinite(delta_g_d5) else float("inf"),
+        delta_g_d3 if math.isfinite(delta_g_d3) else float("inf"),
+        both
+    )
+
+    return 0.0 if best == float("inf") else best
