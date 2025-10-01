@@ -358,8 +358,7 @@ def best_multiloop_end_bonus(i: int, k: int, seq: str,
 
     # Two-sided multiloop mismatch (preferred when both sides exist)
     mm_key = f"{L}{X}/{Y}{R}"
-    mm = p.MULTI_MISMATCH.get(mm_key)
-    dg_mm = SecondaryStructureEnergies.delta_g(*mm, T) if mm else float("-inf")
+    dg_mm = calculate_delta_g(p.MULTI_MISMATCH.get(mm_key), T)
 
     # Single-side dangles
     # Keys consistent with your loader docs:
@@ -368,18 +367,30 @@ def best_multiloop_end_bonus(i: int, k: int, seq: str,
     d5_key = f"{L}./{X}{Y}"
     d3_key = f"{X}{Y}/.{R}"
 
-    d5 = p.DANGLES.get(d5_key)
-    d3 = p.DANGLES.get(d3_key)
+    dg_d5 = calculate_delta_g(p.DANGLES.get(d5_key), T)
+    dg_d3 = calculate_delta_g(p.DANGLES.get(d3_key), T)
 
-    dg_d5 = SecondaryStructureEnergies.delta_g(*d5, T) if d5 else float("-inf")
-    dg_d3 = SecondaryStructureEnergies.delta_g(*d3, T) if d3 else float("-inf")
-
-    best_dangles = max(
+    both = (dg_d5 + dg_d3) if (math.isfinite(dg_d5) and math.isfinite(dg_d3)) else float("inf")
+    best = min(
         0.0,
-        dg_d5 if math.isfinite(dg_d5) else float("-inf"),
-        dg_d3 if math.isfinite(dg_d3) else float("-inf"),
-        (dg_d5 + dg_d3) if (math.isfinite(dg_d5) and math.isfinite(dg_d3)) else float("-inf")
+        dg_mm if math.isfinite(dg_mm) else float("inf"),
+        dg_d5 if math.isfinite(dg_d5) else float("inf"),
+        dg_d3 if math.isfinite(dg_d3) else float("inf"),
+        both
     )
 
-    # Pick the best of: two-sided mismatch vs. dangles vs. zero.
-    return max(0.0, dg_mm if math.isfinite(dg_mm) else float("-inf"), best_dangles)
+    return 0.0 if best == float("inf") else best
+
+
+def _stack_key_bulge1(seq: str, i: int, j: int, k: int, l: int) -> str:
+    """
+    Nearest-neighbor stack key across a 1-nt bulge between closing pair (i,j)
+    and inner pair (k,l). Uses left 5'→3' dimer X=seq[i],Y=seq[k] and right
+    3'→5' dimer Z=seq[j],W=seq[l]. Returns 'XY/ZW'.
+    """
+    X = normalize_base(seq[i])
+    Y = normalize_base(seq[k])
+    Z = normalize_base(seq[j])
+    W = normalize_base(seq[l])
+    return f"{X}{Y}/{Z}{W}"
+
