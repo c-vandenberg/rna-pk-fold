@@ -1,9 +1,10 @@
 from __future__ import annotations
-
 from dataclasses import dataclass
+import math
 
 from rna_pk_fold.structures import TriMatrix
 from rna_pk_fold.folding import BackPointer
+from rna_pk_fold.folding.rivas_eddy_matrices import TriMatrix, SparseGapMatrix, SparseGapBackptr
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,3 +77,62 @@ def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> FoldStat
         v_back_ptr=v_back_ptr,
         wm_back_ptr=wm_back_ptr
     )
+
+
+@dataclass(slots=True)
+class RivasEddyState:
+    """
+    Holds the non-gap and gap matrices for the R&E algorithm.
+    Values only for scaffolding; Step 12 will fill recurrences.
+    """
+    n: int
+
+    # Non-gap (triangular)
+    wx_matrix: TriMatrix
+    vx_matrix: TriMatrix
+    wx_back_ptr: dict
+    vx_back_ptr: dict
+
+    # Gap (sparse 4D)
+    whx_matrix: SparseGapMatrix
+    vhx_matrix: SparseGapMatrix
+    yhx_matrix: SparseGapMatrix
+    zhx_matrix: SparseGapMatrix
+
+    whx_back_ptr: SparseGapBackptr
+    vhx_back_ptr: SparseGapBackptr
+    yhx_back_ptr: SparseGapBackptr
+    zhx_back_ptr: SparseGapBackptr
+
+
+def make_re_fold_state(n: int) -> RivasEddyState:
+    re = RivasEddyState(
+        n=n,
+        # 2D
+        wx_matrix=TriMatrix(n),
+        vx_matrix=TriMatrix(n),
+        wx_back_ptr={},
+        vx_back_ptr={},
+        # 4D sparse
+        whx_matrix=SparseGapMatrix(n),
+        vhx_matrix=SparseGapMatrix(n),
+        yhx_matrix=SparseGapMatrix(n),
+        zhx_matrix=SparseGapMatrix(n),
+        whx_back_ptr=SparseGapBackptr(n),
+        vhx_back_ptr=SparseGapBackptr(n),
+        yhx_back_ptr=SparseGapBackptr(n),
+        zhx_back_ptr=SparseGapBackptr(n),
+    )
+
+    # ---------- Initialization (base conditions) ----------
+    # Non-gap base cases (R&E Section 5.2):
+    #   wx(i,i) = 0; vx(i,i) = +inf
+    for i in range(n):
+        re.wx_matrix.set(i, i, 0.0)
+        re.vx_matrix.set(i, i, math.inf)
+
+    # Gap matrices: we *don’t* prefill O(N^4); instead we implement the
+    # collapse identities via helpers below (lazy). We do set illegal holes to +inf
+    # by default due to SparseGapMatrix.get() behavior.
+
+    return re
