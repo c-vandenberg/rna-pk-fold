@@ -2,9 +2,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from rna_pk_fold.structures import TriMatrix
+from rna_pk_fold.structures import CoreTriMatrix
 from rna_pk_fold.folding import BackPointer
-from rna_pk_fold.folding.rivas_eddy_matrices import TriMatrix, SparseGapMatrix, SparseGapBackptr
+from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import ReTriMatrix, SparseGapMatrix, SparseGapBackptr
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,7 +14,7 @@ class FoldState:
 
     Attributes
     ----------
-    w_matrix : TriMatrix[float]
+    w_matrix : CoreTriMatrix[float]
         Optimal substructure energy for span i..j (may include unpaired cases
         or bifurcations).
     v_matrix : TriMatrix[float]
@@ -24,12 +24,12 @@ class FoldState:
     v_back_ptr : TriMatrix[BackPointer]
         Back-pointers for V matrix cells (i.e. how V[i,j] was derived).
     """
-    w_matrix: TriMatrix[float]
-    v_matrix: TriMatrix[float]
-    wm_matrix: TriMatrix[float]
-    w_back_ptr: TriMatrix[BackPointer]
-    v_back_ptr: TriMatrix[BackPointer]
-    wm_back_ptr: TriMatrix[BackPointer]
+    w_matrix: CoreTriMatrix[float]
+    v_matrix: CoreTriMatrix[float]
+    wm_matrix: CoreTriMatrix[float]
+    w_back_ptr: CoreTriMatrix[BackPointer]
+    v_back_ptr: CoreTriMatrix[BackPointer]
+    wm_back_ptr: CoreTriMatrix[BackPointer]
 
 
 def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> FoldState:
@@ -57,13 +57,13 @@ def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> FoldStat
     - This module only provides storage & indexing; it does not compute energies.
       The “recurrence engine” will later read/write these tables.
     """
-    w_matrix = TriMatrix[float](seq_len, init_energy)
-    v_matrix = TriMatrix[float](seq_len, init_energy)
-    wm_matrix = TriMatrix[float](seq_len, init_energy)
+    w_matrix = CoreTriMatrix[float](seq_len, init_energy)
+    v_matrix = CoreTriMatrix[float](seq_len, init_energy)
+    wm_matrix = CoreTriMatrix[float](seq_len, init_energy)
 
-    w_back_ptr = TriMatrix[BackPointer](seq_len, BackPointer())
-    v_back_ptr = TriMatrix[BackPointer](seq_len, BackPointer())
-    wm_back_ptr = TriMatrix[BackPointer](seq_len, BackPointer())
+    w_back_ptr = CoreTriMatrix[BackPointer](seq_len, BackPointer())
+    v_back_ptr = CoreTriMatrix[BackPointer](seq_len, BackPointer())
+    wm_back_ptr = CoreTriMatrix[BackPointer](seq_len, BackPointer())
 
     # bBse case for WM diagonals: Zero cost to have an empty interior
     for i in range(seq_len):
@@ -88,8 +88,8 @@ class RivasEddyState:
     n: int
 
     # Non-gap (triangular)
-    wx_matrix: TriMatrix
-    vx_matrix: TriMatrix
+    wx_matrix: ReTriMatrix
+    vx_matrix: ReTriMatrix
     wx_back_ptr: dict
     vx_back_ptr: dict
 
@@ -109,8 +109,8 @@ def make_re_fold_state(n: int) -> RivasEddyState:
     re = RivasEddyState(
         n=n,
         # 2D
-        wx_matrix=TriMatrix(n),
-        vx_matrix=TriMatrix(n),
+        wx_matrix=ReTriMatrix(n),
+        vx_matrix=ReTriMatrix(n),
         wx_back_ptr={},
         vx_back_ptr={},
         # 4D sparse

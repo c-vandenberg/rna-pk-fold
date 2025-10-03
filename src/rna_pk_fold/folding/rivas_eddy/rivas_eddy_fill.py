@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 import math
-from rna_pk_fold.folding.rivas_eddy_matrices import (
-    TriMatrix, SparseGapMatrix,
+from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
     get_whx_with_collapse, get_zhx_with_collapse
 )
 from rna_pk_fold.folding.fold_state import RivasEddyState

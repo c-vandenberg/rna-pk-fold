@@ -1,7 +1,7 @@
 import math
 import pytest
 
-from rna_pk_fold.structures import TriMatrix
+from rna_pk_fold.structures import CoreTriMatrix
 
 
 def test_trimatrix_init_shape_and_defaults():
@@ -20,7 +20,7 @@ def test_trimatrix_init_shape_and_defaults():
     """
     seq_len = 5
     fill = 123.45
-    tri_matrix = TriMatrix[float](seq_len, fill)
+    tri_matrix = CoreTriMatrix[float](seq_len, fill)
 
     assert tri_matrix.shape == (seq_len, seq_len)
     assert tri_matrix.size == seq_len
@@ -40,7 +40,7 @@ def test_trimatrix_set_get_roundtrip():
     - Other cells remain at the initial fill value.
     """
     seq_len = 4
-    tri_matrix = TriMatrix[float](seq_len, float("inf"))
+    tri_matrix = CoreTriMatrix[float](seq_len, float("inf"))
 
     tri_matrix.set(1, 3, -7.25)
     assert tri_matrix.get(1, 3) == -7.25
@@ -67,7 +67,7 @@ def test_trimatrix_invalid_indices_raise():
     - j < i (lower triangle is not addressable)
     """
     seq_len = 3
-    tri_matrix = TriMatrix[int](seq_len, 0)
+    tri_matrix = CoreTriMatrix[int](seq_len, 0)
 
     bad_indices = [
         (-1, 0),  # i < 0
@@ -94,7 +94,7 @@ def test_trimatrix_iter_upper_indices_count_and_coverage():
       and has cardinality `N(N+1)/2`.
     """
     seq_len = 6
-    tri_matrix = TriMatrix[int](seq_len, 0)
+    tri_matrix = CoreTriMatrix[int](seq_len, 0)
     seen = set(tri_matrix.iter_upper_indices())
 
     expected_count = seq_len * (seq_len + 1) // 2
@@ -114,7 +114,7 @@ def test_trimatrix_generic_object_storage():
     - Objects (e.g., lists) can be stored and retrieved unchanged.
     """
     n = 3
-    tri_matrix = TriMatrix[list](n, fill=[])
+    tri_matrix = CoreTriMatrix[list](n, fill=[])
     tri_matrix.set(0, 1, ["x", 1])
     tri_matrix.set(1, 2, ["y", 2])
 

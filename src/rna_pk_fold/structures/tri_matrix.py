@@ -5,7 +5,7 @@ from typing import Generic, TypeVar, List, Tuple, Iterator
 T = TypeVar("T")
 
 
-class TriMatrix(Generic[T]):
+class CoreTriMatrix(Generic[T]):
     """
     Upper-triangular matrix with O(N^2/2) storage.
 

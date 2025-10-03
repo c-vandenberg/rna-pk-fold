@@ -10,7 +10,7 @@ Outer = Tuple[int, int]
 INF = math.inf
 
 @dataclass(slots=True)
-class TriMatrix:
+class ReTriMatrix:
     """
     Triangular N x N float matrix with +inf default.
     Only (i <= j) are meaningful. Use get/set.
@@ -74,16 +74,54 @@ class SparseGapBackptr:
         self.data.setdefault((i, j), {})[(k, l)] = bp
 
 
-def get_whx_with_collapse(whx: SparseGapMatrix, wx: TriMatrix,
+def get_whx_with_collapse(whx: SparseGapMatrix, wx: ReTriMatrix,
                           i: int, j: int, k: int, l: int) -> float:
-    # identity: whx(i,j:k,k+1) == wx(i,j)
+    """
+    Collapse identity: whx(i,j : k,k+1) == wx(i,j)
+    Otherwise return whx(i,j:k,l) (default +inf if unset/invalid).
+    """
     if k + 1 == l:
         return wx.get(i, j)
     return whx.get(i, j, k, l)
 
-def get_zhx_with_collapse(zhx: SparseGapMatrix, vx: TriMatrix,
-                          i: int, j: int, k: int, l: int) -> float:
-    # identity: zhx(i,j:k,k+1) == vx(i,j)
+
+def get_zhx_with_collapse(
+    zhx: SparseGapMatrix, vx: ReTriMatrix,
+    i: int, j: int, k: int, l: int
+) -> float:
+    """
+    Collapse identity: zhx(i,j : k,k+1) == vx(i,j)
+    Otherwise return zhx(i,j:k,l).
+    """
     if k + 1 == l:
         return vx.get(i, j)
     return zhx.get(i, j, k, l)
+
+
+def get_yhx_with_collapse(
+    yhx: SparseGapMatrix,
+    i: int, j: int, k: int, l: int,
+    *, invalid_value: float = INF
+) -> float:
+    """
+    No valid collapse: yhx requires the inner (k,l) to be paired; with l==k+1
+    the hole has zero width, so the inner “paired” object doesn’t exist.
+    Return +inf for the collapse case; otherwise return yhx(i,j:k,l).
+    """
+    if k + 1 == l:
+        return invalid_value
+    return yhx.get(i, j, k, l)
+
+
+def get_vhx_with_collapse(
+    vhx: SparseGapMatrix,
+    i: int, j: int, k: int, l: int,
+    *, invalid_value: float = INF
+) -> float:
+    """
+    No valid collapse: vhx expects both outer and inner paired; the inner
+    disappears when l==k+1. Return +inf in the collapse case; otherwise get().
+    """
+    if k + 1 == l:
+        return invalid_value
+    return vhx.get(i, j, k, l)
