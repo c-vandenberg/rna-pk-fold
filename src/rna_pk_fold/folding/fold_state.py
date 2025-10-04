@@ -1,10 +1,14 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import math
+from typing import Dict, Tuple
 
 from rna_pk_fold.structures import CoreTriMatrix
 from rna_pk_fold.folding import BackPointer
 from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import ReTriMatrix, SparseGapMatrix, SparseGapBackptr
+
+wx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
+vx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
 
 
 @dataclass(frozen=True, slots=True)

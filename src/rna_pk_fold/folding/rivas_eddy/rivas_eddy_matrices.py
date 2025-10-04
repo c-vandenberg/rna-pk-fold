@@ -80,8 +80,12 @@ def get_whx_with_collapse(whx: SparseGapMatrix, wx: ReTriMatrix,
     Collapse identity: whx(i,j : k,k+1) == wx(i,j)
     Otherwise return whx(i,j:k,l) (default +inf if unset/invalid).
     """
+    if not (i <= k < l <= j):
+        return math.inf
+
     if k + 1 == l:
         return wx.get(i, j)
+
     return whx.get(i, j, k, l)
 
 
@@ -93,8 +97,12 @@ def get_zhx_with_collapse(
     Collapse identity: zhx(i,j : k,k+1) == vx(i,j)
     Otherwise return zhx(i,j:k,l).
     """
+    if not (i <= k < l <= j):
+        return math.inf
+
     if k + 1 == l:
         return vx.get(i, j)
+
     return zhx.get(i, j, k, l)
 
 
