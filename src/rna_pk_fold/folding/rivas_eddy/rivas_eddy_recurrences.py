@@ -7,7 +7,8 @@ from typing import Iterator, Tuple
 
 from rna_pk_fold.folding.fold_state import FoldState, RivasEddyState
 from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
-    get_whx_with_collapse
+    get_whx_with_collapse,
+    get_zhx_with_collapse
 )
 
 
@@ -29,7 +30,7 @@ class RivasEddyEngine:
     def fill_minimal(self, seq: str, nested: FoldState, re: RivasEddyState) -> None:
         n = re.n
 
-        # --- 0) Seed non-gap from nested (anchor correctness; incremental approach) ---
+        # --- 0. Seed non-gap from nested ---
         for s in range(0, n):
             for i in range(0, n - s):
                 j = i + s
@@ -39,7 +40,7 @@ class RivasEddyEngine:
                 re.wx_matrix.set(i, j, w_base)
                 re.vx_matrix.set(i, j, v_base)
 
-        # --- 1) Make whx finite via hole-shrink (zero-cost) ---
+        # --- 1.1 `whx` zero-cost hole-shrink (collapse to wx)) ---
         # Order: outer span s increasing; for each (i,j) enumerate holes by increasing width h.
         for s in range(0, n):
             for i in range(0, n - s):
@@ -81,7 +82,31 @@ class RivasEddyEngine:
                         best = min(candidates) if candidates else math.inf
                         re.whx_matrix.set(i, j, k, l, best)
 
-        # --- 2) Add two-gap composition candidate to wx(i,j) ---
+        # --- 1.1 `zhx` zero-cost hole-shrink (collapse to vx) ---
+        for s in range(n):
+            for i in range(0, n - s):
+                j = i + s
+                max_h = max(0, j - i - 1)
+                for h in range(1, max_h + 1):
+                    for k in range(i, j - h):
+                        l = k + h + 1
+                        candidates = []
+                        # shrink hole (collapse-aware)
+                        v = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k + 1, l)
+                        if math.isfinite(v): candidates.append(v)
+                        v = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, l - 1)
+                        if math.isfinite(v): candidates.append(v)
+                        # trim outer (smaller span)
+                        v = re.zhx_matrix.get(i + 1, j, k, l)
+                        if math.isfinite(v): candidates.append(v)
+                        v = re.zhx_matrix.get(i, j - 1, k, l)
+                        if math.isfinite(v): candidates.append(v)
+                        # direct collapse allowed too
+                        candidates.append(get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, l))
+                        best = min(candidates) if candidates else math.inf
+                        re.zhx_matrix.set(i, j, k, l, best)
+
+        # --- 2.1 Add two-gap composition candidate to wx(i,j) ---
         Gw = self.cfg.pk_penalty_gw
         for s in range(0, n):
             for i in range(0, n - s):
@@ -100,25 +125,46 @@ class RivasEddyEngine:
                     cand = Gw + left + right
                     if cand < best:
                         best = cand
-                        best_bp = ("RE_PK_COMPOSE", (i, r, k, l))
+                        best_bp = ("RE_PK_COMPOSE_WX", (i, r, k, l))
 
                 # Keep the winner
                 re.wx_matrix.set(i, j, best)
-                # (Optionally stash a backpointer structure into a side table for RE traceback.)
+                if best_bp is not None:
+                    re.wx_back_ptr[(i, j)] = best_bp
 
-        # --- 3) Final relax: with zero-cost shrink, force WHX(i,j:k,l) == WX(i,j) ---
+        # --- 2.2 Add two-gap composition into vx (via zhx) ---
+        for s in range(n):
+            for i in range(0, n - s):
+                j = i + s
+                best = re.vx_matrix.get(i, j)
+                best_bp = None
+
+                for (r, k, l) in _iter_complementary_tuples(i, j):
+                    left = _zhx_collapse_first(re, i, r, k, l)
+                    right = _zhx_collapse_first(re, k + 1, j, l - 1, r + 1)
+                    cand = Gw + left + right
+                    if cand < best:
+                        best = cand
+                        best_bp = ("RE_PK_COMPOSE_VX", (r, k, l))
+
+                re.vx_matrix.set(i, j, best)
+                if best_bp is not None:
+                    re.vx_back_ptr[(i, j)] = best_bp
+
+        # --- 3) Final relax for zero-cost model (keep WHX/ ZHX aligned to updated WX/VX, `WHX(i,j:k,l) == WX(i,j)`) ---
         for s in range(0, n):
             for i in range(0, n - s):
                 j = i + s
                 # current outer value (after PK composition)
                 w_ij = re.wx_matrix.get(i, j)
-
+                v_ij = re.vx_matrix.get(i, j)
                 max_h = max(0, j - i - 1)
                 for h in range(1, max_h + 1):  # only non-collapsed holes
                     for k in range(i, j - h):
                         l = k + h + 1
                         # zero-cost shrink => hole reduces to collapse => equals WX(i,j)
                         re.whx_matrix.set(i, j, k, l, w_ij)
+                        re.zhx_matrix.set(i, j, k, l, v_ij)
 
 def _whx_collapse_first(re: RivasEddyState, i: int, j: int, k: int, l: int) -> float:
     """
@@ -129,6 +175,11 @@ def _whx_collapse_first(re: RivasEddyState, i: int, j: int, k: int, l: int) -> f
     if math.isfinite(v):
         return v
     return re.whx_matrix.get(i, j, k, l)
+
+def _zhx_collapse_first(re: RivasEddyState, i: int, j: int, k: int, l: int) -> float:
+    v = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, l)
+    if math.isfinite(v): return v
+    return re.zhx_matrix.get(i, j, k, l)
 
 def _iter_complementary_tuples(i: int, j: int) -> Iterator[Tuple[int, int, int]]:
     """
