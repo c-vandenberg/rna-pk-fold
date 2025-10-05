@@ -136,6 +136,62 @@ def _coax_energy_for_join(seq: str, left_pair: Tuple[int, int], right_pair: Tupl
         return 0.0
     return costs.coax_pairs.get((lp, rp), costs.coax_pairs.get((rp, lp), 0.0))
 
+def _short_hole_penalty(costs: "RERECosts", k: int, l: int) -> float:
+    """Energetic penalty for tiny holes; applied once at compose time."""
+    h = l - k - 1
+    return costs.short_hole_caps.get(h, 0.0)
+
+def IS2_outer_yhx(seq: str, tables, i: int, j: int, r: int, s: int) -> float:
+    """Mirror IS2 hook for YHX/WHX contexts."""
+    if tables and hasattr(tables, "IS2_outer_yhx"):
+        fn = tables.IS2_outer_yhx
+        return fn(seq, i, j, r, s) if callable(fn) else float(fn)
+    return 0.0
+
+def _coax_pack(seq: str, i: int, j: int, r: int, k: int, l: int,
+               cfg: "REREConfig", costs: "RERECosts", adjacent: bool) -> Tuple[float, float]:
+    """
+    Compute seam coax energy for OO (and optionally OI/IO variants),
+    with gating (adjacent/mismatch), min-helix-length, contact-specific scales,
+    positive-clamp (never hurts), and a one-time coax_bonus when any seam applies.
+    Returns (total_coax_energy, coax_bonus_term).
+    """
+    # End-cap lengths along the outer chain
+    left_len  = (r - i + 1)
+    right_len = (j - (k + 1) + 1)
+
+    if left_len < costs.coax_min_helix_len or right_len < costs.coax_min_helix_len:
+        return 0.0, 0.0
+
+    mismatch = cfg.enable_coax_mismatch and (abs(k - r) == 1)
+    seam_ok  = cfg.enable_coax and (adjacent or mismatch)
+
+    if not seam_ok:
+        return 0.0, 0.0
+
+    total = 0.0
+
+    # OO contact (standard): (i,r) with (k+1,j)
+    e = _coax_energy_for_join(seq, (i, r), (k + 1, j), costs)
+    if mismatch:
+        e = e * costs.mismatch_coax_scale + costs.mismatch_coax_bonus
+    if e > 0.0:
+        e = 0.0
+    total += costs.coax_scale_oo * e
+
+    # Optional variants: OI and IO
+    if cfg.enable_coax_variants:
+        e_oi = _coax_energy_for_join(seq, (i, r), (k, l), costs)
+        if e_oi > 0.0: e_oi = 0.0
+        total += costs.coax_scale_oi * e_oi
+
+        e_io = _coax_energy_for_join(seq, (k, l), (k + 1, j), costs)
+        if e_io > 0.0: e_io = 0.0
+        total += costs.coax_scale_io * e_io
+
+    # Apply global scale g at the call site; we return the raw summed contact energy.
+    return total, costs.coax_bonus
+
 
 @dataclass(slots=True)
 class RERECosts:
@@ -162,19 +218,34 @@ class RERECosts:
     dangle_outer_R: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (j-1, j)
     coax_pairs: Dict[Tuple[str, str], float] = field(default_factory=dict)  # ((pairTypeA),(pairTypeB))
 
-    # Optional bonuses/penalties
+    # Bonuses/penalties
     coax_bonus: float = 0.0  # used in your vx path; leave 0.0 unless you want it
+    coax_scale_oo: float = 1.0  # outer↔outer seam scale (default behavior)
+    coax_scale_oi: float = 1.0  # outer↔inner (variant)
+    coax_scale_io: float = 1.0  # inner↔outer (variant)
+    coax_min_helix_len: int = 1  # require ≥ this many nts in each end-cap span
+    coax_scale: float = 1.0
+
+    # Mismatch/dangling coax
+    mismatch_coax_scale: float = 0.5  # attenuate coax when |k-r|==1
+    mismatch_coax_bonus: float = 0.0  # constant sweetener for mismatch seams
+
+    # Short-hole capping (energetic)
+    short_hole_caps: Dict[int, float] = field(default_factory=dict)  # e.g., {1:+2.0, 2:+1.0}
+
     Gwh: float = 0.0  # penalty for overlapping PKs (not used yet)
     Gwi: float = 0.0 # inner-gap/inner-PK entry penalty (Ĝ_wI)
     Gwh_wx: float = 0.0  # used by WX-level YHX+YHX “same-hole overlap”
     Gwh_whx: float = 0.0  # used by WHX-level overlap-split
-    coax_scale: float = 1.0
 
 @dataclass(slots=True)
 class REREConfig:
     enable_coax: bool = False # keep off initially
     enable_wx_overlap: bool = False # turn on WX same-hole overlap terms
     enable_coax_variants: bool = False  # NEW: add extra coax topologies in VX composition
+    enable_coax_mismatch: bool = False  # allow |k-r|==1 seam as "mismatch coax"
+    enable_join_drift: bool = False  # enable slight hole drift at join
+    drift_radius: int = 0  # how far to drift (0 = off)
     pk_penalty_gw: float = 1.0 # Gw: pseudoknot introduction penalty (kcal/mol)
     min_hole_width: int = 0  # 0 = identical behavior; 1+ prunes zero/narrow holes
     min_outer_left: int = 0  # minimal length of [i..r]
@@ -916,32 +987,17 @@ class RivasEddyEngine:
 
                     adjacent = (r == k)
 
-                    # Coax only makes sense if both sides can host ≥1 base pair at their end caps:
-                    #   left cap (i,r) requires r > i; right cap (k+1,j) requires j > k+1
-                    nontrivial_caps = (r > i) and (j > (k + 1))
-
-                    coax_e = 0.0
-                    coax_bonus_term = 0.0
-                    if self.cfg.enable_coax and adjacent and nontrivial_caps:
-                        coax_e = _coax_energy_for_join(seq, (i, r), (k + 1, j), self.cfg.costs)
-                        if self.cfg.enable_coax_variants:
-                            coax_e += _coax_energy_for_join(seq, (i, r), (k, l), self.cfg.costs)
-                            coax_e += _coax_energy_for_join(seq, (k, l), (k + 1, j), self.cfg.costs)
-
-                        # Don’t penalize if the table returns a positive (destabilizing) coax;
-                        # treat “no coax” as 0 so we never do worse just for enabling coax.
-                        if coax_e > 0.0:
-                            coax_e = 0.0
-
-                        # Apply the constant coax bonus only when a coax-eligible join is considered
-                        coax_bonus_term = coax
+                    # consolidated coax handling (gates, min helix len, variants, mismatch, clamp)
+                    coax_total, coax_bonus_term = _coax_pack(
+                        seq, i, j, r, k, l, self.cfg, self.cfg.costs, adjacent
+                    )
 
                     cand_first = Gw + L_u + R_u
                     cand_Lc = L_c + R_u
                     cand_Rc = L_u + R_c
                     cand_both = L_c + R_c
 
-                    cand = min(cand_first, cand_Lc, cand_Rc, cand_both) + g * coax_e + coax_bonus_term
+                    cand = min(cand_first, cand_Lc, cand_Rc, cand_both) + g * coax_total + coax_bonus_term
                     if cand < best_c:
                         best_c = cand
                         best_bp = (RE_BP_COMPOSE_VX, (r, k, l))
