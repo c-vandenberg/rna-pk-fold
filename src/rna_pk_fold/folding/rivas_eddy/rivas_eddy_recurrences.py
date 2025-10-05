@@ -159,6 +159,10 @@ class RERECosts:
     coax_bonus: float = 0.0  # used in your vx path; leave 0.0 unless you want it
     Gwh: float = 0.0  # penalty for overlapping PKs (not used yet)
     Gwi: float = 0.0 # inner-gap/inner-PK entry penalty (Ĝ_wI)
+    Gwh_wx: float = 0.0  # used by WX-level YHX+YHX “same-hole overlap”
+    Gwh_whx: float = 0.0  # used by WHX-level overlap-split
+    Q_tilde_out: float = 0.2  # outer single-strand (YHX SS trims)
+    Q_tilde_hole: float = 0.2  # hole single-strand (ZHX SS; VHX→ZHX SS)
     coax_scale: float = 1.0
 
 @dataclass(slots=True)
@@ -330,7 +334,10 @@ class RivasEddyEngine:
         n = re.n
         q = self.cfg.costs.q_ss
         Gw = self.cfg.pk_penalty_gw
+        Gwh = getattr(self.cfg.costs, "Gwh", 0.0)
         Gwi = self.cfg.costs.Gwi
+        Gwh_wx = (self.cfg.costs.Gwh_wx if self.cfg.costs.Gwh_wx != 0.0 else self.cfg.costs.Gwh)
+        Gwh_whx = (self.cfg.costs.Gwh_whx if self.cfg.costs.Gwh_whx != 0.0 else self.cfg.costs.Gwh)
         tables = getattr(self.cfg, "tables", None)
         coax = self.cfg.costs.coax_bonus if self.cfg.enable_coax else 0.0
         g = self.cfg.costs.coax_scale
@@ -339,7 +346,8 @@ class RivasEddyEngine:
         P_ = getattr(tables, "P_tilde", 0.0)
         L_ = getattr(tables, "L_tilde", 0.0)
         R_ = getattr(tables, "R_tilde", 0.0)
-        Q_ = getattr(tables, "Q_tilde", 0.0)
+        Q_out = getattr(tables, "Q_tilde_out", getattr(self.cfg.costs, "Q_tilde_out", 0.0))
+        Q_hole = getattr(tables, "Q_tilde_hole", getattr(self.cfg.costs, "Q_tilde_hole", 0.0))
         M_ = getattr(tables, "M_tilde", 0.0)
 
         # --- 0. Seed non-gap from nested ---
@@ -422,14 +430,13 @@ class RivasEddyEngine:
                                     best = cand
                                     best_bp = (RE_BP_WHX_SPLIT_RIGHT_WX_WHX, (s2,))
 
-                        # --- NEW: overlapping-PK split into WHX + WHX with penalty Gwh ---
-                        Gwh = getattr(self.cfg.costs, "Gwh", 0.0)
-                        if Gwh != 0.0:  # skip loop if it's 0 for speed
+                        # --- NEW: overlapping-PK split into WHX + WHX with penalty Gwh_whx ---
+                        if Gwh_whx != 0.0:  # skip loop if it's 0 for speed
                             for r in range(i, j):
                                 left = re.whx_matrix.get(i, r, k, l)
                                 right = re.whx_matrix.get(r + 1, j, k, l)
                                 if math.isfinite(left) and math.isfinite(right):
-                                    cand = Gwh + left + right
+                                    cand = Gwh_whx + left + right
                                     if cand < best:
                                         best = cand
                                         best_bp = (RE_BP_WHX_OVERLAP_SPLIT, (r,))
@@ -467,7 +474,7 @@ class RivasEddyEngine:
 
                         # --- SINGLE-STRAND from ZHX (label left/right)
                         v_zhx = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, l)
-                        cand = Q_ + v_zhx
+                        cand = Q_hole + v_zhx
                         if cand < best:
                             best, best_bp = cand, (RE_BP_VHX_SS_LEFT, (i, j, k, l))
                         # same energy; alternate label for symmetry
@@ -560,16 +567,18 @@ class RivasEddyEngine:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_DANGLE_L, (i, j, k, l + 1))
 
+                        # SS_LEFT
                         v = re.zhx_matrix.get(i, j, k - 1, l)
                         if math.isfinite(v):
-                            cand = Q_ + v
+                            cand = Q_hole + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_SS_LEFT, (i, j, k - 1, l))
 
+                        # SS_RIGHT
                         v = re.zhx_matrix.get(i, j, k, l + 1)
                         if math.isfinite(v):
-                            cand = Q_ + v
+                            cand = Q_hole + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_SS_RIGHT, (i, j, k, l + 1))
@@ -650,7 +659,7 @@ class RivasEddyEngine:
                         # Single-strand outer trims: Left
                         v = re.yhx_matrix.get(i + 1, j, k, l)
                         if math.isfinite(v):
-                            cand = Q_ + v
+                            cand = Q_out + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_SS_LEFT, (i + 1, j, k, l))
@@ -658,7 +667,7 @@ class RivasEddyEngine:
                         # Single-strand outer trims: Right
                         v = re.yhx_matrix.get(i, j - 1, k, l)
                         if math.isfinite(v):
-                            cand = Q_ + v
+                            cand = Q_out + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_SS_RIGHT, (i, j - 1, k, l))
@@ -666,7 +675,7 @@ class RivasEddyEngine:
                         # Single-strand both sides (shortcut; equivalent to two trims)
                         v = re.yhx_matrix.get(i + 1, j - 1, k, l)
                         if math.isfinite(v):
-                            cand = 2.0 * Q_ + v
+                            cand = 2.0 * Q_out + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_SS_BOTH, (i + 1, j - 1, k, l))
@@ -773,8 +782,7 @@ class RivasEddyEngine:
                             best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
 
                     # (e) OPTIONAL: same-hole overlap via YHX+YHX with penalty Gwh
-                    if self.cfg.enable_wx_overlap and getattr(self.cfg.costs, "Gwh", 0.0) != 0.0:
-                        Gwh = self.cfg.costs.Gwh
+                    if self.cfg.enable_wx_overlap and Gwh_wx != 0.0:
                         # enumerate all inner holes (k,l) within (i,j)
                         for (k2, l2) in _iter_inner_holes(i, j):
                             # split the outer interval at r; both subproblems share the same (k2,l2)
@@ -782,7 +790,7 @@ class RivasEddyEngine:
                                 left_y = re.yhx_matrix.get(i, r2, k2, l2)
                                 right_y = re.yhx_matrix.get(r2 + 1, j, k2, l2)
                                 if math.isfinite(left_y) and math.isfinite(right_y):
-                                    cand_overlap = Gwh + left_y + right_y
+                                    cand_overlap = Gwh_wx + left_y + right_y
                                     if cand_overlap < best:
                                         best = cand_overlap
                                         best_bp = (RE_BP_COMPOSE_WX_YHX_OVERLAP, (r2, k2, l2))
@@ -851,4 +859,4 @@ def _iter_inner_holes(i: int, j: int) -> Iterator[Tuple[int, int]]:
         return
     for k in range(i, j):
         for l in range(k + 1, j + 1):
-            yield (k, l)
+            yield k, l
