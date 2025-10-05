@@ -11,6 +11,7 @@ from rna_pk_fold.folding.traceback import (
 from rna_pk_fold.folding.rivas_eddy.rivas_eddy_recurrences import (
     # Top-level compositions backpointer tags
     RE_BP_COMPOSE_WX, RE_BP_COMPOSE_WX_YHX,
+    RE_BP_COMPOSE_WX_YHX_WHX, RE_BP_COMPOSE_WX_WHX_YHX,
 
     # WHX move backpointer tags
     RE_BP_WHX_SHRINK_LEFT, RE_BP_WHX_SHRINK_RIGHT, RE_BP_WHX_TRIM_LEFT,
@@ -113,6 +114,19 @@ def traceback_re_with_pk(seq: str, nested: FoldState, re: RivasEddyState) -> RET
             if op == RE_BP_COMPOSE_WX_YHX:
                 r, k, l = payload
                 stack.append(("YHX", i, r, k, l, layer))
+                stack.append(("YHX", k + 1, j, l - 1, r + 1, layer + 1))
+                continue
+
+            if op == RE_BP_COMPOSE_WX_YHX_WHX:
+                r, k, l = payload
+                # left layer = 0, right layer = 1 (consistent with others)
+                stack.append(("YHX", i, r, k, l, layer))
+                stack.append(("WHX", k + 1, j, l - 1, r + 1, layer + 1))
+                continue
+
+            if op == RE_BP_COMPOSE_WX_WHX_YHX:
+                r, k, l = payload
+                stack.append(("WHX", i, r, k, l, layer))
                 stack.append(("YHX", k + 1, j, l - 1, r + 1, layer + 1))
                 continue
 

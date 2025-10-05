@@ -11,12 +11,17 @@ from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
 from rna_pk_fold.utils.nucleotide_utils import dimer_key
 
 # ======================================================================
-# VHX backpointer tags
+
 # ======================================================================
 RE_BP_COMPOSE_WX   = "RE_PK_COMPOSE_WX"
 RE_BP_COMPOSE_VX   = "RE_PK_COMPOSE_VX"
 RE_BP_COMPOSE_WX_YHX = "RE_PK_COMPOSE_WX_YHX"
+RE_BP_COMPOSE_WX_YHX_WHX = "RE_PK_COMPOSE_WX_YHX_WHX"  # yhx + whx
+RE_BP_COMPOSE_WX_WHX_YHX = "RE_PK_COMPOSE_WX_WHX_YHX"  # whx + yhx
 
+# ======================================================================
+
+# ======================================================================
 RE_BP_WHX_SHRINK_LEFT  = "RE_SHRINK_LEFT"
 RE_BP_WHX_SHRINK_RIGHT = "RE_SHRINK_RIGHT"
 RE_BP_WHX_TRIM_LEFT    = "RE_TRIM_LEFT"
@@ -40,6 +45,9 @@ RE_BP_VHX_SPLIT_RIGHT_ZHX_WX = "RE_VHX_SPLIT_RIGHT_ZHX_WX"  # zhx(i,j:k,s) + wx(
 RE_BP_VHX_IS2_INNER_ZHX      = "RE_VHX_IS2_INNER_ZHX"       # ĨS2(i,j:r,s) + zhx(r,s:k,l)
 RE_BP_VHX_WRAP_WHX           = "RE_VHX_WRAP_WHX"            # P~+M~ + whx(i+1,j-1:k,l)
 
+# ======================================================================
+
+# ======================================================================
 RE_BP_VHX_CLOSE_BOTH = "RE_VHX_CLOSE_BOTH"      # 2*P~ + M~ + whx(i+1,j-1:k-1,l+1)
 RE_BP_ZHX_FROM_VHX   = "RE_ZHX_FROM_VHX"        # P~ + vhx(i,j:k,l)
 RE_BP_ZHX_DANGLE_LR  = "RE_ZHX_DANGLE_LR"       # L~+R~+P~ + vhx(i,j:k-1,l+1)
@@ -51,6 +59,9 @@ RE_BP_ZHX_SPLIT_LEFT_ZHX_WX   = "RE_ZHX_SPLIT_LEFT_ZHX_WX"    # zhx(i,j:r,l) + w
 RE_BP_ZHX_SPLIT_RIGHT_ZHX_WX  = "RE_ZHX_SPLIT_RIGHT_ZHX_WX"   # zhx(i,j:k,s) + wx(l, s-1)
 RE_BP_ZHX_IS2_INNER_VHX       = "RE_ZHX_IS2_INNER_VHX"        # ĨS2(i,j:r,s) + vhx(r,s:k,l)
 
+# ======================================================================
+
+# ======================================================================
 RE_BP_YHX_DANGLE_L   = "RE_YHX_DANGLE_L"        # L~+P~ + vhx(i+1,j:k,l)
 RE_BP_YHX_DANGLE_R   = "RE_YHX_DANGLE_R"        # R~+P~ + vhx(i, j-1:k,l)
 RE_BP_YHX_SS_LEFT    = "RE_YHX_SS_LEFT"         # Q~ + yhx(i+1,j:k,l)
@@ -724,7 +735,7 @@ class RivasEddyEngine:
                         best = cand_w
                         best_bp = (RE_BP_COMPOSE_WX, (r, k, l))
 
-                    # (b) NEW: yhx + yhx (non-nested branch)
+                    # (b) yhx + yhx (non-nested branch)
                     left_y = re.yhx_matrix.get(i, r, k, l)
                     right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
                     if math.isfinite(left_y) and math.isfinite(right_y):
@@ -732,6 +743,24 @@ class RivasEddyEngine:
                         if cand_y < best:
                             best = cand_y
                             best_bp = (RE_BP_COMPOSE_WX_YHX, (r, k, l))
+
+                    # (c) MIXED: yhx (left) + whx (right)
+                    left_y = re.yhx_matrix.get(i, r, k, l)
+                    right_w = _whx_collapse_first(re, k + 1, j, l - 1, r + 1)
+                    if math.isfinite(left_y) and math.isfinite(right_w):
+                        cand_yw = Gw + left_y + right_w
+                        if cand_yw < best:
+                            best = cand_yw
+                            best_bp = (RE_BP_COMPOSE_WX_YHX_WHX, (r, k, l))
+
+                    # (d) MIXED: whx (left) + yhx (right)
+                    left_w = _whx_collapse_first(re, i, r, k, l)
+                    right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
+                    if math.isfinite(left_w) and math.isfinite(right_y):
+                        cand_wy = Gw + left_w + right_y
+                        if cand_wy < best:
+                            best = cand_wy
+                            best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
 
                 re.wx_matrix.set(i, j, best)
                 if best_bp is not None:
