@@ -201,6 +201,8 @@ class RivasEddyEngine:
                 v_base = nested.v_matrix.get(i, j)
                 re.wx_matrix.set(i, j, w_base)
                 re.vx_matrix.set(i, j, v_base)
+                re.wxu_matrix.set(i, j, w_base)
+                re.vxu_matrix.set(i, j, v_base)
 
         # --- 1.1 `whx` zero-cost hole-shrink (collapse to wx)) ---
         # Order: outer span s increasing; for each (i,j) enumerate holes by increasing width h.
@@ -538,14 +540,14 @@ class RivasEddyEngine:
                         # --- CLOSE_BOTH: pair both outer (i,j) and hole (k,l) ends in one step
                         close = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k - 1, l + 1)
                         if math.isfinite(close):
-                            cand = 2.0 * P_hole + M_vhx + close + Gwi
+                            cand = 2.0 * P_hole + M_vhx + close + Gwi + M_whx
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_VHX_CLOSE_BOTH, (i + 1, j - 1, k - 1, l + 1))
 
                         # --- WRAP via WHX (P̃+M̃ + whx(i+1,j-1:k,l)) ---
                         wrap = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k, l)
-                        cand = P_hole + M_vhx + wrap + Gwi
+                        cand = P_hole + M_vhx + wrap + Gwi + M_whx
                         if cand < best:
                             best = cand
                             best_bp = (RE_BP_VHX_WRAP_WHX, (i + 1, j - 1))
@@ -601,7 +603,7 @@ class RivasEddyEngine:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_DANGLE_L, (i, j, k, l + 1))
 
-                        # SS_LEFT
+                        # SS_LEFT (prefer left if strictly better)
                         v = re.zhx_matrix.get(i, j, k - 1, l)
                         if math.isfinite(v):
                             cand = Q_hole + v
@@ -609,12 +611,14 @@ class RivasEddyEngine:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_SS_LEFT, (i, j, k - 1, l))
 
-                        # SS_RIGHT
+                        # SS_RIGHT (on tie with current best, flip to RIGHT for symmetry)
                         v = re.zhx_matrix.get(i, j, k, l + 1)
                         if math.isfinite(v):
                             cand = Q_hole + v
                             if cand < best:
                                 best = cand
+                                best_bp = (RE_BP_ZHX_SS_RIGHT, (i, j, k, l + 1))
+                            elif cand == best:
                                 best_bp = (RE_BP_ZHX_SS_RIGHT, (i, j, k, l + 1))
 
                         for r in range(i, k):
@@ -717,7 +721,7 @@ class RivasEddyEngine:
                         # Wrap via WHX(i,j:k-1,l+1)
                         v = re.whx_matrix.get(i, j, k - 1, l + 1)
                         if math.isfinite(v):
-                            cand = P_out + M_yhx + v + Gwi
+                            cand = P_out + M_yhx + M_whx + v + Gwi
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_WRAP_WHX, (i, j, k - 1, l + 1))
@@ -726,7 +730,7 @@ class RivasEddyEngine:
                         v = re.whx_matrix.get(i + 1, j, k - 1, l + 1)
                         if math.isfinite(v):
                             Lo = _dangle_outer_L(seq, i, self.cfg.costs)
-                            cand = Lo + P_out + M_yhx + v + Gwi
+                            cand = Lo + P_out + M_yhx + M_whx + v + Gwi
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_WRAP_WHX_L, (i + 1, j, k - 1, l + 1))
@@ -734,7 +738,7 @@ class RivasEddyEngine:
                         v = re.whx_matrix.get(i, j - 1, k - 1, l + 1)
                         if math.isfinite(v):
                             Ro = _dangle_outer_R(seq, j, self.cfg.costs)
-                            cand = Ro + P_out + M_yhx + v + Gwi
+                            cand = Ro + P_out + M_yhx + M_whx + v + Gwi
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_WRAP_WHX_R, (i, j - 1, k - 1, l + 1))
@@ -743,7 +747,7 @@ class RivasEddyEngine:
                         if math.isfinite(v):
                             Lo = _dangle_outer_L(seq, i, self.cfg.costs)
                             Ro = _dangle_outer_R(seq, j, self.cfg.costs)
-                            cand = Lo + Ro + P_out + M_yhx + v + Gwi
+                            cand = Lo + Ro + P_out + M_yhx + M_whx + v + Gwi
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_WRAP_WHX_LR, (i + 1, j - 1, k - 1, l + 1))
