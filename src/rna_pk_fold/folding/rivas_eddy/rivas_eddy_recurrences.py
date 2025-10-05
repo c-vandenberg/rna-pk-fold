@@ -851,6 +851,18 @@ class RivasEddyEngine:
                                     best = cand
                                     best_bp = (RE_BP_YHX_SPLIT_RIGHT_WX_YHX, (s2,))
 
+                        # --- INTERIOR (ĨS₂ for YHX + whx(r,s:k,l)) over r,s covering hole ---
+                        for r2 in range(i, k + 1):
+                            for s2 in range(l, j + 1):
+                                if r2 <= s2:
+                                    inner_w = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, r2, s2, k, l)
+                                    if math.isfinite(inner_w):
+                                        bridge = IS2_outer_yhx(seq, tables, i, j, r2, s2)
+                                        cand = bridge + inner_w
+                                        if cand < best:
+                                            best = cand
+                                            best_bp = (RE_BP_YHX_IS2_INNER_WHX, (r2, s2))
+
                         re.yhx_matrix.set(i, j, k, l, best)
                         re.yhx_back_ptr.set(i, j, k, l, best_bp)
 
