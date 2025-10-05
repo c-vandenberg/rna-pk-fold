@@ -134,7 +134,7 @@ def _coax_energy_for_join(seq: str, left_pair: Tuple[int, int], right_pair: Tupl
     rp = _pair_key(seq, *right_pair)
     if lp is None or rp is None:
         return 0.0
-    return costs.coax_pairs.get((lp, rp), 0.0)  # table value, typically negative if stabilizing
+    return costs.coax_pairs.get((lp, rp), costs.coax_pairs.get((rp, lp), 0.0))
 
 
 @dataclass(slots=True)
@@ -176,7 +176,11 @@ class REREConfig:
     enable_wx_overlap: bool = False # turn on WX same-hole overlap terms
     enable_coax_variants: bool = False  # NEW: add extra coax topologies in VX composition
     pk_penalty_gw: float = 1.0 # Gw: pseudoknot introduction penalty (kcal/mol)
-    costs: RERECosts = RERECosts()
+    min_hole_width: int = 0  # 0 = identical behavior; 1+ prunes zero/narrow holes
+    min_outer_left: int = 0  # minimal length of [i..r]
+    min_outer_right: int = 0  # minimal length of [r+1..j]
+    strict_complement_order: bool = True  # enforce i<k<=r<l<=j
+    costs: RERECosts = field(default_factory=RERECosts)
 
 
 class RivasEddyEngine:
@@ -504,9 +508,7 @@ class RivasEddyEngine:
                         cand = Q_hole + v_zhx
                         if cand < best:
                             best, best_bp = cand, (RE_BP_VHX_SS_LEFT, (i, j, k, l))
-
-                        # Same energy; alternate label for symmetry
-                        elif cand == best:
+                        elif cand == best and best_bp and best_bp[0] in (RE_BP_VHX_SS_LEFT, RE_BP_VHX_SS_RIGHT):
                             best_bp = (RE_BP_VHX_SS_RIGHT, (i, j, k, l))
 
                         # --- SPLIT on the LEFT: r in [i..k-1]  →  zhx(i,j:r,l) + wx(r+1,k)
@@ -618,7 +620,7 @@ class RivasEddyEngine:
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_SS_RIGHT, (i, j, k, l + 1))
-                            elif cand == best:
+                            elif cand == best and best_bp and best_bp[0] in (RE_BP_ZHX_SS_LEFT, RE_BP_ZHX_SS_RIGHT):
                                 best_bp = (RE_BP_ZHX_SS_RIGHT, (i, j, k, l + 1))
 
                         for r in range(i, k):
@@ -709,6 +711,8 @@ class RivasEddyEngine:
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_SS_RIGHT, (i, j - 1, k, l))
+                            elif cand == best and best_bp and best_bp[0] in (RE_BP_YHX_SS_LEFT, RE_BP_YHX_SS_RIGHT):
+                                best_bp = (RE_BP_YHX_SS_RIGHT, (i, j - 1, k, l))
 
                         # Single-strand both sides (shortcut; equivalent to two trims)
                         v = re.yhx_matrix.get(i + 1, j - 1, k, l)
@@ -784,6 +788,17 @@ class RivasEddyEngine:
                 best_bp = None
 
                 for (r, k, l) in _iter_complementary_tuples(i, j):
+                    if self.cfg.strict_complement_order and not (i < k <= r < l <= j):
+                        continue
+
+                        # hole width bound
+                    if (l - k - 1) < self.cfg.min_hole_width:
+                        continue
+
+                        # outer width bounds around the split r
+                    if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
+                        continue
+
                     # gather both flavors via collapse (charged only differs if hole degenerates)
                     L_u = _whx_collapse_with(re, i, r, k, l, charged=False)
                     R_u = _whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
@@ -847,7 +862,7 @@ class RivasEddyEngine:
                     # (e) OPTIONAL: same-hole overlap via YHX+YHX with penalty Gwh
                     if self.cfg.enable_wx_overlap and Gwh_wx != 0.0:
                         # enumerate all inner holes (k,l) within (i,j)
-                        for (k2, l2) in _iter_inner_holes(i, j):
+                        for (k2, l2) in _iter_inner_holes(i, j, min_hole=self.cfg.min_hole_width):
                             # split the outer interval at r; both subproblems share the same (k2,l2)
                             for r2 in range(i, j):
                                 left_y = re.yhx_matrix.get(i, r2, k2, l2)
@@ -883,23 +898,50 @@ class RivasEddyEngine:
                 best_bp = None
 
                 for (r, k, l) in _iter_complementary_tuples(i, j):
+                    if self.cfg.strict_complement_order and not (i < k <= r < l <= j):
+                        continue
+
+                        # hole width bound
+                    if (l - k - 1) < self.cfg.min_hole_width:
+                        continue
+
+                        # outer width bounds around the split r
+                    if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
+                        continue
+
                     L_u = _zhx_collapse_with(re, i, r, k, l, charged=False)
                     R_u = _zhx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
                     L_c = _zhx_collapse_with(re, i, r, k, l, charged=True)
                     R_c = _zhx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
 
-                    coax_e = _coax_energy_for_join(seq, (i, r), (k + 1, j), self.cfg.costs)
-                    if self.cfg.enable_coax_variants:
-                        coax_e += _coax_energy_for_join(seq, (i, r), (k, l), self.cfg.costs)
-                        coax_e += _coax_energy_for_join(seq, (k, l), (k + 1, j), self.cfg.costs)
+                    adjacent = (r == k)
+
+                    # Coax only makes sense if both sides can host ≥1 base pair at their end caps:
+                    #   left cap (i,r) requires r > i; right cap (k+1,j) requires j > k+1
+                    nontrivial_caps = (r > i) and (j > (k + 1))
+
+                    coax_e = 0.0
+                    coax_bonus_term = 0.0
+                    if self.cfg.enable_coax and adjacent and nontrivial_caps:
+                        coax_e = _coax_energy_for_join(seq, (i, r), (k + 1, j), self.cfg.costs)
+                        if self.cfg.enable_coax_variants:
+                            coax_e += _coax_energy_for_join(seq, (i, r), (k, l), self.cfg.costs)
+                            coax_e += _coax_energy_for_join(seq, (k, l), (k + 1, j), self.cfg.costs)
+
+                        # Don’t penalize if the table returns a positive (destabilizing) coax;
+                        # treat “no coax” as 0 so we never do worse just for enabling coax.
+                        if coax_e > 0.0:
+                            coax_e = 0.0
+
+                        # Apply the constant coax bonus only when a coax-eligible join is considered
+                        coax_bonus_term = coax
 
                     cand_first = Gw + L_u + R_u
                     cand_Lc = L_c + R_u
                     cand_Rc = L_u + R_c
                     cand_both = L_c + R_c
 
-                    cand = min(cand_first, cand_Lc, cand_Rc, cand_both) + g * coax_e + (
-                        coax if self.cfg.enable_coax else 0.0)
+                    cand = min(cand_first, cand_Lc, cand_Rc, cand_both) + g * coax_e + coax_bonus_term
                     if cand < best_c:
                         best_c = cand
                         best_bp = (RE_BP_COMPOSE_VX, (r, k, l))
@@ -955,7 +997,7 @@ def _iter_complementary_tuples(i: int, j: int) -> Iterator[Tuple[int, int, int]]
     We keep r strictly inside (i..j), and choose k<l with some spacing.
     Many combos will be filtered by +inf lookups; that's fine for Step 12 minimal.
     """
-    # i < k < r < l <= j  (keeps non-degenerate subspans)
+    # i < k ≤ r < l ≤ j  (keeps non-degenerate subspans)
     for r in range(i + 1, j):      # r is a "connector" split inside [i..j]
         for k in range(i, r + 1):  # hole start (left/before r)
             for l in range(r + 1, j + 1):  # hole end (right/after r)
@@ -963,10 +1005,10 @@ def _iter_complementary_tuples(i: int, j: int) -> Iterator[Tuple[int, int, int]]
                 # The whx accessors will return +inf for any illegal shapes.
                 yield r, k, l
 
-def _iter_inner_holes(i: int, j: int) -> Iterator[Tuple[int, int]]:
-    """Yield all (k,l) with i <= k < l <= j-1 and at least one base inside (i..j)."""
+def _iter_inner_holes(i: int, j: int, min_hole: int = 0):
     if j - i <= 1:
         return
+    # start l at k+1+min_hole to enforce interior length
     for k in range(i, j):
-        for l in range(k + 1, j + 1):
+        for l in range(k + 1 + min_hole, j + 1):
             yield k, l
