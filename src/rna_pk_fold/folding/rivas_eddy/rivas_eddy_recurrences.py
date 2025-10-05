@@ -19,6 +19,8 @@ RE_BP_COMPOSE_WX_YHX = "RE_PK_COMPOSE_WX_YHX"
 RE_BP_COMPOSE_WX_YHX_WHX = "RE_PK_COMPOSE_WX_YHX_WHX"  # yhx + whx
 RE_BP_COMPOSE_WX_WHX_YHX = "RE_PK_COMPOSE_WX_WHX_YHX"  # whx + yhx
 RE_BP_COMPOSE_WX_YHX_OVERLAP = "RE_PK_COMPOSE_WX_YHX_OVERLAP"  # yhx(i,r:k,l) + yhx(r+1,j:k,l)
+RE_BP_WX_SELECT_UNCHARGED = "RE_WX_SELECT_UNCHARGED"
+RE_BP_VX_SELECT_UNCHARGED = "RE_VX_SELECT_UNCHARGED"
 
 # ======================================================================
 
@@ -533,6 +535,14 @@ class RivasEddyEngine:
                                         best = cand
                                         best_bp = (RE_BP_VHX_IS2_INNER_ZHX, (r, s2))
 
+                        # --- CLOSE_BOTH: pair both outer (i,j) and hole (k,l) ends in one step
+                        close = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k - 1, l + 1)
+                        if math.isfinite(close):
+                            cand = 2.0 * P_hole + M_vhx + close + Gwi
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_VHX_CLOSE_BOTH, (i + 1, j - 1, k - 1, l + 1))
+
                         # --- WRAP via WHX (P̃+M̃ + whx(i+1,j-1:k,l)) ---
                         wrap = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k, l)
                         cand = P_hole + M_vhx + wrap + Gwi
@@ -848,10 +858,18 @@ class RivasEddyEngine:
                 if best_bp is not None:
                     re.wx_back_ptr[(i, j)] = best_bp
 
+        # Publish final WX as min(uncharged, charged) with selection backpointer
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
-                re.wx_matrix.set(i, j, min(re.wxu_matrix.get(i, j), re.wxc_matrix.get(i, j)))
+                wxu = re.wxu_matrix.get(i, j)
+                wxc = re.wxc_matrix.get(i, j)
+                if wxu <= wxc:
+                    re.wx_matrix.set(i, j, wxu)
+                    # prefer neutral path; override any charged bp
+                    re.wx_back_ptr[(i, j)] = (RE_BP_WX_SELECT_UNCHARGED, ())
+                else:
+                    re.wx_matrix.set(i, j, wxc)
 
         # --- 2.2 Composition into VX:  (zhx) ---
         for s in range(n):
@@ -886,11 +904,18 @@ class RivasEddyEngine:
                 if best_bp is not None:
                     re.vx_back_ptr[(i, j)] = best_bp
 
-        # Publish final VX as min(uncharged, charged)
+        # Publish final VX as min(uncharged, charged) with selection backpointer
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
-                re.vx_matrix.set(i, j, min(re.vxu_matrix.get(i, j), re.vxc_matrix.get(i, j)))
+                vxu = re.vxu_matrix.get(i, j)
+                vxc = re.vxc_matrix.get(i, j)
+                if vxu <= vxc:
+                    re.vx_matrix.set(i, j, vxu)
+                    re.vx_back_ptr[(i, j)] = (RE_BP_VX_SELECT_UNCHARGED, ())
+                else:
+                    re.vx_matrix.set(i, j, vxc)
+                    # keep the charged path’s detailed BP
 
 def _whx_collapse_first(re: RivasEddyState, i: int, j: int, k: int, l: int) -> float:
     """
