@@ -363,10 +363,20 @@ class RivasEddyEngine:
                 base_w = nested.w_matrix.get(i, j)
                 base_v = nested.v_matrix.get(i, j)
 
+                # Public views will become min(wxu, wxc) and min(vxu, vxc) later.
+                re.wxu_matrix.set(i, j, base_w)  # uncharged baseline
+                re.vxu_matrix.set(i, j, base_v)
+
+                # charged start as +inf (except i==j already set in make_re_fold_state)
+                if i != j:
+                    re.wxc_matrix.set(i, j, math.inf)
+                    re.vxc_matrix.set(i, j, math.inf)
+
+                # keep existing copies in wx/vx for now; rewrite at the very end
                 re.wx_matrix.set(i, j, base_w)
                 re.vx_matrix.set(i, j, base_v)
 
-                # NEW: seed inner-W once from nested; do NOT update later with PK terms
+                # wxi stays nested only (already seeded earlier step)
                 if hasattr(re, "wxi_matrix") and re.wxi_matrix is not None:
                     re.wxi_matrix.set(i, j, base_w)
 
@@ -382,14 +392,14 @@ class RivasEddyEngine:
                         best_bp = None
 
                         # 1) shrink-left: (k+1,l) + q
-                        v = get_whx_with_collapse(re.whx_matrix, re.wx_matrix, i, j, k + 1, l)
+                        v = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k + 1, l)
                         cand = v + q
                         if cand < best:
                             best = cand
                             best_bp = (RE_BP_WHX_SHRINK_LEFT, (i, j, k + 1, l))
 
                         # 2) shrink-right: (k,l-1) + q
-                        v = get_whx_with_collapse(re.whx_matrix, re.wx_matrix, i, j, k, l - 1)
+                        v = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l - 1)
                         cand = v + q
                         if cand < best:
                             best = cand
@@ -410,7 +420,7 @@ class RivasEddyEngine:
                             best_bp = (RE_BP_WHX_TRIM_RIGHT, (i, j - 1, k, l))
 
                         # 5) direct collapse (if h==0 via accessor, but here h>=1): allow as candidate anyway
-                        v = get_whx_with_collapse(re.whx_matrix, re.wx_matrix, i, j, k, l)
+                        v = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l)
                         if v < best:
                             best = v
                             best_bp = (RE_BP_WHX_COLLAPSE, (i, j))
@@ -486,17 +496,18 @@ class RivasEddyEngine:
                             best, best_bp = cand, (RE_BP_VHX_DANGLE_LR, (i, j, k + 1, l - 1))
 
                         # --- SINGLE-STRAND from ZHX (label left/right)
-                        v_zhx = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, l)
+                        v_zhx = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, l)
                         cand = Q_hole + v_zhx
                         if cand < best:
                             best, best_bp = cand, (RE_BP_VHX_SS_LEFT, (i, j, k, l))
-                        # same energy; alternate label for symmetry
-                        if cand < best:
-                            best, best_bp = cand, (RE_BP_VHX_SS_RIGHT, (i, j, k, l))
+
+                        # Same energy; alternate label for symmetry
+                        elif cand == best:
+                            best_bp = (RE_BP_VHX_SS_RIGHT, (i, j, k, l))
 
                         # --- SPLIT on the LEFT: r in [i..k-1]  →  zhx(i,j:r,l) + wx(r+1,k)
                         for r in range(i, k):
-                            left = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, r, l)
+                            left = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, r, l)
                             right = wxI(re, r + 1, k)
                             cand = left + right
                             if cand < best:
@@ -505,7 +516,7 @@ class RivasEddyEngine:
 
                         # --- SPLIT on the RIGHT: s in [l+1..j] →  zhx(i,j:k,s) + wx(l, s-1)
                         for s2 in range(l + 1, j + 1):
-                            left = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, s2)
+                            left = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, s2)
                             right = wxI(re, l, s2 - 1)
                             cand = left + right
                             if cand < best:
@@ -516,14 +527,14 @@ class RivasEddyEngine:
                         for r in range(i, k + 1):
                             for s2 in range(l, j + 1):
                                 if r <= k and l <= s2 and r <= s2:
-                                    inner = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, r, s2, k, l)
+                                    inner = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, r, s2, k, l)
                                     cand = IS2_outer(seq, tables, i, j, r, s2) + inner
                                     if cand < best:
                                         best = cand
                                         best_bp = (RE_BP_VHX_IS2_INNER_ZHX, (r, s2))
 
                         # --- WRAP via WHX (P̃+M̃ + whx(i+1,j-1:k,l)) ---
-                        wrap = get_whx_with_collapse(re.whx_matrix, re.wx_matrix, i + 1, j - 1, k, l)
+                        wrap = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k, l)
                         cand = P_hole + M_vhx + wrap + Gwi
                         if cand < best:
                             best = cand
@@ -755,16 +766,27 @@ class RivasEddyEngine:
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
-                best = re.wx_matrix.get(i, j)
+                best_c = re.wxc_matrix.get(i, j)
                 best_bp = None
 
                 for (r, k, l) in _iter_complementary_tuples(i, j):
-                    # (a) whx + whx (as before)
-                    left_w = _whx_collapse_first(re, i, r, k, l)
-                    right_w = _whx_collapse_first(re, k + 1, j, l - 1, r + 1)
-                    cand_w = Gw + left_w + right_w
-                    if cand_w < best:
-                        best = cand_w
+                    # gather both flavors via collapse (charged only differs if hole degenerates)
+                    L_u = _whx_collapse_with(re, i, r, k, l, charged=False)
+                    R_u = _whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
+                    L_c = _whx_collapse_with(re, i, r, k, l, charged=True)
+                    R_c = _whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
+                    # introduce charge ONCE
+                    cand_first = Gw + L_u + R_u
+
+                    # propagate charge WITHOUT re-charging if either side is already charged
+                    cand_Lc = L_c + R_u
+                    cand_Rc = L_u + R_c
+                    cand_both = L_c + R_c
+
+                    # choose the best way to be 'charged'
+                    cand = min(cand_first, cand_Lc, cand_Rc, cand_both)
+                    if cand < best_c:
+                        best_c = cand
                         best_bp = (RE_BP_COMPOSE_WX, (r, k, l))
 
                     # (b) yhx + yhx (non-nested branch)
@@ -772,27 +794,41 @@ class RivasEddyEngine:
                     right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
                     if math.isfinite(left_y) and math.isfinite(right_y):
                         cand_y = Gw + left_y + right_y
-                        if cand_y < best:
-                            best = cand_y
+                        if cand_y < best_c:
+                            best_c = cand_y
                             best_bp = (RE_BP_COMPOSE_WX_YHX, (r, k, l))
 
                     # (c) MIXED: yhx (left) + whx (right)
                     left_y = re.yhx_matrix.get(i, r, k, l)
-                    right_w = _whx_collapse_first(re, k + 1, j, l - 1, r + 1)
-                    if math.isfinite(left_y) and math.isfinite(right_w):
-                        cand_yw = Gw + left_y + right_w
-                        if cand_yw < best:
-                            best = cand_yw
-                            best_bp = (RE_BP_COMPOSE_WX_YHX_WHX, (r, k, l))
+                    if math.isfinite(left_y):
+                        R_u = _whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
+                        R_c = _whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
+                        if math.isfinite(R_u):
+                            cand = Gw + left_y + R_u  # introduce charge
+                            if cand < best_c:
+                                best_c = cand
+                                best_bp = (RE_BP_COMPOSE_WX_YHX_WHX, (r, k, l))
+                        if math.isfinite(R_c):
+                            cand = left_y + R_c  # carry charge, no +Gw
+                            if cand < best_c:
+                                best_c = cand
+                                best_bp = (RE_BP_COMPOSE_WX_YHX_WHX, (r, k, l))
 
                     # (d) MIXED: whx (left) + yhx (right)
-                    left_w = _whx_collapse_first(re, i, r, k, l)
                     right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
-                    if math.isfinite(left_w) and math.isfinite(right_y):
-                        cand_wy = Gw + left_w + right_y
-                        if cand_wy < best:
-                            best = cand_wy
-                            best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
+                    if math.isfinite(right_y):
+                        L_u = _whx_collapse_with(re, i, r, k, l, charged=False)
+                        L_c = _whx_collapse_with(re, i, r, k, l, charged=True)
+                        if math.isfinite(L_u):
+                            cand = Gw + L_u + right_y  # introduce charge
+                            if cand < best_c:
+                                best_c = cand
+                                best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
+                        if math.isfinite(L_c):
+                            cand = L_c + right_y  # carry charge, no +Gw
+                            if cand < best_c:
+                                best_c = cand
+                                best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
 
                     # (e) OPTIONAL: same-hole overlap via YHX+YHX with penalty Gwh
                     if self.cfg.enable_wx_overlap and Gwh_wx != 0.0:
@@ -804,53 +840,85 @@ class RivasEddyEngine:
                                 right_y = re.yhx_matrix.get(r2 + 1, j, k2, l2)
                                 if math.isfinite(left_y) and math.isfinite(right_y):
                                     cand_overlap = Gwh_wx + left_y + right_y
-                                    if cand_overlap < best:
-                                        best = cand_overlap
+                                    if cand_overlap < best_c:
+                                        best_c = cand_overlap
                                         best_bp = (RE_BP_COMPOSE_WX_YHX_OVERLAP, (r2, k2, l2))
 
-                re.wx_matrix.set(i, j, best)
+                re.wxc_matrix.set(i, j, best_c)
                 if best_bp is not None:
                     re.wx_back_ptr[(i, j)] = best_bp
+
+        for s in range(n):
+            for i in range(0, n - s):
+                j = i + s
+                re.wx_matrix.set(i, j, min(re.wxu_matrix.get(i, j), re.wxc_matrix.get(i, j)))
 
         # --- 2.2 Composition into VX:  (zhx) ---
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
-                best = re.vx_matrix.get(i, j)
+                best_c = re.vxc_matrix.get(i, j)
                 best_bp = None
 
                 for (r, k, l) in _iter_complementary_tuples(i, j):
-                    left = _zhx_collapse_first(re, i, r, k, l)
-                    right = _zhx_collapse_first(re, k + 1, j, l - 1, r + 1)
-                    coax_e = _coax_energy_for_join(seq, (i, r), (k + 1, j), self.cfg.costs)
+                    L_u = _zhx_collapse_with(re, i, r, k, l, charged=False)
+                    R_u = _zhx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
+                    L_c = _zhx_collapse_with(re, i, r, k, l, charged=True)
+                    R_c = _zhx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
 
+                    coax_e = _coax_energy_for_join(seq, (i, r), (k + 1, j), self.cfg.costs)
                     if self.cfg.enable_coax_variants:
                         coax_e += _coax_energy_for_join(seq, (i, r), (k, l), self.cfg.costs)
                         coax_e += _coax_energy_for_join(seq, (k, l), (k + 1, j), self.cfg.costs)
 
-                    cand = Gw + left + right + g * coax_e + (coax if self.cfg.enable_coax else 0.0)
-                    if cand < best:
-                        best = cand
+                    cand_first = Gw + L_u + R_u
+                    cand_Lc = L_c + R_u
+                    cand_Rc = L_u + R_c
+                    cand_both = L_c + R_c
+
+                    cand = min(cand_first, cand_Lc, cand_Rc, cand_both) + g * coax_e + (
+                        coax if self.cfg.enable_coax else 0.0)
+                    if cand < best_c:
+                        best_c = cand
                         best_bp = (RE_BP_COMPOSE_VX, (r, k, l))
 
-                re.vx_matrix.set(i, j, best)
+                re.vxc_matrix.set(i, j, best_c)
                 if best_bp is not None:
                     re.vx_back_ptr[(i, j)] = best_bp
+
+        # Publish final VX as min(uncharged, charged)
+        for s in range(n):
+            for i in range(0, n - s):
+                j = i + s
+                re.vx_matrix.set(i, j, min(re.vxu_matrix.get(i, j), re.vxc_matrix.get(i, j)))
 
 def _whx_collapse_first(re: RivasEddyState, i: int, j: int, k: int, l: int) -> float:
     """
     Safe accessor for whx(i,j:k,l): try collapse identity first (finite),
     then stored value (which may be +inf if not set).
     """
-    v = get_whx_with_collapse(re.whx_matrix, re.wx_matrix, i, j, k, l)
+    v = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l)
     if math.isfinite(v):
         return v
     return re.whx_matrix.get(i, j, k, l)
 
 def _zhx_collapse_first(re: RivasEddyState, i: int, j: int, k: int, l: int) -> float:
-    v = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, l)
+    v = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, l)
     if math.isfinite(v): return v
     return re.zhx_matrix.get(i, j, k, l)
+
+
+def _whx_collapse_with(re: RivasEddyState, i, j, k, l, charged: bool) -> float:
+    wx = re.wxc_matrix if charged else re.wxu_matrix
+    v = get_whx_with_collapse(re.whx_matrix, wx, i, j, k, l)
+    return v if math.isfinite(v) else re.whx_matrix.get(i, j, k, l)
+
+
+def _zhx_collapse_with(re: RivasEddyState, i, j, k, l, charged: bool) -> float:
+    vx = re.vxc_matrix if charged else re.vxu_matrix
+    v = get_zhx_with_collapse(re.zhx_matrix, vx, i, j, k, l)
+    return v if math.isfinite(v) else re.zhx_matrix.get(i, j, k, l)
+
 
 def _iter_complementary_tuples(i: int, j: int) -> Iterator[Tuple[int, int, int]]:
     """
@@ -864,7 +932,7 @@ def _iter_complementary_tuples(i: int, j: int) -> Iterator[Tuple[int, int, int]]
             for l in range(r + 1, j + 1):  # hole end (right/after r)
                 # Basic sanity: ensure each index stays in outer bounds
                 # The whx accessors will return +inf for any illegal shapes.
-                yield (r, k, l)
+                yield r, k, l
 
 def _iter_inner_holes(i: int, j: int) -> Iterator[Tuple[int, int]]:
     """Yield all (k,l) with i <= k < l <= j-1 and at least one base inside (i..j)."""
