@@ -94,6 +94,7 @@ class RivasEddyState:
     # Non-gap (triangular)
     wx_matrix: ReTriMatrix
     vx_matrix: ReTriMatrix
+    wxi_matrix: ReTriMatrix
     wx_back_ptr: dict
     vx_back_ptr: dict
 
@@ -115,6 +116,7 @@ def make_re_fold_state(n: int) -> RivasEddyState:
         # 2D
         wx_matrix=ReTriMatrix(n),
         vx_matrix=ReTriMatrix(n),
+        wxi_matrix=ReTriMatrix(n),
         wx_back_ptr={},
         vx_back_ptr={},
         # 4D sparse
@@ -134,6 +136,7 @@ def make_re_fold_state(n: int) -> RivasEddyState:
     for i in range(n):
         re.wx_matrix.set(i, i, 0.0)
         re.vx_matrix.set(i, i, math.inf)
+        re.wxi_matrix.set(i, i, 0.0)
 
     # Gap matrices: we *don’t* prefill O(N^4); instead we implement the
     # collapse identities via helpers below (lazy). We do set illegal holes to +inf
