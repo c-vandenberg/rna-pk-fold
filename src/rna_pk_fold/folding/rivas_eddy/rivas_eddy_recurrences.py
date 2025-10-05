@@ -18,6 +18,7 @@ RE_BP_COMPOSE_VX   = "RE_PK_COMPOSE_VX"
 RE_BP_COMPOSE_WX_YHX = "RE_PK_COMPOSE_WX_YHX"
 RE_BP_COMPOSE_WX_YHX_WHX = "RE_PK_COMPOSE_WX_YHX_WHX"  # yhx + whx
 RE_BP_COMPOSE_WX_WHX_YHX = "RE_PK_COMPOSE_WX_WHX_YHX"  # whx + yhx
+RE_BP_COMPOSE_WX_YHX_OVERLAP = "RE_PK_COMPOSE_WX_YHX_OVERLAP"  # yhx(i,r:k,l) + yhx(r+1,j:k,l)
 
 # ======================================================================
 
@@ -157,12 +158,13 @@ class RERECosts:
     # Optional bonuses/penalties
     coax_bonus: float = 0.0  # used in your vx path; leave 0.0 unless you want it
     Gwh: float = 0.0  # penalty for overlapping PKs (not used yet)
-
+    coax_scale: float = 1.0
 
 @dataclass(slots=True)
 class REREConfig:
-    enable_coax: bool = False        # keep off initially
-    pk_penalty_gw: float = 1.0       # Gw: pseudoknot introduction penalty (kcal/mol)
+    enable_coax: bool = False # keep off initially
+    enable_wx_overlap: bool = False # turn on WX same-hole overlap terms
+    pk_penalty_gw: float = 1.0 # Gw: pseudoknot introduction penalty (kcal/mol)
     costs: RERECosts = RERECosts()
 
 
@@ -328,6 +330,7 @@ class RivasEddyEngine:
         Gw = self.cfg.pk_penalty_gw
         tables = getattr(self.cfg, "tables", None)
         coax = self.cfg.costs.coax_bonus if self.cfg.enable_coax else 0.0
+        g = self.cfg.costs.coax_scale
 
         # tilde scalars (fallback 0)
         P_ = getattr(tables, "P_tilde", 0.0)
@@ -719,7 +722,7 @@ class RivasEddyEngine:
                         re.yhx_matrix.set(i, j, k, l, best)
                         re.yhx_back_ptr.set(i, j, k, l, best_bp)
 
-        # --- 2.1 Composition into WX: (a) WHX+WHX  (b) NEW: YHX+YHX ---
+        # --- 2.1 Composition into WX: (a) WHX+WHX  (b) YHX+YHX ---
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
@@ -762,11 +765,26 @@ class RivasEddyEngine:
                             best = cand_wy
                             best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
 
+                    # (e) OPTIONAL: same-hole overlap via YHX+YHX with penalty Gwh
+                    if self.cfg.enable_wx_overlap and getattr(self.cfg.costs, "Gwh", 0.0) != 0.0:
+                        Gwh = self.cfg.costs.Gwh
+                        # enumerate all inner holes (k,l) within (i,j)
+                        for (k2, l2) in _iter_inner_holes(i, j):
+                            # split the outer interval at r; both subproblems share the same (k2,l2)
+                            for r2 in range(i, j):
+                                left_y = re.yhx_matrix.get(i, r2, k2, l2)
+                                right_y = re.yhx_matrix.get(r2 + 1, j, k2, l2)
+                                if math.isfinite(left_y) and math.isfinite(right_y):
+                                    cand_overlap = Gwh + left_y + right_y
+                                    if cand_overlap < best:
+                                        best = cand_overlap
+                                        best_bp = (RE_BP_COMPOSE_WX_YHX_OVERLAP, (r2, k2, l2))
+
                 re.wx_matrix.set(i, j, best)
                 if best_bp is not None:
                     re.wx_back_ptr[(i, j)] = best_bp
 
-        # --- 2.2 two-gap composition into vx (zhx) ---
+        # --- 2.2 Composition into VX:  (zhx) ---
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
@@ -776,9 +794,8 @@ class RivasEddyEngine:
                 for (r, k, l) in _iter_complementary_tuples(i, j):
                     left = _zhx_collapse_first(re, i, r, k, l)
                     right = _zhx_collapse_first(re, k + 1, j, l - 1, r + 1)
-                    # NEW: coax from pair types at the join (i,r) and (k+1,j)
                     coax_e = _coax_energy_for_join(seq, (i, r), (k + 1, j), self.cfg.costs)
-                    cand = Gw + left + right + coax_e
+                    cand = Gw + left + right + g * coax_e + (coax if self.cfg.enable_coax else 0.0)
                     if cand < best:
                         best = cand
                         best_bp = (RE_BP_COMPOSE_VX, (r, k, l))
@@ -815,3 +832,11 @@ def _iter_complementary_tuples(i: int, j: int) -> Iterator[Tuple[int, int, int]]
                 # Basic sanity: ensure each index stays in outer bounds
                 # The whx accessors will return +inf for any illegal shapes.
                 yield (r, k, l)
+
+def _iter_inner_holes(i: int, j: int) -> Iterator[Tuple[int, int]]:
+    """Yield all (k,l) with i <= k < l <= j-1 and at least one base inside (i..j)."""
+    if j - i <= 1:
+        return
+    for k in range(i, j):
+        for l in range(k + 1, j + 1):
+            yield (k, l)
