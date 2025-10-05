@@ -10,17 +10,25 @@ from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
 )
 from rna_pk_fold.utils.nucleotide_utils import dimer_key
 
-RE_BP_SHRINK_LEFT  = "RE_SHRINK_LEFT"
-RE_BP_SHRINK_RIGHT = "RE_SHRINK_RIGHT"
-RE_BP_TRIM_LEFT    = "RE_TRIM_LEFT"
-RE_BP_TRIM_RIGHT   = "RE_TRIM_RIGHT"
-RE_BP_COLLAPSE     = "RE_COLLAPSE"
+# ======================================================================
+# VHX backpointer tags
+# ======================================================================
 RE_BP_COMPOSE_WX   = "RE_PK_COMPOSE_WX"
 RE_BP_COMPOSE_VX   = "RE_PK_COMPOSE_VX"
 RE_BP_COMPOSE_WX_YHX = "RE_PK_COMPOSE_WX_YHX"
 
+RE_BP_WHX_SHRINK_LEFT  = "RE_SHRINK_LEFT"
+RE_BP_WHX_SHRINK_RIGHT = "RE_SHRINK_RIGHT"
+RE_BP_WHX_TRIM_LEFT    = "RE_TRIM_LEFT"
+RE_BP_WHX_TRIM_RIGHT   = "RE_TRIM_RIGHT"
+RE_BP_WHX_COLLAPSE     = "RE_COLLAPSE"
+RE_BP_WHX_SS_BOTH              = "RE_WHX_SS_BOTH"              # 2*q_ss + whx(i+1, j-1 : k, l)
+RE_BP_WHX_SPLIT_LEFT_WHX_WX    = "RE_WHX_SPLIT_LEFT_WHX_WX"    # whx(i, r : k, l) + wx(r+1, j)
+RE_BP_WHX_SPLIT_RIGHT_WX_WHX   = "RE_WHX_SPLIT_RIGHT_WX_WHX"   # wx(i, s) + whx(s+1, j : k, l)
+RE_BP_WHX_OVERLAP_SPLIT        = "RE_WHX_OVERLAP_SPLIT"        # Gwh + whx(i, r : k, l) + whx(r+1, j : k, l)
+
 # ======================================================================
-# NEW: VHX backpointer tags (renamed to match your RE_BP_* convention)
+# VHX backpointer tags
 # ======================================================================
 RE_BP_VHX_DANGLE_L        = "RE_VHX_DANGLE_L"        # P~+L~ + vhx(i,j:k+1,l)
 RE_BP_VHX_DANGLE_R        = "RE_VHX_DANGLE_R"        # P~+R~ + vhx(i,j:k,l-1)
@@ -340,34 +348,74 @@ class RivasEddyEngine:
                         cand = v + q
                         if cand < best:
                             best = cand
-                            best_bp = (RE_BP_SHRINK_LEFT, (i, j, k + 1, l))
+                            best_bp = (RE_BP_WHX_SHRINK_LEFT, (i, j, k + 1, l))
 
                         # 2) shrink-right: (k,l-1) + q
                         v = get_whx_with_collapse(re.whx_matrix, re.wx_matrix, i, j, k, l - 1)
                         cand = v + q
                         if cand < best:
                             best = cand
-                            best_bp = (RE_BP_SHRINK_RIGHT, (i, j, k, l - 1))
+                            best_bp = (RE_BP_WHX_SHRINK_RIGHT, (i, j, k, l - 1))
 
                         # 3) trim outer-left: (i+1,j:k,l) + q
                         v = re.whx_matrix.get(i + 1, j, k, l)
                         cand = v + q
                         if cand < best:
                             best = cand
-                            best_bp = (RE_BP_TRIM_LEFT, (i + 1, j, k, l))
+                            best_bp = (RE_BP_WHX_TRIM_LEFT, (i + 1, j, k, l))
 
                         # 4) trim outer-right: (i,j-1:k,l) + q
                         v = re.whx_matrix.get(i, j - 1, k, l)
                         cand = v + q
                         if cand < best:
                             best = cand
-                            best_bp = (RE_BP_TRIM_RIGHT, (i, j - 1, k, l))
+                            best_bp = (RE_BP_WHX_TRIM_RIGHT, (i, j - 1, k, l))
 
                         # 5) direct collapse (if h==0 via accessor, but here h>=1): allow as candidate anyway
                         v = get_whx_with_collapse(re.whx_matrix, re.wx_matrix, i, j, k, l)
                         if v < best:
                             best = v
-                            best_bp = (RE_BP_COLLAPSE, (i, j))
+                            best_bp = (RE_BP_WHX_COLLAPSE, (i, j))
+
+                        v = re.whx_matrix.get(i + 1, j - 1, k, l)
+                        if math.isfinite(v):
+                            cand = v + 2.0 * q  # keep using q_ss to preserve earlier tests
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_WHX_SS_BOTH, (i + 1, j - 1, k, l))
+
+                        # --- NEW: non-nested outer splits with WX ---
+                        # Left split: whx(i, r : k, l) + wx(r+1, j)
+                        for r in range(i, j):
+                            left = re.whx_matrix.get(i, r, k, l)
+                            right = re.wx_matrix.get(r + 1, j)
+                            if math.isfinite(left) and math.isfinite(right):
+                                cand = left + right
+                                if cand < best:
+                                    best = cand
+                                    best_bp = (RE_BP_WHX_SPLIT_LEFT_WHX_WX, (r,))
+
+                        # Right split: wx(i, s) + whx(s+1, j : k, l)
+                        for s2 in range(i, j):
+                            left = re.wx_matrix.get(i, s2)
+                            right = re.whx_matrix.get(s2 + 1, j, k, l)
+                            if math.isfinite(left) and math.isfinite(right):
+                                cand = left + right
+                                if cand < best:
+                                    best = cand
+                                    best_bp = (RE_BP_WHX_SPLIT_RIGHT_WX_WHX, (s2,))
+
+                        # --- NEW: overlapping-PK split into WHX + WHX with penalty Gwh ---
+                        Gwh = getattr(self.cfg.costs, "Gwh", 0.0)
+                        if Gwh != 0.0:  # skip loop if it's 0 for speed
+                            for r in range(i, j):
+                                left = re.whx_matrix.get(i, r, k, l)
+                                right = re.whx_matrix.get(r + 1, j, k, l)
+                                if math.isfinite(left) and math.isfinite(right):
+                                    cand = Gwh + left + right
+                                    if cand < best:
+                                        best = cand
+                                        best_bp = (RE_BP_WHX_OVERLAP_SPLIT, (r,))
 
                         re.whx_matrix.set(i, j, k, l, best)
                         re.whx_back_ptr.set(i, j, k, l, best_bp)

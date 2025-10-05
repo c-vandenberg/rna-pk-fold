@@ -9,27 +9,29 @@ from rna_pk_fold.folding.traceback import (
     traceback_nested_interval
 )
 from rna_pk_fold.folding.rivas_eddy.rivas_eddy_recurrences import (
-    # Top-level compositions
+    # Top-level compositions backpointer tags
     RE_BP_COMPOSE_WX, RE_BP_COMPOSE_WX_YHX,
 
-    # WHX moves
-    RE_BP_SHRINK_LEFT, RE_BP_SHRINK_RIGHT, RE_BP_TRIM_LEFT,
-    RE_BP_TRIM_RIGHT, RE_BP_COLLAPSE,
+    # WHX move backpointer tags
+    RE_BP_WHX_SHRINK_LEFT, RE_BP_WHX_SHRINK_RIGHT, RE_BP_WHX_TRIM_LEFT,
+    RE_BP_WHX_TRIM_RIGHT, RE_BP_WHX_COLLAPSE, RE_BP_WHX_SS_BOTH,
+    RE_BP_WHX_SPLIT_LEFT_WHX_WX, RE_BP_WHX_SPLIT_RIGHT_WX_WHX,
+    RE_BP_WHX_OVERLAP_SPLIT,
 
-    # YHX moves
+    # YHX move backpointer tags
     RE_BP_YHX_DANGLE_L, RE_BP_YHX_DANGLE_R, RE_BP_YHX_DANGLE_LR,
     RE_BP_YHX_SS_LEFT, RE_BP_YHX_SS_RIGHT, RE_BP_YHX_SS_BOTH,
     RE_BP_YHX_WRAP_WHX, RE_BP_YHX_WRAP_WHX_L, RE_BP_YHX_WRAP_WHX_R,
     RE_BP_YHX_WRAP_WHX_LR, RE_BP_YHX_SPLIT_LEFT_YHX_WX,
     RE_BP_YHX_SPLIT_RIGHT_WX_YHX,
 
-    # ZHX moves
+    # ZHX move backpointer tags
     RE_BP_ZHX_FROM_VHX, RE_BP_ZHX_DANGLE_L, RE_BP_ZHX_DANGLE_R,
     RE_BP_ZHX_DANGLE_LR, RE_BP_ZHX_SS_LEFT, RE_BP_ZHX_SS_RIGHT,
     RE_BP_ZHX_SPLIT_LEFT_ZHX_WX, RE_BP_ZHX_SPLIT_RIGHT_ZHX_WX,
     RE_BP_ZHX_IS2_INNER_VHX,
 
-    # VHX moves
+    # VHX move backpointer tags
     RE_BP_VHX_DANGLE_L, RE_BP_VHX_DANGLE_R, RE_BP_VHX_DANGLE_LR,
     RE_BP_VHX_SS_LEFT, RE_BP_VHX_SS_RIGHT,
     RE_BP_VHX_SPLIT_LEFT_ZHX_WX, RE_BP_VHX_SPLIT_RIGHT_ZHX_WX,
@@ -125,24 +127,49 @@ def traceback_re_with_pk(seq: str, nested: FoldState, re: RivasEddyState) -> RET
             _, i, j, k, l, layer = frame
             bp = re.whx_back_ptr.get(i, j, k, l)
             if not bp:
-                # Often means collapse to WX(i,j)
                 base = traceback_nested_interval(seq, nested, i, j)
                 for p in base.pairs:
                     add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
                 continue
 
             op, payload = bp[0], bp[1]
-            if op in (RE_BP_SHRINK_LEFT, RE_BP_SHRINK_RIGHT):
+            if op in (RE_BP_WHX_SHRINK_LEFT, RE_BP_WHX_SHRINK_RIGHT):
                 _, _, nk, nl = payload
                 stack.append(("WHX", i, j, nk, nl, layer))
-            elif op in (RE_BP_TRIM_LEFT, RE_BP_TRIM_RIGHT):
+
+            elif op in (RE_BP_WHX_TRIM_LEFT, RE_BP_WHX_TRIM_RIGHT):
                 ni, nj, nk, nl = payload
                 stack.append(("WHX", ni, nj, nk, nl, layer))
-            elif op == RE_BP_COLLAPSE:
+
+            elif op == RE_BP_WHX_COLLAPSE:
                 ni, nj = payload
                 base = traceback_nested_interval(seq, nested, ni, nj)
                 for p in base.pairs:
                     add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+
+            elif op == RE_BP_WHX_SS_BOTH:
+                ni, nj, nk, nl = payload
+                stack.append(("WHX", ni, nj, nk, nl, layer))
+
+            elif op == RE_BP_WHX_SPLIT_LEFT_WHX_WX:
+                (r,) = payload
+                stack.append(("WHX", i, r, k, l, layer))
+                base = traceback_nested_interval(seq, nested, r + 1, j)
+                for p in base.pairs:
+                    add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+
+            elif op == RE_BP_WHX_SPLIT_RIGHT_WX_WHX:
+                (s2,) = payload
+                base = traceback_nested_interval(seq, nested, i, s2)
+                for p in base.pairs:
+                    add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                stack.append(("WHX", s2 + 1, j, k, l, layer))
+
+            elif op == RE_BP_WHX_OVERLAP_SPLIT:
+                (r,) = payload
+                stack.append(("WHX", i, r, k, l, layer))
+                stack.append(("WHX", r + 1, j, k, l, layer))
+
             continue
 
         # ---------------- YHX ----------------
