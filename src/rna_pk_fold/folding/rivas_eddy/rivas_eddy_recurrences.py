@@ -10,6 +10,20 @@ from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
 )
 from rna_pk_fold.utils.nucleotide_utils import dimer_key
 
+# ======================================================================
+# NEW: VHX backpointer tags (renamed to match your RE_BP_* convention)
+# ======================================================================
+RE_BP_VHX_DANGLE_L        = "RE_VHX_DANGLE_L"        # P~+L~ + vhx(i,j:k+1,l)
+RE_BP_VHX_DANGLE_R        = "RE_VHX_DANGLE_R"        # P~+R~ + vhx(i,j:k,l-1)
+RE_BP_VHX_DANGLE_LR       = "RE_VHX_DANGLE_LR"       # P~+L~+R~ + vhx(i,j:k+1,l-1)
+RE_BP_VHX_SS_LEFT         = "RE_VHX_SS_LEFT"         # Q~ + zhx(i,j:k,l)   (left-labelled)
+RE_BP_VHX_SS_RIGHT        = "RE_VHX_SS_RIGHT"        # Q~ + zhx(i,j:k,l)   (right-labelled)
+RE_BP_VHX_SPLIT_LEFT_ZHX_WX  = "RE_VHX_SPLIT_LEFT_ZHX_WX"   # zhx(i,j:r,l) + wx(r+1,k)
+RE_BP_VHX_SPLIT_RIGHT_ZHX_WX = "RE_VHX_SPLIT_RIGHT_ZHX_WX"  # zhx(i,j:k,s) + wx(l,s-1)
+RE_BP_VHX_IS2_INNER_ZHX      = "RE_VHX_IS2_INNER_ZHX"       # ĨS2(i,j:r,s) + zhx(r,s:k,l)
+RE_BP_VHX_WRAP_WHX           = "RE_VHX_WRAP_WHX"            # P~+M~ + whx(i+1,j-1:k,l)
+
+
 RE_BP_SHRINK_LEFT  = "RE_SHRINK_LEFT"
 RE_BP_SHRINK_RIGHT = "RE_SHRINK_RIGHT"
 RE_BP_TRIM_LEFT    = "RE_TRIM_LEFT"
@@ -33,6 +47,25 @@ RE_BP_YHX_WRAP_WHX   = "RE_YHX_WRAP_WHX"        # P~ + M~ + whx(i,j:k-1,l+1)"
 
 
 # ---------- Table/evaluator helpers (DANGLES + COAX) ----------
+def wxI(re: RivasEddyState, i: int, j: int) -> float:
+    """
+    R&E use a dedicated inner-W (wxI). Until you separate it, wx is fine.
+    Kept as a function so you can swap the implementation later without
+    touching the recurrences.
+    """
+    return re.wx_matrix.get(i, j)
+
+
+def IS2_outer(seq: str, tables, i: int, j: int, r: int, s: int) -> float:
+    """
+    Hook for the ĨS₂ outer-context term used by VHX (and later WHX).
+    If cfg.tables.IS2_outer is provided, call it; otherwise 0.0.
+    """
+    if tables and hasattr(tables, "IS2_outer"):
+        fn = tables.IS2_outer
+        return fn(seq, i, j, r, s) if callable(fn) else float(fn)
+    return 0.0
+
 def _safe_base(seq: str, idx: int) -> Optional[str]:
     return seq[idx] if 0 <= idx < len(seq) else None
 
@@ -263,12 +296,15 @@ class RivasEddyEngine:
         n = re.n
         q = self.cfg.costs.q_ss
         Gw = self.cfg.pk_penalty_gw
-        P_ = self.cfg.costs.P_tilde
-        Q_ = self.cfg.costs.Q_tilde
-        L_ = self.cfg.costs.L_tilde
-        R_ = self.cfg.costs.R_tilde
-        M_ = self.cfg.costs.M_tilde
+        tables = getattr(self.cfg, "tables", None)
         coax = self.cfg.costs.coax_bonus if self.cfg.enable_coax else 0.0
+
+        # tilde scalars (fallback 0)
+        P_ = getattr(tables, "P_tilde", 0.0)
+        L_ = getattr(tables, "L_tilde", 0.0)
+        R_ = getattr(tables, "R_tilde", 0.0)
+        Q_ = getattr(tables, "Q_tilde", 0.0)
+        M_ = getattr(tables, "M_tilde", 0.0)
 
         # --- 0. Seed non-gap from nested ---
         for s in range(n):
@@ -277,7 +313,7 @@ class RivasEddyEngine:
                 re.wx_matrix.set(i, j, nested.w_matrix.get(i, j))
                 re.vx_matrix.set(i, j, nested.v_matrix.get(i, j))
 
-        # --- 1.1 whx DP with `q_ss` costs ---
+        # --- 1.1 WHX Recurrence: whx DP with `q_ss` costs ---
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
@@ -325,7 +361,7 @@ class RivasEddyEngine:
                         re.whx_matrix.set(i, j, k, l, best)
                         re.whx_back_ptr.set(i, j, k, l, best_bp)
 
-        # --- 1.2 VHX: `vhx` DP with paired outer and paired hole. Close both sides -------------------
+        # --- 1.2 VHX Recurrence: `vhx` DP with paired outer and paired hole. Close both sides -------------------
         # ---     via WHX(i+1,j-1 : k-1,l+1) -------------------
         for s in range(n):
             for i in range(0, n - s):
@@ -334,20 +370,73 @@ class RivasEddyEngine:
                 for h in range(1, max_h + 1):
                     for k in range(i, j - h):
                         l = k + h + 1
-                        best = math.inf
+                        best = re.vhx_matrix.get(i, j, k, l)
                         best_bp = None
 
-                        inner = re.whx_matrix.get(i + 1, j - 1, k - 1, l + 1)
-                        if math.isfinite(inner):
-                            cand = 2.0 * P_ + M_ + inner
+                        # --- DANGLES (shrink left/right/both) ---
+                        v = re.vhx_matrix.get(i, j, k + 1, l)
+                        cand = P_ + L_ + v
+                        if cand < best:
+                            best, best_bp = cand, (RE_BP_VHX_DANGLE_L, (i, j, k + 1, l))
+
+                        v = re.vhx_matrix.get(i, j, k, l - 1)
+                        cand = P_ + R_ + v
+                        if cand < best:
+                            best, best_bp = cand, (RE_BP_VHX_DANGLE_R, (i, j, k, l - 1))
+
+                        v = re.vhx_matrix.get(i, j, k + 1, l - 1)
+                        cand = P_ + L_ + R_ + v
+                        if cand < best:
+                            best, best_bp = cand, (RE_BP_VHX_DANGLE_LR, (i, j, k + 1, l - 1))
+
+                        # --- SINGLE-STRAND from ZHX (label left/right)
+                        v_zhx = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, l)
+                        cand = Q_ + v_zhx
+                        if cand < best:
+                            best, best_bp = cand, (RE_BP_VHX_SS_LEFT, (i, j, k, l))
+                        # same energy; alternate label for symmetry
+                        if cand < best:
+                            best, best_bp = cand, (RE_BP_VHX_SS_RIGHT, (i, j, k, l))
+
+                        # --- SPLIT on the LEFT: r in [i..k-1]  →  zhx(i,j:r,l) + wx(r+1,k)
+                        for r in range(i, k):
+                            left = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, r, l)
+                            right = wxI(re, r + 1, k)
+                            cand = left + right
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_VHX_CLOSE_BOTH, (i + 1, j - 1, k - 1, l + 1))
+                                best_bp = (RE_BP_VHX_SPLIT_LEFT_ZHX_WX, (r,))
+
+                        # --- SPLIT on the RIGHT: s in [l+1..j] →  zhx(i,j:k,s) + wx(l, s-1)
+                        for s2 in range(l + 1, j + 1):
+                            left = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, s2)
+                            right = wxI(re, l, s2 - 1)
+                            cand = left + right
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_VHX_SPLIT_RIGHT_ZHX_WX, (s2,))
+
+                        # --- INTERIOR (ĨS₂ + zhx(r,s:k,l)) over r,s covering hole ---
+                        for r in range(i, k + 1):
+                            for s2 in range(l, j + 1):
+                                if r <= k and l <= s2 and r <= s2:
+                                    inner = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, r, s2, k, l)
+                                    cand = IS2_outer(seq, tables, i, j, r, s2) + inner
+                                    if cand < best:
+                                        best = cand
+                                        best_bp = (RE_BP_VHX_IS2_INNER_ZHX, (r, s2))
+
+                        # --- WRAP via WHX (P̃+M̃ + whx(i+1,j-1:k,l)) ---
+                        wrap = get_whx_with_collapse(re.whx_matrix, re.wx_matrix, i + 1, j - 1, k, l)
+                        cand = P_ + M_ + wrap
+                        if cand < best:
+                            best = cand
+                            best_bp = (RE_BP_VHX_WRAP_WHX, (i + 1, j - 1))
 
                         re.vhx_matrix.set(i, j, k, l, best)
                         re.vhx_back_ptr.set(i, j, k, l, best_bp)
 
-        # --- 1.3 ZHX: `zhx` DP with q_ss costs. Implements paired & dangle variants via vhx matrix, and  ---
+        # --- 1.3 ZHX Recurrence: `zhx` DP with q_ss costs. Implements paired & dangle variants via vhx matrix, and  ---
         # --- single-strand hole shrink ---
         for s in range(n):
             for i in range(0, n - s):
@@ -410,7 +499,7 @@ class RivasEddyEngine:
                         re.zhx_matrix.set(i, j, k, l, best)
                         re.zhx_back_ptr.set(i, j, k, l, best_bp)
 
-        # --- 1.4 YHX: `yhx` DP (k,l paired; i,j undetermined). Implements dangles/singles on -------------------
+        # --- 1.4 YHX Recurrence: `yhx` DP (k,l paired; i,j undetermined). Implements dangles/singles on -------------------
         # --- outer, and wrap-around via whx(i,j:k-1,l+1) -------------------
         for s in range(n):
             for i in range(0, n - s):
