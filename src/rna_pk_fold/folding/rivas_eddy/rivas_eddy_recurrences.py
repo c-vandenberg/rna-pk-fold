@@ -1,13 +1,14 @@
 from __future__ import annotations
 import math
-from dataclasses import dataclass
-from typing import Iterator, Tuple
+from dataclasses import dataclass, field
+from typing import Iterator, Tuple, Dict, Optional
 
 from rna_pk_fold.folding.fold_state import FoldState, RivasEddyState
 from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
     get_whx_with_collapse,
     get_zhx_with_collapse
 )
+from rna_pk_fold.utils.nucleotide_utils import dimer_key
 
 RE_BP_SHRINK_LEFT  = "RE_SHRINK_LEFT"
 RE_BP_SHRINK_RIGHT = "RE_SHRINK_RIGHT"
@@ -16,6 +17,7 @@ RE_BP_TRIM_RIGHT   = "RE_TRIM_RIGHT"
 RE_BP_COLLAPSE     = "RE_COLLAPSE"
 RE_BP_COMPOSE_WX   = "RE_PK_COMPOSE_WX"
 RE_BP_COMPOSE_VX   = "RE_PK_COMPOSE_VX"
+RE_BP_COMPOSE_WX_YHX = "RE_PK_COMPOSE_WX_YHX"
 RE_BP_VHX_CLOSE_BOTH = "RE_VHX_CLOSE_BOTH"      # 2*P~ + M~ + whx(i+1,j-1:k-1,l+1)
 RE_BP_ZHX_FROM_VHX   = "RE_ZHX_FROM_VHX"        # P~ + vhx(i,j:k,l)
 RE_BP_ZHX_DANGLE_LR  = "RE_ZHX_DANGLE_LR"       # L~+R~+P~ + vhx(i,j:k-1,l+1)
@@ -30,14 +32,64 @@ RE_BP_YHX_SS_RIGHT   = "RE_YHX_SS_RIGHT"        # Q~ + yhx(i, j-1:k,l)
 RE_BP_YHX_WRAP_WHX   = "RE_YHX_WRAP_WHX"        # P~ + M~ + whx(i,j:k-1,l+1)"
 
 
+# ---------- Table/evaluator helpers (DANGLES + COAX) ----------
+def _safe_base(seq: str, idx: int) -> Optional[str]:
+    return seq[idx] if 0 <= idx < len(seq) else None
+
+def _pair_key(seq: str, a: int, b: int) -> Optional[str]:
+    ba, bb = _safe_base(seq, a), _safe_base(seq, b)
+    if ba is None or bb is None:
+        return None
+    return dimer_key(ba, bb)  # e.g. "GC", "AU", "GU", ...
+
+def _table_lookup(tbl: Dict[Tuple[str, str], float], x: Optional[str], y: Optional[str], default: float) -> float:
+    if x is None or y is None:
+        return 0.0  # no dangle if missing context
+    return tbl.get((x, y), default)
+
+def _dangle_hole_L(seq: str, k: int, costs: "RERECosts") -> float:
+    # left hole dangle uses (base at k-1, base at k)
+    return _table_lookup(costs.dangle_hole_L, _safe_base(seq, k - 1), _safe_base(seq, k), costs.L_tilde)
+
+def _dangle_hole_R(seq: str, l: int, costs: "RERECosts") -> float:
+    # right hole dangle uses (base at l, base at l+1)
+    return _table_lookup(costs.dangle_hole_R, _safe_base(seq, l), _safe_base(seq, l + 1), costs.R_tilde)
+
+def _dangle_outer_L(seq: str, i: int, costs: "RERECosts") -> float:
+    # outer-left dangle uses (base at i, base at i+1)
+    return _table_lookup(costs.dangle_outer_L, _safe_base(seq, i), _safe_base(seq, i + 1), costs.L_tilde)
+
+def _dangle_outer_R(seq: str, j: int, costs: "RERECosts") -> float:
+    # outer-right dangle uses (base at j-1, base at j)
+    return _table_lookup(costs.dangle_outer_R, _safe_base(seq, j - 1), _safe_base(seq, j), costs.R_tilde)
+
+def _coax_energy_for_join(seq: str, left_pair: Tuple[int, int], right_pair: Tuple[int, int], costs: "RERECosts") -> float:
+    # Join two adjacent helices; energy is looked up by their pair-types.
+    lp = _pair_key(seq, *left_pair)
+    rp = _pair_key(seq, *right_pair)
+    if lp is None or rp is None:
+        return 0.0
+    return costs.coax_pairs.get((lp, rp), 0.0)  # table value, typically negative if stabilizing
+
+
 @dataclass(slots=True)
 class RERECosts:
+    # Per-step single-strand “gap” cost (move a boundary by 1, or trim outer by 1)
+
+    # Tilde params fallback (used if tables don’t have an entry)
     q_ss: float = 0.2 # Per-step single-strand “gap” cost (move a boundary by 1, or trim outer by 1)
     P_tilde: float = 1.0  # pair score used in gap recurrences (acts like P~)
     Q_tilde: float = 0.2  # single-stranded nucleotide in gap (acts like Q~)
     L_tilde: float = 0.0  # 5′ dangle on gap edge (acts like L~)
     R_tilde: float = 0.0  # 3′ dangle on gap edge (acts like R~)
     M_tilde: float = 0.0  # multiloop-ish term inside vhx/yhx closures (acts like M~)
+
+    # Dangle/coax tables (keyed on local bases or pair types)
+    dangle_hole_L: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (k-1, k)
+    dangle_hole_R: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (l, l+1)
+    dangle_outer_L: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (i, i+1)
+    dangle_outer_R: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (j-1, j)
+    coax_pairs: Dict[Tuple[str, str], float] = field(default_factory=dict)  # ((pairTypeA),(pairTypeB))
 
     # Optional bonuses/penalties
     coax_bonus: float = 0.0  # used in your vx path; leave 0.0 unless you want it
@@ -116,7 +168,7 @@ class RivasEddyEngine:
                         best = min(candidates) if candidates else math.inf
                         re.whx_matrix.set(i, j, k, l, best)
 
-        # --- 1.1 `zhx` zero-cost hole-shrink (collapse to vx) ---
+        # --- 1.2 `zhx` zero-cost hole-shrink (collapse to vx) ---
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
@@ -273,7 +325,8 @@ class RivasEddyEngine:
                         re.whx_matrix.set(i, j, k, l, best)
                         re.whx_back_ptr.set(i, j, k, l, best_bp)
 
-        # --- 1.2 vhx DP with paired outer and paired hole -------------------
+        # --- 1.2 VHX: `vhx` DP with paired outer and paired hole. Close both sides -------------------
+        # ---     via WHX(i+1,j-1 : k-1,l+1) -------------------
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
@@ -291,11 +344,10 @@ class RivasEddyEngine:
                                 best = cand
                                 best_bp = (RE_BP_VHX_CLOSE_BOTH, (i + 1, j - 1, k - 1, l + 1))
 
-                        # (You can add splits via smaller vhx + IS2 later.)
                         re.vhx_matrix.set(i, j, k, l, best)
                         re.vhx_back_ptr.set(i, j, k, l, best_bp)
 
-        # --- 1.3 zhx DP with q_ss costs. Implements paired & dangle variants via vhx matrix, and  ---
+        # --- 1.3 ZHX: `zhx` DP with q_ss costs. Implements paired & dangle variants via vhx matrix, and  ---
         # --- single-strand hole shrink ---
         for s in range(n):
             for i in range(0, n - s):
@@ -315,36 +367,39 @@ class RivasEddyEngine:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_FROM_VHX, (i, j, k, l))
 
-                        # dangles: L~/R~ shifts on hole
+                        # hole dangles (use tables)
                         v = re.vhx_matrix.get(i, j, k - 1, l + 1)
                         if math.isfinite(v):
-                            cand = L_ + R_ + P_ + v
+                            Lh = _dangle_hole_L(seq, k, self.cfg.costs)
+                            Rh = _dangle_hole_R(seq, l, self.cfg.costs)
+                            cand = Lh + Rh + P_ + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_DANGLE_LR, (i, j, k - 1, l + 1))
 
                         v = re.vhx_matrix.get(i, j, k - 1, l)
                         if math.isfinite(v):
-                            cand = R_ + P_ + v
+                            Rh = _dangle_hole_R(seq, l - 1, self.cfg.costs)  # hole-right adjacent at l
+                            cand = Rh + P_ + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_DANGLE_R, (i, j, k - 1, l))
 
                         v = re.vhx_matrix.get(i, j, k, l + 1)
                         if math.isfinite(v):
-                            cand = L_ + P_ + v
+                            Lh = _dangle_hole_L(seq, k + 1, self.cfg.costs)
+                            cand = Lh + P_ + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_DANGLE_L, (i, j, k, l + 1))
 
-                        # single-stranded shrink of hole
+                        # single-stranded hole shrink
                         v = re.zhx_matrix.get(i, j, k - 1, l)
                         if math.isfinite(v):
                             cand = Q_ + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_SS_LEFT, (i, j, k - 1, l))
-
                         v = re.zhx_matrix.get(i, j, k, l + 1)
                         if math.isfinite(v):
                             cand = Q_ + v
@@ -352,13 +407,11 @@ class RivasEddyEngine:
                                 best = cand
                                 best_bp = (RE_BP_ZHX_SS_RIGHT, (i, j, k, l + 1))
 
-                        # collapse identity if (k+1==l) handled through get_zhx_with_collapse in accessors;
-                        # here we store the computed best (may still be +inf).
                         re.zhx_matrix.set(i, j, k, l, best)
                         re.zhx_back_ptr.set(i, j, k, l, best_bp)
 
-        # --- 1.4 yhx DP (k,l paired; i,j undetermined). Implements dangles/singles on -------------------
-        # --- outer, and wrap-around via whx(i,j:k-1,l+1)
+        # --- 1.4 YHX: `yhx` DP (k,l paired; i,j undetermined). Implements dangles/singles on -------------------
+        # --- outer, and wrap-around via whx(i,j:k-1,l+1) -------------------
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
@@ -369,29 +422,30 @@ class RivasEddyEngine:
                         best = math.inf
                         best_bp = None
 
-                        # dangles on outer ends (symmetry of zhx case):
+                        # outer dangles (tables)
                         v = re.vhx_matrix.get(i + 1, j, k, l)
                         if math.isfinite(v):
-                            cand = L_ + P_ + v
+                            Lo = _dangle_outer_L(seq, i, self.cfg.costs)
+                            cand = Lo + P_ + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_DANGLE_L, (i + 1, j, k, l))
 
                         v = re.vhx_matrix.get(i, j - 1, k, l)
                         if math.isfinite(v):
-                            cand = R_ + P_ + v
+                            Ro = _dangle_outer_R(seq, j, self.cfg.costs)
+                            cand = Ro + P_ + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_DANGLE_R, (i, j - 1, k, l))
 
-                        # single-strand on the outer segment
+                        # single-strand on outer
                         v = re.yhx_matrix.get(i + 1, j, k, l)
                         if math.isfinite(v):
                             cand = Q_ + v
                             if cand < best:
                                 best = cand
                                 best_bp = (RE_BP_YHX_SS_LEFT, (i + 1, j, k, l))
-
                         v = re.yhx_matrix.get(i, j - 1, k, l)
                         if math.isfinite(v):
                             cand = Q_ + v
@@ -399,7 +453,7 @@ class RivasEddyEngine:
                                 best = cand
                                 best_bp = (RE_BP_YHX_SS_RIGHT, (i, j - 1, k, l))
 
-                        # wrap-around via whx (closing across hole interior):
+                        # wrap via WHX(i,j:k-1,l+1)
                         v = re.whx_matrix.get(i, j, k - 1, l + 1)
                         if math.isfinite(v):
                             cand = P_ + M_ + v
@@ -410,7 +464,7 @@ class RivasEddyEngine:
                         re.yhx_matrix.set(i, j, k, l, best)
                         re.yhx_back_ptr.set(i, j, k, l, best_bp)
 
-        # --- 2.1 two-gap composition into wx (whx) ---
+        # --- 2.1 Composition into WX: (a) WHX+WHX  (b) NEW: YHX+YHX ---
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
@@ -418,12 +472,22 @@ class RivasEddyEngine:
                 best_bp = None
 
                 for (r, k, l) in _iter_complementary_tuples(i, j):
-                    left = _whx_collapse_first(re, i, r, k, l)
-                    right = _whx_collapse_first(re, k + 1, j, l - 1, r + 1)
-                    cand = Gw + left + right  # no coax in wx path
-                    if cand < best:
-                        best = cand
+                    # (a) whx + whx (as before)
+                    left_w = _whx_collapse_first(re, i, r, k, l)
+                    right_w = _whx_collapse_first(re, k + 1, j, l - 1, r + 1)
+                    cand_w = Gw + left_w + right_w
+                    if cand_w < best:
+                        best = cand_w
                         best_bp = (RE_BP_COMPOSE_WX, (r, k, l))
+
+                    # (b) NEW: yhx + yhx (non-nested branch)
+                    left_y = re.yhx_matrix.get(i, r, k, l)
+                    right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
+                    if math.isfinite(left_y) and math.isfinite(right_y):
+                        cand_y = Gw + left_y + right_y
+                        if cand_y < best:
+                            best = cand_y
+                            best_bp = (RE_BP_COMPOSE_WX_YHX, (r, k, l))
 
                 re.wx_matrix.set(i, j, best)
                 if best_bp is not None:
@@ -439,7 +503,9 @@ class RivasEddyEngine:
                 for (r, k, l) in _iter_complementary_tuples(i, j):
                     left = _zhx_collapse_first(re, i, r, k, l)
                     right = _zhx_collapse_first(re, k + 1, j, l - 1, r + 1)
-                    cand = Gw + left + right - coax  # apply coax bonus if enabled
+                    # NEW: coax from pair types at the join (i,r) and (k+1,j)
+                    coax_e = _coax_energy_for_join(seq, (i, r), (k + 1, j), self.cfg.costs)
+                    cand = Gw + left + right + coax_e
                     if cand < best:
                         best = cand
                         best_bp = (RE_BP_COMPOSE_VX, (r, k, l))
