@@ -16,14 +16,32 @@ RE_BP_TRIM_RIGHT   = "RE_TRIM_RIGHT"
 RE_BP_COLLAPSE     = "RE_COLLAPSE"
 RE_BP_COMPOSE_WX   = "RE_PK_COMPOSE_WX"
 RE_BP_COMPOSE_VX   = "RE_PK_COMPOSE_VX"
+RE_BP_VHX_CLOSE_BOTH = "RE_VHX_CLOSE_BOTH"      # 2*P~ + M~ + whx(i+1,j-1:k-1,l+1)
+RE_BP_ZHX_FROM_VHX   = "RE_ZHX_FROM_VHX"        # P~ + vhx(i,j:k,l)
+RE_BP_ZHX_DANGLE_LR  = "RE_ZHX_DANGLE_LR"       # L~+R~+P~ + vhx(i,j:k-1,l+1)
+RE_BP_ZHX_DANGLE_L   = "RE_ZHX_DANGLE_L"        # L~+P~     + vhx(i,j:k,l+1)
+RE_BP_ZHX_DANGLE_R   = "RE_ZHX_DANGLE_R"        # R~+P~     + vhx(i,j:k-1,l)
+RE_BP_ZHX_SS_LEFT    = "RE_ZHX_SS_LEFT"         # Q~ + zhx(i,j:k-1,l)
+RE_BP_ZHX_SS_RIGHT   = "RE_ZHX_SS_RIGHT"        # Q~ + zhx(i,j:k,l+1)
+RE_BP_YHX_DANGLE_L   = "RE_YHX_DANGLE_L"        # L~+P~ + vhx(i+1,j:k,l)
+RE_BP_YHX_DANGLE_R   = "RE_YHX_DANGLE_R"        # R~+P~ + vhx(i, j-1:k,l)
+RE_BP_YHX_SS_LEFT    = "RE_YHX_SS_LEFT"         # Q~ + yhx(i+1,j:k,l)
+RE_BP_YHX_SS_RIGHT   = "RE_YHX_SS_RIGHT"        # Q~ + yhx(i, j-1:k,l)
+RE_BP_YHX_WRAP_WHX   = "RE_YHX_WRAP_WHX"        # P~ + M~ + whx(i,j:k-1,l+1)"
 
 
 @dataclass(slots=True)
 class RERECosts:
-    # Per-step single-strand “gap” cost (move a boundary by 1, or trim outer by 1)
-    q_ss: float = 0.2
-    # Optional coax bonus (applied in composition into vx; keep 0.0 until you want it)
-    coax_bonus: float = 0.0
+    q_ss: float = 0.2 # Per-step single-strand “gap” cost (move a boundary by 1, or trim outer by 1)
+    P_tilde: float = 1.0  # pair score used in gap recurrences (acts like P~)
+    Q_tilde: float = 0.2  # single-stranded nucleotide in gap (acts like Q~)
+    L_tilde: float = 0.0  # 5′ dangle on gap edge (acts like L~)
+    R_tilde: float = 0.0  # 3′ dangle on gap edge (acts like R~)
+    M_tilde: float = 0.0  # multiloop-ish term inside vhx/yhx closures (acts like M~)
+
+    # Optional bonuses/penalties
+    coax_bonus: float = 0.0  # used in your vx path; leave 0.0 unless you want it
+    Gwh: float = 0.0  # penalty for overlapping PKs (not used yet)
 
 
 @dataclass(slots=True)
@@ -193,6 +211,11 @@ class RivasEddyEngine:
         n = re.n
         q = self.cfg.costs.q_ss
         Gw = self.cfg.pk_penalty_gw
+        P_ = self.cfg.costs.P_tilde
+        Q_ = self.cfg.costs.Q_tilde
+        L_ = self.cfg.costs.L_tilde
+        R_ = self.cfg.costs.R_tilde
+        M_ = self.cfg.costs.M_tilde
         coax = self.cfg.costs.coax_bonus if self.cfg.enable_coax else 0.0
 
         # --- 0. Seed non-gap from nested ---
@@ -250,7 +273,7 @@ class RivasEddyEngine:
                         re.whx_matrix.set(i, j, k, l, best)
                         re.whx_back_ptr.set(i, j, k, l, best_bp)
 
-        # --- 1.2 zhx DP with q_ss costs ---
+        # --- 1.2 vhx DP with paired outer and paired hole -------------------
         for s in range(n):
             for i in range(0, n - s):
                 j = i + s
@@ -261,42 +284,131 @@ class RivasEddyEngine:
                         best = math.inf
                         best_bp = None
 
-                        # shrink-left
-                        v = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k + 1, l)
-                        cand = v + q
-                        if cand < best:
-                            best = cand
-                            best_bp = (RE_BP_SHRINK_LEFT, (i, j, k + 1, l))
+                        inner = re.whx_matrix.get(i + 1, j - 1, k - 1, l + 1)
+                        if math.isfinite(inner):
+                            cand = 2.0 * P_ + M_ + inner
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_VHX_CLOSE_BOTH, (i + 1, j - 1, k - 1, l + 1))
 
-                        # shrink-right
-                        v = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, l - 1)
-                        cand = v + q
-                        if cand < best:
-                            best = cand
-                            best_bp = (RE_BP_SHRINK_RIGHT, (i, j, k, l - 1))
+                        # (You can add splits via smaller vhx + IS2 later.)
+                        re.vhx_matrix.set(i, j, k, l, best)
+                        re.vhx_back_ptr.set(i, j, k, l, best_bp)
 
-                        # trim outer-left
-                        v = re.zhx_matrix.get(i + 1, j, k, l)
-                        cand = v + q
-                        if cand < best:
-                            best = cand
-                            best_bp = (RE_BP_TRIM_LEFT, (i + 1, j, k, l))
+        # --- 1.3 zhx DP with q_ss costs. Implements paired & dangle variants via vhx matrix, and  ---
+        # --- single-strand hole shrink ---
+        for s in range(n):
+            for i in range(0, n - s):
+                j = i + s
+                max_h = max(0, j - i - 1)
+                for h in range(1, max_h + 1):
+                    for k in range(i, j - h):
+                        l = k + h + 1
+                        best = math.inf
+                        best_bp = None
 
-                        # trim outer-right
-                        v = re.zhx_matrix.get(i, j - 1, k, l)
-                        cand = v + q
-                        if cand < best:
-                            best = cand
-                            best_bp = (RE_BP_TRIM_RIGHT, (i, j - 1, k, l))
+                        # paired: P~ + vhx(i,j:k,l)
+                        v = re.vhx_matrix.get(i, j, k, l)
+                        if math.isfinite(v):
+                            cand = P_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_ZHX_FROM_VHX, (i, j, k, l))
 
-                        # direct collapse candidate
-                        v = get_zhx_with_collapse(re.zhx_matrix, re.vx_matrix, i, j, k, l)
-                        if v < best:
-                            best = v
-                            best_bp = (RE_BP_COLLAPSE, (i, j))
+                        # dangles: L~/R~ shifts on hole
+                        v = re.vhx_matrix.get(i, j, k - 1, l + 1)
+                        if math.isfinite(v):
+                            cand = L_ + R_ + P_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_ZHX_DANGLE_LR, (i, j, k - 1, l + 1))
 
+                        v = re.vhx_matrix.get(i, j, k - 1, l)
+                        if math.isfinite(v):
+                            cand = R_ + P_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_ZHX_DANGLE_R, (i, j, k - 1, l))
+
+                        v = re.vhx_matrix.get(i, j, k, l + 1)
+                        if math.isfinite(v):
+                            cand = L_ + P_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_ZHX_DANGLE_L, (i, j, k, l + 1))
+
+                        # single-stranded shrink of hole
+                        v = re.zhx_matrix.get(i, j, k - 1, l)
+                        if math.isfinite(v):
+                            cand = Q_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_ZHX_SS_LEFT, (i, j, k - 1, l))
+
+                        v = re.zhx_matrix.get(i, j, k, l + 1)
+                        if math.isfinite(v):
+                            cand = Q_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_ZHX_SS_RIGHT, (i, j, k, l + 1))
+
+                        # collapse identity if (k+1==l) handled through get_zhx_with_collapse in accessors;
+                        # here we store the computed best (may still be +inf).
                         re.zhx_matrix.set(i, j, k, l, best)
                         re.zhx_back_ptr.set(i, j, k, l, best_bp)
+
+        # --- 1.4 yhx DP (k,l paired; i,j undetermined). Implements dangles/singles on -------------------
+        # --- outer, and wrap-around via whx(i,j:k-1,l+1)
+        for s in range(n):
+            for i in range(0, n - s):
+                j = i + s
+                max_h = max(0, j - i - 1)
+                for h in range(1, max_h + 1):
+                    for k in range(i, j - h):
+                        l = k + h + 1
+                        best = math.inf
+                        best_bp = None
+
+                        # dangles on outer ends (symmetry of zhx case):
+                        v = re.vhx_matrix.get(i + 1, j, k, l)
+                        if math.isfinite(v):
+                            cand = L_ + P_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_YHX_DANGLE_L, (i + 1, j, k, l))
+
+                        v = re.vhx_matrix.get(i, j - 1, k, l)
+                        if math.isfinite(v):
+                            cand = R_ + P_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_YHX_DANGLE_R, (i, j - 1, k, l))
+
+                        # single-strand on the outer segment
+                        v = re.yhx_matrix.get(i + 1, j, k, l)
+                        if math.isfinite(v):
+                            cand = Q_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_YHX_SS_LEFT, (i + 1, j, k, l))
+
+                        v = re.yhx_matrix.get(i, j - 1, k, l)
+                        if math.isfinite(v):
+                            cand = Q_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_YHX_SS_RIGHT, (i, j - 1, k, l))
+
+                        # wrap-around via whx (closing across hole interior):
+                        v = re.whx_matrix.get(i, j, k - 1, l + 1)
+                        if math.isfinite(v):
+                            cand = P_ + M_ + v
+                            if cand < best:
+                                best = cand
+                                best_bp = (RE_BP_YHX_WRAP_WHX, (i, j, k - 1, l + 1))
+
+                        re.yhx_matrix.set(i, j, k, l, best)
+                        re.yhx_back_ptr.set(i, j, k, l, best_bp)
 
         # --- 2.1 two-gap composition into wx (whx) ---
         for s in range(n):
