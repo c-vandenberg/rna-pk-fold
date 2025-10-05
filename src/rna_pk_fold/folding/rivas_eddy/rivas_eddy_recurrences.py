@@ -21,6 +21,9 @@ RE_BP_COMPOSE_WX_WHX_YHX = "RE_PK_COMPOSE_WX_WHX_YHX"  # whx + yhx
 RE_BP_COMPOSE_WX_YHX_OVERLAP = "RE_PK_COMPOSE_WX_YHX_OVERLAP"  # yhx(i,r:k,l) + yhx(r+1,j:k,l)
 RE_BP_WX_SELECT_UNCHARGED = "RE_WX_SELECT_UNCHARGED"
 RE_BP_VX_SELECT_UNCHARGED = "RE_VX_SELECT_UNCHARGED"
+RE_BP_COMPOSE_WX_DRIFT = "RE_PK_COMPOSE_WX_DRIFT"
+RE_BP_COMPOSE_VX_DRIFT = "RE_PK_COMPOSE_VX_DRIFT"
+RE_BP_YHX_IS2_INNER_WHX = "RE_YHX_IS2_INNER_WHX"
 
 # ======================================================================
 
@@ -225,6 +228,7 @@ class RERECosts:
     coax_scale_io: float = 1.0  # inner↔outer (variant)
     coax_min_helix_len: int = 1  # require ≥ this many nts in each end-cap span
     coax_scale: float = 1.0
+    join_drift_penalty: float = 0.0  # if 0.0, code falls back to q_ss
 
     # Mismatch/dangling coax
     mismatch_coax_scale: float = 0.5  # attenuate coax when |k-r|==1
@@ -421,7 +425,6 @@ class RivasEddyEngine:
         Gwh_wx = (self.cfg.costs.Gwh_wx if self.cfg.costs.Gwh_wx != 0.0 else self.cfg.costs.Gwh)
         Gwh_whx = (self.cfg.costs.Gwh_whx if self.cfg.costs.Gwh_whx != 0.0 else self.cfg.costs.Gwh)
         tables = getattr(self.cfg, "tables", None)
-        coax = self.cfg.costs.coax_bonus if self.cfg.enable_coax else 0.0
         g = self.cfg.costs.coax_scale
 
         # tilde scalars (fallback 0)
@@ -944,6 +947,37 @@ class RivasEddyEngine:
                                         best_c = cand_overlap
                                         best_bp = (RE_BP_COMPOSE_WX_YHX_OVERLAP, (r2, k2, l2))
 
+                    # (f) Optional drift of the complementary hole at the join
+                    if self.cfg.enable_join_drift and self.cfg.drift_radius > 0:
+                        for d in range(1, self.cfg.drift_radius + 1):
+                            kR = (l - 1) - d
+                            lR = (r + 1) + d
+                            # require valid hole order and width
+                            if not (kR < lR):
+                                continue
+                            # optional width bound
+                            if (lR - kR - 1) < self.cfg.min_hole_width:
+                                continue
+
+                            R_u_d = _whx_collapse_with(re, k + 1, j, kR, lR, charged=False)
+                            R_c_d = _whx_collapse_with(re, k + 1, j, kR, lR, charged=True)
+                            if math.isfinite(R_u_d) or math.isfinite(R_c_d):
+                                cap_pen = _short_hole_penalty(self.cfg.costs, k, l)  # penalize the seam hole once
+                                # try the same four charged propagation patterns
+                                cand_first_d = Gw + _whx_collapse_with(re, i, r, k, l, False) + (
+                                    R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen
+                                cand_Lc_d = _whx_collapse_with(re, i, r, k, l, True) + (
+                                    R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen
+                                cand_Rc_d = _whx_collapse_with(re, i, r, k, l, False) + (
+                                    R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen
+                                cand_both_d = _whx_collapse_with(re, i, r, k, l, True) + (
+                                    R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen
+
+                                cand_d = min(cand_first_d, cand_Lc_d, cand_Rc_d, cand_both_d)
+                                if cand_d < best_c:
+                                    best_c = cand_d
+                                    best_bp = (RE_BP_COMPOSE_WX_DRIFT, (r, k, l, d))
+
                 re.wxc_matrix.set(i, j, best_c)
                 if best_bp is not None:
                     re.wx_back_ptr[(i, j)] = best_bp
@@ -1001,6 +1035,42 @@ class RivasEddyEngine:
                     if cand < best_c:
                         best_c = cand
                         best_bp = (RE_BP_COMPOSE_VX, (r, k, l))
+
+                    # Optional drift of the complementary hole at the join (VX/ZHX)
+                    if self.cfg.enable_join_drift and self.cfg.drift_radius > 0:
+                        for d in range(1, self.cfg.drift_radius + 1):
+                            # Drift the RIGHT seam: (k+1, j : (l-1)-d, (r+1)+d)
+                            kR = (l - 1) - d
+                            lR = (r + 1) + d
+                            iR = k + 1
+
+                            # Require a valid ZHX subproblem and hole width bound
+                            if not (iR <= kR < lR <= j):
+                                continue
+                            if (lR - kR - 1) < self.cfg.min_hole_width:
+                                continue
+
+                            # Right side (drifted) in both charge flavors
+                            R_u_d = _zhx_collapse_with(re, iR, j, kR, lR, charged=False)
+                            R_c_d = _zhx_collapse_with(re, iR, j, kR, lR, charged=True)
+                            if not (math.isfinite(R_u_d) or math.isfinite(R_c_d)):
+                                continue
+
+                            # Left side (unchanged)
+                            L_u_base = _zhx_collapse_with(re, i, r, k, l, charged=False)
+                            L_c_base = _zhx_collapse_with(re, i, r, k, l, charged=True)
+
+                            drift_pen = d * (self.cfg.costs.join_drift_penalty or q)
+
+                            cand_first_d = Gw + L_u_base + (R_u_d if math.isfinite(R_u_d) else math.inf) + drift_pen
+                            cand_Lc_d = L_c_base + (R_u_d if math.isfinite(R_u_d) else math.inf) + drift_pen
+                            cand_Rc_d = L_u_base + (R_c_d if math.isfinite(R_c_d) else math.inf) + drift_pen
+                            cand_both_d = L_c_base + (R_c_d if math.isfinite(R_c_d) else math.inf) + drift_pen
+
+                            cand_d = min(cand_first_d, cand_Lc_d, cand_Rc_d, cand_both_d)
+                            if cand_d < best_c:
+                                best_c = cand_d
+                                best_bp = (RE_BP_COMPOSE_VX_DRIFT, (r, k, l, d))
 
                 re.vxc_matrix.set(i, j, best_c)
                 if best_bp is not None:
