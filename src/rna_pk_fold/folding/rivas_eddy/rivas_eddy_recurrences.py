@@ -878,13 +878,16 @@ class RivasEddyEngine:
                     R_u = _whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
                     L_c = _whx_collapse_with(re, i, r, k, l, charged=True)
                     R_c = _whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
+
+                    cap_pen = _short_hole_penalty(self.cfg.costs, k, l) # penalize the seam hole once
+
                     # introduce charge ONCE
-                    cand_first = Gw + L_u + R_u
+                    cand_first = Gw + L_u + R_u + cap_pen
 
                     # propagate charge WITHOUT re-charging if either side is already charged
-                    cand_Lc = L_c + R_u
-                    cand_Rc = L_u + R_c
-                    cand_both = L_c + R_c
+                    cand_Lc = L_c + R_u + cap_pen
+                    cand_Rc = L_u + R_c + cap_pen
+                    cand_both = L_c + R_c + cap_pen
 
                     # choose the best way to be 'charged'
                     cand = min(cand_first, cand_Lc, cand_Rc, cand_both)
@@ -896,7 +899,7 @@ class RivasEddyEngine:
                     left_y = re.yhx_matrix.get(i, r, k, l)
                     right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
                     if math.isfinite(left_y) and math.isfinite(right_y):
-                        cand_y = Gw + left_y + right_y
+                        cand_y = Gw + left_y + right_y + cap_pen
                         if cand_y < best_c:
                             best_c = cand_y
                             best_bp = (RE_BP_COMPOSE_WX_YHX, (r, k, l))
@@ -907,12 +910,12 @@ class RivasEddyEngine:
                         R_u = _whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
                         R_c = _whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
                         if math.isfinite(R_u):
-                            cand = Gw + left_y + R_u  # introduce charge
+                            cand = Gw + left_y + R_u + cap_pen
                             if cand < best_c:
                                 best_c = cand
                                 best_bp = (RE_BP_COMPOSE_WX_YHX_WHX, (r, k, l))
                         if math.isfinite(R_c):
-                            cand = left_y + R_c  # carry charge, no +Gw
+                            cand = left_y + R_c + cap_pen
                             if cand < best_c:
                                 best_c = cand
                                 best_bp = (RE_BP_COMPOSE_WX_YHX_WHX, (r, k, l))
@@ -923,12 +926,12 @@ class RivasEddyEngine:
                         L_u = _whx_collapse_with(re, i, r, k, l, charged=False)
                         L_c = _whx_collapse_with(re, i, r, k, l, charged=True)
                         if math.isfinite(L_u):
-                            cand = Gw + L_u + right_y  # introduce charge
+                            cand = Gw + right_y + L_u + cap_pen
                             if cand < best_c:
                                 best_c = cand
                                 best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
                         if math.isfinite(L_c):
-                            cand = L_c + right_y  # carry charge, no +Gw
+                            cand = L_c + right_y + cap_pen
                             if cand < best_c:
                                 best_c = cand
                                 best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
@@ -942,7 +945,8 @@ class RivasEddyEngine:
                                 left_y = re.yhx_matrix.get(i, r2, k2, l2)
                                 right_y = re.yhx_matrix.get(r2 + 1, j, k2, l2)
                                 if math.isfinite(left_y) and math.isfinite(right_y):
-                                    cand_overlap = Gwh_wx + left_y + right_y
+                                    cand_overlap = (Gwh_wx + left_y + right_y +
+                                                    _short_hole_penalty(self.cfg.costs, k2, l2))
                                     if cand_overlap < best_c:
                                         best_c = cand_overlap
                                         best_bp = (RE_BP_COMPOSE_WX_YHX_OVERLAP, (r2, k2, l2))
@@ -961,17 +965,17 @@ class RivasEddyEngine:
 
                             R_u_d = _whx_collapse_with(re, k + 1, j, kR, lR, charged=False)
                             R_c_d = _whx_collapse_with(re, k + 1, j, kR, lR, charged=True)
+                            drift_pen = d * (self.cfg.costs.join_drift_penalty or q)
                             if math.isfinite(R_u_d) or math.isfinite(R_c_d):
-                                cap_pen = _short_hole_penalty(self.cfg.costs, k, l)  # penalize the seam hole once
                                 # try the same four charged propagation patterns
                                 cand_first_d = Gw + _whx_collapse_with(re, i, r, k, l, False) + (
-                                    R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen
+                                    R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen + drift_pen
                                 cand_Lc_d = _whx_collapse_with(re, i, r, k, l, True) + (
-                                    R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen
+                                    R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen + drift_pen
                                 cand_Rc_d = _whx_collapse_with(re, i, r, k, l, False) + (
-                                    R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen
+                                    R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen + drift_pen
                                 cand_both_d = _whx_collapse_with(re, i, r, k, l, True) + (
-                                    R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen
+                                    R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen + drift_pen
 
                                 cand_d = min(cand_first_d, cand_Lc_d, cand_Rc_d, cand_both_d)
                                 if cand_d < best_c:
@@ -1020,16 +1024,17 @@ class RivasEddyEngine:
                     R_c = _zhx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
 
                     adjacent = (r == k)
+                    cap_pen = _short_hole_penalty(self.cfg.costs, k, l)
 
                     # consolidated coax handling (gates, min helix len, variants, mismatch, clamp)
                     coax_total, coax_bonus_term = _coax_pack(
                         seq, i, j, r, k, l, self.cfg, self.cfg.costs, adjacent
                     )
 
-                    cand_first = Gw + L_u + R_u
-                    cand_Lc = L_c + R_u
-                    cand_Rc = L_u + R_c
-                    cand_both = L_c + R_c
+                    cand_first = Gw + L_u + R_u + cap_pen
+                    cand_Lc = L_c + R_u + cap_pen
+                    cand_Rc = L_u + R_c + cap_pen
+                    cand_both = L_c + R_c + cap_pen
 
                     cand = min(cand_first, cand_Lc, cand_Rc, cand_both) + g * coax_total + coax_bonus_term
                     if cand < best_c:
@@ -1062,10 +1067,14 @@ class RivasEddyEngine:
 
                             drift_pen = d * (self.cfg.costs.join_drift_penalty or q)
 
-                            cand_first_d = Gw + L_u_base + (R_u_d if math.isfinite(R_u_d) else math.inf) + drift_pen
-                            cand_Lc_d = L_c_base + (R_u_d if math.isfinite(R_u_d) else math.inf) + drift_pen
-                            cand_Rc_d = L_u_base + (R_c_d if math.isfinite(R_c_d) else math.inf) + drift_pen
-                            cand_both_d = L_c_base + (R_c_d if math.isfinite(R_c_d) else math.inf) + drift_pen
+                            cand_first_d = (Gw + L_u_base + (R_u_d if math.isfinite(R_u_d) else math.inf) + drift_pen
+                                            + cap_pen)
+                            cand_Lc_d = (L_c_base + (R_u_d if math.isfinite(R_u_d) else math.inf) + drift_pen
+                                         + cap_pen)
+                            cand_Rc_d = (L_u_base + (R_c_d if math.isfinite(R_c_d) else math.inf) + drift_pen
+                                         + cap_pen)
+                            cand_both_d = (L_c_base + (R_c_d if math.isfinite(R_c_d) else math.inf) + drift_pen
+                                           + cap_pen)
 
                             cand_d = min(cand_first_d, cand_Lc_d, cand_Rc_d, cand_both_d)
                             if cand_d < best_c:
