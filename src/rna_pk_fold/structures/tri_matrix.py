@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 
-from typing import Generic, TypeVar, List, Tuple, Iterator, Dict
+from typing import Generic, TypeVar, List, Tuple, Iterator, Dict, Any
 
 Pair = Tuple[int, int]
 Hole = Tuple[int, int]
@@ -79,7 +79,7 @@ class ZuckerTriMatrix(Generic[T]):
 
 
 @dataclass(slots=True)
-class ReTriMatrix:
+class RivasEddyTriMatrix:
     """
     Triangular N x N float matrix with +inf default.
     Only (i <= j) are meaningful. Use get/set.
@@ -99,7 +99,7 @@ class ReTriMatrix:
 
 
 @dataclass(slots=True)
-class ReTriBackptr:
+class RivasEddyTriBackPointer:
     """
     Triangular N x N back-pointer matrix for WX/VX.
     Only (i <= j) are meaningful. Missing entries return None.

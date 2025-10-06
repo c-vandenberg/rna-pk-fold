@@ -42,7 +42,7 @@ from rna_pk_fold.folding.rivas_eddy.rivas_eddy_recurrences import (
 
 
 @dataclass(frozen=True, slots=True)
-class RETraceResult:
+class RivasEddyTraceResult:
     pairs: List[Pair]
     dot_bracket: str
 
@@ -66,7 +66,7 @@ def add_pair_once(
         pair_layer[(i, j)] = layer
 
 
-def traceback_re_with_pk(seq: str, nested: ZuckerFoldState, re: RivasEddyFoldState) -> RETraceResult:
+def traceback_with_pk(seq: str, nested: ZuckerFoldState, re: RivasEddyFoldState) -> RivasEddyTraceResult:
     """
     Full(er) R&E traceback with layered dot-bracket:
       - Start at WX(0,N-1).
@@ -76,7 +76,7 @@ def traceback_re_with_pk(seq: str, nested: ZuckerFoldState, re: RivasEddyFoldSta
     """
     n = re.n
     if n == 0:
-        return RETraceResult(pairs=[], dot_bracket="")
+        return RivasEddyTraceResult(pairs=[], dot_bracket="")
 
     # Work stack frames:
     #   ("WX", i, j, layer)
@@ -326,4 +326,4 @@ def traceback_re_with_pk(seq: str, nested: ZuckerFoldState, re: RivasEddyFoldSta
 
     ordered_pairs = sorted(pairs, key=lambda pr: (pr.base_i, pr.base_j))
     dot = _pairs_to_multilayer_dotbracket(n, ordered_pairs, pair_layer)
-    return RETraceResult(pairs=ordered_pairs, dot_bracket=dot)
+    return RivasEddyTraceResult(pairs=ordered_pairs, dot_bracket=dot)

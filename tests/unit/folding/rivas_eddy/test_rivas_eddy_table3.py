@@ -31,7 +31,7 @@ def test_iter_inner_holes_min_hole_enforced():
     assert set(holes2).issubset(set(holes0)) and len(holes2) < len(holes0)
 
 def test_dangle_table_lookup_and_fallbacks():
-    costs = re_rec.RERECosts(
+    costs = re_rec.RivasEddyCosts(
         L_tilde=0.7, R_tilde=0.8,
         dangle_outer_L={("A","U"): -0.3},
         dangle_outer_R={("C","G"): -0.4},
@@ -43,7 +43,7 @@ def test_dangle_table_lookup_and_fallbacks():
     assert dangle_outer_R(seq, 3, costs) == pytest.approx(0.8)
 
 def test_coax_energy_for_join_symmetric_lookup():
-    costs = re_rec.RERECosts(coax_pairs={("GC","AU"): -1.2})
+    costs = re_rec.RivasEddyCosts(coax_pairs={("GC", "AU"): -1.2})
     seq = "GCAU"
     e1 = coax_energy_for_join(seq, (0,1), (2,3), costs)
     e2 = coax_energy_for_join(seq, (2,3), (0,1), costs)
@@ -167,17 +167,17 @@ def test_coax_eligibility_and_never_hurts(adjacent, expect_nontrivial_caps):
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    base_costs = re_rec.RERECosts(
+    base_costs = re_rec.RivasEddyCosts(
         q_ss=0.0, P_tilde=0.0, P_tilde_out=0.0, P_tilde_hole=0.0,
         Q_tilde_out=0.0, Q_tilde_hole=0.0, L_tilde=0.0, R_tilde=0.0,
         coax_pairs={("GC","GC"): -1.0, ("AU","AU"): -1.0},
         coax_scale=1.0, coax_bonus=0.0, Gwi=0.0,
     )
 
-    cfg_off = re_rec.REREConfig(enable_coax=False, enable_coax_variants=False,
-                                pk_penalty_gw=0.0, costs=base_costs)
-    cfg_on  = re_rec.REREConfig(enable_coax=True,  enable_coax_variants=False,
-                                pk_penalty_gw=0.0, costs=base_costs)
+    cfg_off = re_rec.RivasEddyConfig(enable_coax=False, enable_coax_variants=False,
+                                     pk_penalty_gw=0.0, costs=base_costs)
+    cfg_on  = re_rec.RivasEddyConfig(enable_coax=True, enable_coax_variants=False,
+                                     pk_penalty_gw=0.0, costs=base_costs)
 
     eng_off = re_rec.RivasEddyEngine(cfg_off)
     eng_off.fill_with_costs(seq, nested, re_state)
@@ -198,14 +198,14 @@ def test_coax_positive_values_are_clamped_to_zero():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs_pos = re_rec.RERECosts(
+    costs_pos = re_rec.RivasEddyCosts(
         q_ss=0.0, P_tilde=0.0, P_tilde_out=0.0, P_tilde_hole=0.0,
         Q_tilde_out=0.0, Q_tilde_hole=0.0, L_tilde=0.0, R_tilde=0.0,
         coax_pairs={("GC","GC"): +2.5},  # should be clamped to 0
         coax_scale=1.0, coax_bonus=0.0, Gwi=0.0,
     )
-    cfg_off = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0, costs=costs_pos)
-    cfg_on  = re_rec.REREConfig(enable_coax=True,  pk_penalty_gw=0.0, costs=costs_pos)
+    cfg_off = re_rec.RivasEddyConfig(enable_coax=False, pk_penalty_gw=0.0, costs=costs_pos)
+    cfg_on  = re_rec.RivasEddyConfig(enable_coax=True, pk_penalty_gw=0.0, costs=costs_pos)
 
     eng_off = re_rec.RivasEddyEngine(cfg_off)
     eng_off.fill_with_costs(seq, nested, re_state)
@@ -227,16 +227,16 @@ def test_coax_variants_can_help_when_only_variant_is_scored():
     n, i, j = len(seq), 0, 3
     nested, re_state = _try_build_states(n)
 
-    costs = re_rec.RERECosts(
+    costs = re_rec.RivasEddyCosts(
         q_ss=0.0, L_tilde=0.0, R_tilde=0.0, Gwi=0.0,
         # Only score the variant edges (GC,CG) and (CG,GG) negatively
         coax_pairs={("GC","CG"): -2.0, ("CG","GG"): -1.0},
         coax_scale=1.0, coax_bonus=0.0,
     )
-    cfg_base = re_rec.REREConfig(enable_coax=True,  enable_coax_variants=False,
-                                 pk_penalty_gw=0.0, costs=costs)
-    cfg_var  = re_rec.REREConfig(enable_coax=True,  enable_coax_variants=True,
-                                 pk_penalty_gw=0.0, costs=costs)
+    cfg_base = re_rec.RivasEddyConfig(enable_coax=True, enable_coax_variants=False,
+                                      pk_penalty_gw=0.0, costs=costs)
+    cfg_var  = re_rec.RivasEddyConfig(enable_coax=True, enable_coax_variants=True,
+                                      pk_penalty_gw=0.0, costs=costs)
 
     eng0 = re_rec.RivasEddyEngine(cfg_base)
     eng0.fill_with_costs(seq, nested, re_state)
@@ -259,15 +259,15 @@ def test_pruning_guards_do_not_worsen_optimum():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs = re_rec.RERECosts(q_ss=0.0)
-    cfg_loose = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0,
-                                  strict_complement_order=True,
-                                  min_hole_width=0, min_outer_left=0, min_outer_right=0,
-                                  costs=costs)
-    cfg_tight = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0,
-                                  strict_complement_order=True,
-                                  min_hole_width=1, min_outer_left=1, min_outer_right=1,
-                                  costs=costs)
+    costs = re_rec.RivasEddyCosts(q_ss=0.0)
+    cfg_loose = re_rec.RivasEddyConfig(enable_coax=False, pk_penalty_gw=0.0,
+                                       strict_complement_order=True,
+                                       min_hole_width=0, min_outer_left=0, min_outer_right=0,
+                                       costs=costs)
+    cfg_tight = re_rec.RivasEddyConfig(enable_coax=False, pk_penalty_gw=0.0,
+                                       strict_complement_order=True,
+                                       min_hole_width=1, min_outer_left=1, min_outer_right=1,
+                                       costs=costs)
 
     eng0 = re_rec.RivasEddyEngine(cfg_loose)
     eng0.fill_with_costs(seq, nested, re_state)
@@ -286,11 +286,11 @@ def test_enable_wx_overlap_with_negative_Gwh_wx_can_only_help():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs_no = re_rec.RERECosts(q_ss=0.0, Gwh_wx=0.0)
-    costs_yes = re_rec.RERECosts(q_ss=0.0, Gwh_wx=-0.5)
+    costs_no = re_rec.RivasEddyCosts(q_ss=0.0, Gwh_wx=0.0)
+    costs_yes = re_rec.RivasEddyCosts(q_ss=0.0, Gwh_wx=-0.5)
 
-    cfg_no  = re_rec.REREConfig(enable_wx_overlap=False, pk_penalty_gw=0.0, costs=costs_no)
-    cfg_yes = re_rec.REREConfig(enable_wx_overlap=True,  pk_penalty_gw=0.0, costs=costs_yes)
+    cfg_no  = re_rec.RivasEddyConfig(enable_wx_overlap=False, pk_penalty_gw=0.0, costs=costs_no)
+    cfg_yes = re_rec.RivasEddyConfig(enable_wx_overlap=True, pk_penalty_gw=0.0, costs=costs_yes)
 
     eng0 = re_rec.RivasEddyEngine(cfg_no)
     eng0.fill_with_costs(seq, nested, re_state)
@@ -339,12 +339,12 @@ def test_P_out_increases_yhx_min_energy_monotonically():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    cfg0 = re_rec.REREConfig(
+    cfg0 = re_rec.RivasEddyConfig(
         pk_penalty_gw=0.0, enable_coax=False,
-        costs=re_rec.RERECosts(q_ss=0.0, P_tilde_out=0.0, P_tilde_hole=0.0, Gwi=0.0))
-    cfg1 = re_rec.REREConfig(
+        costs=re_rec.RivasEddyCosts(q_ss=0.0, P_tilde_out=0.0, P_tilde_hole=0.0, Gwi=0.0))
+    cfg1 = re_rec.RivasEddyConfig(
         pk_penalty_gw=0.0, enable_coax=False,
-        costs=re_rec.RERECosts(q_ss=0.0, P_tilde_out=2.0, P_tilde_hole=0.0, Gwi=0.0))
+        costs=re_rec.RivasEddyCosts(q_ss=0.0, P_tilde_out=2.0, P_tilde_hole=0.0, Gwi=0.0))
 
     eng0 = re_rec.RivasEddyEngine(cfg0)
     eng0.fill_with_costs(seq, nested, re_state)
@@ -363,12 +363,12 @@ def test_P_hole_increases_vhx_min_energy_monotonically():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    cfg0 = re_rec.REREConfig(
+    cfg0 = re_rec.RivasEddyConfig(
         pk_penalty_gw=0.0, enable_coax=False,
-        costs=re_rec.RERECosts(q_ss=0.0, P_tilde_hole=0.0, Gwi=0.0))
-    cfg1 = re_rec.REREConfig(
+        costs=re_rec.RivasEddyCosts(q_ss=0.0, P_tilde_hole=0.0, Gwi=0.0))
+    cfg1 = re_rec.RivasEddyConfig(
         pk_penalty_gw=0.0, enable_coax=False,
-        costs=re_rec.RERECosts(q_ss=0.0, P_tilde_hole=2.0, Gwi=0.0))
+        costs=re_rec.RivasEddyCosts(q_ss=0.0, P_tilde_hole=2.0, Gwi=0.0))
 
     eng0 = re_rec.RivasEddyEngine(cfg0)
     eng0.fill_with_costs(seq, nested, re_state)
@@ -392,8 +392,8 @@ def test_wx_selects_uncharged_on_tie_and_sets_backpointer():
     nested, re_state = _try_build_states(n)
 
     # Gw=0 so charged and uncharged can tie; selection should prefer uncharged
-    cfg = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0,
-                            costs=re_rec.RERECosts(q_ss=0.0))
+    cfg = re_rec.RivasEddyConfig(enable_coax=False, pk_penalty_gw=0.0,
+                                 costs=re_rec.RivasEddyCosts(q_ss=0.0))
     eng = re_rec.RivasEddyEngine(cfg)
     eng.fill_with_costs(seq, nested, re_state)
 
@@ -437,28 +437,28 @@ def test_coax_min_helix_len_gates_effect():
     nested, re_state = _try_build_states(n)
 
     # Only OO contact carries negative energy
-    costs = re_rec.RERECosts(
+    costs = re_rec.RivasEddyCosts(
         q_ss=0.0, Gwi=0.0,
         coax_pairs={("GC","GG"): -1.5},
         coax_scale=1.0, coax_bonus=0.0,
         coax_min_helix_len=10  # too strict -> gated out
     )
-    cfg_strict = re_rec.REREConfig(enable_coax=True, enable_coax_variants=False,
-                                   pk_penalty_gw=0.0, costs=costs)
+    cfg_strict = re_rec.RivasEddyConfig(enable_coax=True, enable_coax_variants=False,
+                                        pk_penalty_gw=0.0, costs=costs)
     eng_strict = re_rec.RivasEddyEngine(cfg_strict)
     eng_strict.fill_with_costs(seq, nested, re_state)
     vx_strict = re_state.vx_matrix.get(i, j)
 
     # Same but relax the gate so the same seam is eligible
     nested2, re_state2 = _try_build_states(n)
-    costs2 = re_rec.RERECosts(
+    costs2 = re_rec.RivasEddyCosts(
         q_ss=0.0, Gwi=0.0,
         coax_pairs={("GC","GG"): -1.5},
         coax_scale=1.0, coax_bonus=0.0,
         coax_min_helix_len=1
     )
-    cfg_relaxed = re_rec.REREConfig(enable_coax=True, enable_coax_variants=False,
-                                    pk_penalty_gw=0.0, costs=costs2)
+    cfg_relaxed = re_rec.RivasEddyConfig(enable_coax=True, enable_coax_variants=False,
+                                         pk_penalty_gw=0.0, costs=costs2)
     eng_relaxed = re_rec.RivasEddyEngine(cfg_relaxed)
     eng_relaxed.fill_with_costs(seq, nested2, re_state2)
     vx_relaxed = re_state2.vx_matrix.get(i, j)
@@ -477,14 +477,14 @@ def test_coax_mismatch_requires_enable_flag():
     nested, re_state = _try_build_states(n)
 
     # Only the OO pair for the mismatch seam is negative
-    costs = re_rec.RERECosts(
+    costs = re_rec.RivasEddyCosts(
         q_ss=0.0, Gwi=0.0,
         coax_pairs={("GA","AC"): -2.0},  # (i,r)="GA", (k+1,j)="AC" for one mismatch candidate
         coax_scale=1.0, coax_bonus=0.0,
         coax_min_helix_len=1,
     )
 
-    cfg_no_mismatch = re_rec.REREConfig(
+    cfg_no_mismatch = re_rec.RivasEddyConfig(
         enable_coax=True, enable_coax_variants=False, enable_coax_mismatch=False,
         pk_penalty_gw=0.0, costs=costs
     )
@@ -493,7 +493,7 @@ def test_coax_mismatch_requires_enable_flag():
     vx0 = re_state.vx_matrix.get(0, n - 1)
 
     nested2, re_state2 = _try_build_states(n)
-    cfg_yes_mismatch = re_rec.REREConfig(
+    cfg_yes_mismatch = re_rec.RivasEddyConfig(
         enable_coax=True, enable_coax_variants=False, enable_coax_mismatch=True,
         pk_penalty_gw=0.0, costs=costs
     )
@@ -513,7 +513,7 @@ def test_coax_directional_scales_affect_variants():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs = re_rec.RERECosts(
+    costs = re_rec.RivasEddyCosts(
         q_ss=0.0, Gwi=0.0,
         # Only variant edges score (both directions)
         coax_pairs={("GC","CG"): -1.0, ("CG","GC"): -1.5},
@@ -523,16 +523,16 @@ def test_coax_directional_scales_affect_variants():
         coax_scale_oi=0.0, coax_scale_io=0.0,
     )
 
-    cfg_base = re_rec.REREConfig(enable_coax=True, enable_coax_variants=False,
-                                 pk_penalty_gw=0.0, costs=costs)
+    cfg_base = re_rec.RivasEddyConfig(enable_coax=True, enable_coax_variants=False,
+                                      pk_penalty_gw=0.0, costs=costs)
     eng0 = re_rec.RivasEddyEngine(cfg_base)
     eng0.fill_with_costs(seq, nested, re_state)
     vx0 = re_state.vx_matrix.get(0, n - 1)
 
     # Now enable variants but keep scales at 0 (still no effect)
     nested2, re_state2 = _try_build_states(n)
-    cfg_var_zero = re_rec.REREConfig(enable_coax=True, enable_coax_variants=True,
-                                     pk_penalty_gw=0.0, costs=costs)
+    cfg_var_zero = re_rec.RivasEddyConfig(enable_coax=True, enable_coax_variants=True,
+                                          pk_penalty_gw=0.0, costs=costs)
     eng1 = re_rec.RivasEddyEngine(cfg_var_zero)
     eng1.fill_with_costs(seq, nested2, re_state2)
     vx1 = re_state2.vx_matrix.get(0, n - 1)
@@ -540,15 +540,15 @@ def test_coax_directional_scales_affect_variants():
 
     # Increase variant scales -> now effect should appear
     nested3, re_state3 = _try_build_states(n)
-    costs2 = re_rec.RERECosts(
+    costs2 = re_rec.RivasEddyCosts(
         q_ss=0.0, Gwi=0.0,
         coax_pairs={("GC","CG"): -1.0, ("CG","GC"): -1.5},
         coax_scale=1.0, coax_bonus=0.0,
         coax_min_helix_len=1,
         coax_scale_oo=0.0, coax_scale_oi=2.0, coax_scale_io=2.0,
     )
-    cfg_var_scaled = re_rec.REREConfig(enable_coax=True, enable_coax_variants=True,
-                                       pk_penalty_gw=0.0, costs=costs2)
+    cfg_var_scaled = re_rec.RivasEddyConfig(enable_coax=True, enable_coax_variants=True,
+                                            pk_penalty_gw=0.0, costs=costs2)
     eng2 = re_rec.RivasEddyEngine(cfg_var_scaled)
     eng2.fill_with_costs(seq, nested3, re_state3)
     vx2 = re_state3.vx_matrix.get(0, n - 1)
@@ -568,10 +568,10 @@ def test_short_hole_caps_raise_charged_vx_when_hole_is_tiny():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs_no = re_rec.RERECosts(q_ss=0.0, short_hole_caps={})
-    costs_yes = re_rec.RERECosts(q_ss=0.0, short_hole_caps={1: +2.0})
-    cfg_no  = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0, costs=costs_no)
-    cfg_yes = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0, costs=costs_yes)
+    costs_no = re_rec.RivasEddyCosts(q_ss=0.0, short_hole_caps={})
+    costs_yes = re_rec.RivasEddyCosts(q_ss=0.0, short_hole_caps={1: +2.0})
+    cfg_no  = re_rec.RivasEddyConfig(enable_coax=False, pk_penalty_gw=0.0, costs=costs_no)
+    cfg_yes = re_rec.RivasEddyConfig(enable_coax=False, pk_penalty_gw=0.0, costs=costs_yes)
 
     eng0 = re_rec.RivasEddyEngine(cfg_no)
     eng0.fill_with_costs(seq, nested, re_state)
@@ -594,11 +594,11 @@ def test_join_drift_cannot_worsen_vx():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    base_costs = re_rec.RERECosts(q_ss=0.1, join_drift_penalty=1.0)  # penalize drift
-    cfg_off = re_rec.REREConfig(enable_join_drift=False, drift_radius=1,
-                                pk_penalty_gw=0.0, costs=base_costs)
-    cfg_on  = re_rec.REREConfig(enable_join_drift=True,  drift_radius=1,
-                                pk_penalty_gw=0.0, costs=base_costs)
+    base_costs = re_rec.RivasEddyCosts(q_ss=0.1, join_drift_penalty=1.0)  # penalize drift
+    cfg_off = re_rec.RivasEddyConfig(enable_join_drift=False, drift_radius=1,
+                                     pk_penalty_gw=0.0, costs=base_costs)
+    cfg_on  = re_rec.RivasEddyConfig(enable_join_drift=True, drift_radius=1,
+                                     pk_penalty_gw=0.0, costs=base_costs)
 
     eng0 = re_rec.RivasEddyEngine(cfg_off)
     eng0.fill_with_costs(seq, nested, re_state)
@@ -622,7 +622,7 @@ def test_join_drift_with_negative_penalty_can_win_and_sets_bp():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs = re_rec.RERECosts(
+    costs = re_rec.RivasEddyCosts(
         q_ss=0.0, Gwi=0.0,
         # Provide some coax gain so charged path can beat the uncharged baseline (0)
         coax_pairs={("GC","GC"): -2.0},
@@ -630,7 +630,7 @@ def test_join_drift_with_negative_penalty_can_win_and_sets_bp():
         join_drift_penalty=-0.5,  # reward drift
         coax_min_helix_len=1,
     )
-    cfg = re_rec.REREConfig(
+    cfg = re_rec.RivasEddyConfig(
         enable_coax=True, enable_coax_variants=False,
         enable_join_drift=True, drift_radius=1,
         pk_penalty_gw=0.0, costs=costs
@@ -663,15 +663,15 @@ def test_IS2_outer_yhx_lowers_best_yhx_when_negative():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    cfg0 = re_rec.REREConfig(pk_penalty_gw=0.0, enable_coax=False,
-                             costs=re_rec.RERECosts(q_ss=0.0))
+    cfg0 = re_rec.RivasEddyConfig(pk_penalty_gw=0.0, enable_coax=False,
+                                  costs=re_rec.RivasEddyCosts(q_ss=0.0))
     eng0 = re_rec.RivasEddyEngine(cfg0)
     eng0.fill_with_costs(seq, nested, re_state)
     y0 = _min_finite_yhx(re_state, n)
 
     nested2, re_state2 = _try_build_states(n)
-    cfg1 = re_rec.REREConfig(pk_penalty_gw=0.0, enable_coax=False,
-                             costs=re_rec.RERECosts(q_ss=0.0))
+    cfg1 = re_rec.RivasEddyConfig(pk_penalty_gw=0.0, enable_coax=False,
+                                  costs=re_rec.RivasEddyCosts(q_ss=0.0))
     cfg1.tables = _TablesYHX(-1.5)  # negative bridge should help
     eng1 = re_rec.RivasEddyEngine(cfg1)
     eng1.fill_with_costs(seq, nested2, re_state2)
@@ -689,15 +689,15 @@ def test_IS2_outer_yhx_can_lower_whx_via_yhx_bridge():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    cfg0 = re_rec.REREConfig(pk_penalty_gw=0.0, enable_coax=False,
-                             costs=re_rec.RERECosts(q_ss=0.0))
+    cfg0 = re_rec.RivasEddyConfig(pk_penalty_gw=0.0, enable_coax=False,
+                                  costs=re_rec.RivasEddyCosts(q_ss=0.0))
     eng0 = re_rec.RivasEddyEngine(cfg0)
     eng0.fill_with_costs(seq, nested, re_state)
     w0 = _min_finite_whx(re_state, n)
 
     nested2, re_state2 = _try_build_states(n)
-    cfg1 = re_rec.REREConfig(pk_penalty_gw=0.0, enable_coax=False,
-                             costs=re_rec.RERECosts(q_ss=0.0))
+    cfg1 = re_rec.RivasEddyConfig(pk_penalty_gw=0.0, enable_coax=False,
+                                  costs=re_rec.RivasEddyCosts(q_ss=0.0))
     cfg1.tables = _TablesYHX(-2.0)
     eng1 = re_rec.RivasEddyEngine(cfg1)
     eng1.fill_with_costs(seq, nested2, re_state2)
@@ -715,8 +715,8 @@ def test_wx_overlap_respects_short_hole_caps_on_charged_path():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs_overlap = re_rec.RERECosts(q_ss=0.0, Gwh_wx=-0.5, short_hole_caps={1: +1.0})
-    cfg = re_rec.REREConfig(enable_wx_overlap=True, pk_penalty_gw=0.0, costs=costs_overlap)
+    costs_overlap = re_rec.RivasEddyCosts(q_ss=0.0, Gwh_wx=-0.5, short_hole_caps={1: +1.0})
+    cfg = re_rec.RivasEddyConfig(enable_wx_overlap=True, pk_penalty_gw=0.0, costs=costs_overlap)
     eng = re_rec.RivasEddyEngine(cfg)
     eng.fill_with_costs(seq, nested, re_state)
 
@@ -735,8 +735,8 @@ def test_vx_selects_uncharged_on_tie_and_sets_backpointer():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    cfg = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0,
-                            costs=re_rec.RERECosts(q_ss=0.0))
+    cfg = re_rec.RivasEddyConfig(enable_coax=False, pk_penalty_gw=0.0,
+                                 costs=re_rec.RivasEddyCosts(q_ss=0.0))
     eng = re_rec.RivasEddyEngine(cfg)
     eng.fill_with_costs(seq, nested, re_state)
 

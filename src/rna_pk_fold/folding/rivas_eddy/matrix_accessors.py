@@ -1,11 +1,11 @@
 import math
 
 from rna_pk_fold.structures.gap_matrix import SparseGapMatrix
-from rna_pk_fold.structures.tri_matrix import ReTriMatrix
+from rna_pk_fold.structures.tri_matrix import RivasEddyTriMatrix
 from rna_pk_fold.folding.rivas_eddy.re_fold_state import RivasEddyFoldState
 
 
-def get_whx_with_collapse(whx: SparseGapMatrix, wx: ReTriMatrix,
+def get_whx_with_collapse(whx: SparseGapMatrix, wx: RivasEddyTriMatrix,
                           i: int, j: int, k: int, l: int) -> float:
     """
     Collapse identity: whx(i,j : k,k+1) == wx(i,j)
@@ -20,7 +20,7 @@ def get_whx_with_collapse(whx: SparseGapMatrix, wx: ReTriMatrix,
     return whx.get(i, j, k, l)
 
 def get_zhx_with_collapse(
-    zhx: SparseGapMatrix, vx: ReTriMatrix,
+    zhx: SparseGapMatrix, vx: RivasEddyTriMatrix,
     i: int, j: int, k: int, l: int
 ) -> float:
     """
