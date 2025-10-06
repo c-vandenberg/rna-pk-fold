@@ -5,84 +5,12 @@ from dataclasses import dataclass, field
 from typing import Iterator, Tuple, Dict, Optional, Any
 
 from rna_pk_fold.folding.fold_state import FoldState, RivasEddyState
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
+from rna_pk_fold.folding.rivas_eddy.re_matrices import (
     get_whx_with_collapse,
     get_zhx_with_collapse
 )
+from rna_pk_fold.folding.rivas_eddy.re_back_pointer import RivasEddyBacktrackOp
 from rna_pk_fold.utils.nucleotide_utils import pair_str
-
-# ======================================================================
-
-# ======================================================================
-RE_BP_COMPOSE_WX   = "RE_PK_COMPOSE_WX"
-RE_BP_COMPOSE_VX   = "RE_PK_COMPOSE_VX"
-RE_BP_COMPOSE_WX_YHX = "RE_PK_COMPOSE_WX_YHX"
-RE_BP_COMPOSE_WX_YHX_WHX = "RE_PK_COMPOSE_WX_YHX_WHX"  # yhx + whx
-RE_BP_COMPOSE_WX_WHX_YHX = "RE_PK_COMPOSE_WX_WHX_YHX"  # whx + yhx
-RE_BP_COMPOSE_WX_YHX_OVERLAP = "RE_PK_COMPOSE_WX_YHX_OVERLAP"  # yhx(i,r:k,l) + yhx(r+1,j:k,l)
-RE_BP_WX_SELECT_UNCHARGED = "RE_WX_SELECT_UNCHARGED"
-RE_BP_VX_SELECT_UNCHARGED = "RE_VX_SELECT_UNCHARGED"
-RE_BP_COMPOSE_WX_DRIFT = "RE_PK_COMPOSE_WX_DRIFT"
-RE_BP_COMPOSE_VX_DRIFT = "RE_PK_COMPOSE_VX_DRIFT"
-RE_BP_YHX_IS2_INNER_WHX = "RE_YHX_IS2_INNER_WHX"
-RE_BP_WHX_IS2_INNER_YHX = "RE_WHX_IS2_INNER_YHX"
-
-# ======================================================================
-
-# ======================================================================
-RE_BP_WHX_SHRINK_LEFT  = "RE_SHRINK_LEFT"
-RE_BP_WHX_SHRINK_RIGHT = "RE_SHRINK_RIGHT"
-RE_BP_WHX_TRIM_LEFT    = "RE_TRIM_LEFT"
-RE_BP_WHX_TRIM_RIGHT   = "RE_TRIM_RIGHT"
-RE_BP_WHX_COLLAPSE     = "RE_COLLAPSE"
-RE_BP_WHX_SS_BOTH              = "RE_WHX_SS_BOTH"              # 2*q_ss + whx(i+1, j-1 : k, l)
-RE_BP_WHX_SPLIT_LEFT_WHX_WX    = "RE_WHX_SPLIT_LEFT_WHX_WX"    # whx(i, r : k, l) + wx(r+1, j)
-RE_BP_WHX_SPLIT_RIGHT_WX_WHX   = "RE_WHX_SPLIT_RIGHT_WX_WHX"   # wx(i, s) + whx(s+1, j : k, l)
-RE_BP_WHX_OVERLAP_SPLIT        = "RE_WHX_OVERLAP_SPLIT"        # Gwh + whx(i, r : k, l) + whx(r+1, j : k, l)
-
-# ======================================================================
-# VHX backpointer tags
-# ======================================================================
-RE_BP_VHX_DANGLE_L        = "RE_VHX_DANGLE_L"        # P~+L~ + vhx(i,j:k+1,l)
-RE_BP_VHX_DANGLE_R        = "RE_VHX_DANGLE_R"        # P~+R~ + vhx(i,j:k,l-1)
-RE_BP_VHX_DANGLE_LR       = "RE_VHX_DANGLE_LR"       # P~+L~+R~ + vhx(i,j:k+1,l-1)
-RE_BP_VHX_SS_LEFT         = "RE_VHX_SS_LEFT"         # Q~ + zhx(i,j:k,l)   (left-labelled)
-RE_BP_VHX_SS_RIGHT        = "RE_VHX_SS_RIGHT"        # Q~ + zhx(i,j:k,l)   (right-labelled)
-RE_BP_VHX_SPLIT_LEFT_ZHX_WX  = "RE_VHX_SPLIT_LEFT_ZHX_WX"   # zhx(i,j:r,l) + wx(r+1,k)
-RE_BP_VHX_SPLIT_RIGHT_ZHX_WX = "RE_VHX_SPLIT_RIGHT_ZHX_WX"  # zhx(i,j:k,s) + wx(l,s-1)
-RE_BP_VHX_IS2_INNER_ZHX      = "RE_VHX_IS2_INNER_ZHX"       # ĨS2(i,j:r,s) + zhx(r,s:k,l)
-RE_BP_VHX_WRAP_WHX           = "RE_VHX_WRAP_WHX"            # P~+M~ + whx(i+1,j-1:k,l)
-
-# ======================================================================
-
-# ======================================================================
-RE_BP_VHX_CLOSE_BOTH = "RE_VHX_CLOSE_BOTH"      # 2*P~ + M~ + whx(i+1,j-1:k-1,l+1)
-RE_BP_ZHX_FROM_VHX   = "RE_ZHX_FROM_VHX"        # P~ + vhx(i,j:k,l)
-RE_BP_ZHX_DANGLE_LR  = "RE_ZHX_DANGLE_LR"       # L~+R~+P~ + vhx(i,j:k-1,l+1)
-RE_BP_ZHX_DANGLE_L   = "RE_ZHX_DANGLE_L"        # L~+P~     + vhx(i,j:k,l+1)
-RE_BP_ZHX_DANGLE_R   = "RE_ZHX_DANGLE_R"        # R~+P~     + vhx(i,j:k-1,l)
-RE_BP_ZHX_SS_LEFT    = "RE_ZHX_SS_LEFT"         # Q~ + zhx(i,j:k-1,l)
-RE_BP_ZHX_SS_RIGHT   = "RE_ZHX_SS_RIGHT"        # Q~ + zhx(i,j:k,l+1)
-RE_BP_ZHX_SPLIT_LEFT_ZHX_WX   = "RE_ZHX_SPLIT_LEFT_ZHX_WX"    # zhx(i,j:r,l) + wx(r+1,k)
-RE_BP_ZHX_SPLIT_RIGHT_ZHX_WX  = "RE_ZHX_SPLIT_RIGHT_ZHX_WX"   # zhx(i,j:k,s) + wx(l, s-1)
-RE_BP_ZHX_IS2_INNER_VHX       = "RE_ZHX_IS2_INNER_VHX"        # ĨS2(i,j:r,s) + vhx(r,s:k,l)
-
-# ======================================================================
-
-# ======================================================================
-RE_BP_YHX_DANGLE_L   = "RE_YHX_DANGLE_L"        # L~+P~ + vhx(i+1,j:k,l)
-RE_BP_YHX_DANGLE_R   = "RE_YHX_DANGLE_R"        # R~+P~ + vhx(i, j-1:k,l)
-RE_BP_YHX_SS_LEFT    = "RE_YHX_SS_LEFT"         # Q~ + yhx(i+1,j:k,l)
-RE_BP_YHX_SS_RIGHT   = "RE_YHX_SS_RIGHT"        # Q~ + yhx(i, j-1:k,l)
-RE_BP_YHX_WRAP_WHX   = "RE_YHX_WRAP_WHX"        # P~ + M~ + whx(i,j:k-1,l+1)"
-RE_BP_YHX_DANGLE_LR          = "RE_YHX_DANGLE_LR"          # L~+R~+P~ + vhx(i+1, j-1:k,l)
-RE_BP_YHX_SS_BOTH            = "RE_YHX_SS_BOTH"            # 2·Q~ + yhx(i+1, j-1:k,l)
-RE_BP_YHX_SPLIT_LEFT_YHX_WX  = "RE_YHX_SPLIT_LEFT_YHX_WX"  # yhx(i,r:k,l) + wx(r+1, j)
-RE_BP_YHX_SPLIT_RIGHT_WX_YHX = "RE_YHX_SPLIT_RIGHT_WX_YHX" # wx(i, s) + yhx(s+1, j:k,l)
-RE_BP_YHX_WRAP_WHX_L         = "RE_YHX_WRAP_WHX_L"         # L~+P~+M~ + whx(i+1, j:k-1, l+1)
-RE_BP_YHX_WRAP_WHX_R         = "RE_YHX_WRAP_WHX_R"         # R~+P~+M~ + whx(i, j-1:k-1, l+1)
-RE_BP_YHX_WRAP_WHX_LR        = "RE_YHX_WRAP_WHX_LR"        # L~+R~+P~+M~ + whx(i+1, j-1:k-1, l+1)
-
 
 # ---------- Table/evaluator helpers (DANGLES + COAX) ----------
 def wxI(re: RivasEddyState, i: int, j: int) -> float:
@@ -483,41 +411,41 @@ class RivasEddyEngine:
                         cand = v + q
                         if cand < best:
                             best = cand
-                            best_bp = (RE_BP_WHX_SHRINK_LEFT, (i, j, k + 1, l))
+                            best_bp = (RivasEddyBacktrackOp.RE_WHX_SHRINK_LEFT, (i, j, k + 1, l))
 
                         # 2) shrink-right: (k,l-1) + q
                         v = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l - 1)
                         cand = v + q
                         if cand < best:
                             best = cand
-                            best_bp = (RE_BP_WHX_SHRINK_RIGHT, (i, j, k, l - 1))
+                            best_bp = (RivasEddyBacktrackOp.RE_WHX_SHRINK_RIGHT, (i, j, k, l - 1))
 
                         # 3) trim outer-left: (i+1,j:k,l) + q
                         v = re.whx_matrix.get(i + 1, j, k, l)
                         cand = v + q
                         if cand < best:
                             best = cand
-                            best_bp = (RE_BP_WHX_TRIM_LEFT, (i + 1, j, k, l))
+                            best_bp = (RivasEddyBacktrackOp.RE_WHX_TRIM_LEFT, (i + 1, j, k, l))
 
                         # 4) trim outer-right: (i,j-1:k,l) + q
                         v = re.whx_matrix.get(i, j - 1, k, l)
                         cand = v + q
                         if cand < best:
                             best = cand
-                            best_bp = (RE_BP_WHX_TRIM_RIGHT, (i, j - 1, k, l))
+                            best_bp = (RivasEddyBacktrackOp.RE_WHX_TRIM_RIGHT, (i, j - 1, k, l))
 
                         # 5) direct collapse (if h==0 via accessor, but here h>=1): allow as candidate anyway
                         v = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l)
                         if v < best:
                             best = v
-                            best_bp = (RE_BP_WHX_COLLAPSE, (i, j))
+                            best_bp = (RivasEddyBacktrackOp.RE_WHX_COLLAPSE, (i, j))
 
                         v = re.whx_matrix.get(i + 1, j - 1, k, l)
                         if math.isfinite(v):
                             cand = v + 2.0 * q  # keep using q_ss to preserve earlier tests
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_WHX_SS_BOTH, (i + 1, j - 1, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_WHX_SS_BOTH, (i + 1, j - 1, k, l))
 
                         # --- NEW: non-nested outer splits with WX ---
                         # Left split: whx(i, r : k, l) + wx(r+1, j)
@@ -528,7 +456,7 @@ class RivasEddyEngine:
                                 cand = left + right
                                 if cand < best:
                                     best = cand
-                                    best_bp = (RE_BP_WHX_SPLIT_LEFT_WHX_WX, (r,))
+                                    best_bp = (RivasEddyBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX, (r,))
 
                         # Right split: wx(i, s) + whx(s+1, j : k, l)
                         for s2 in range(i, j):
@@ -538,7 +466,7 @@ class RivasEddyEngine:
                                 cand = left + right
                                 if cand < best:
                                     best = cand
-                                    best_bp = (RE_BP_WHX_SPLIT_RIGHT_WX_WHX, (s2,))
+                                    best_bp = (RivasEddyBacktrackOp.RE_WHX_SPLIT_RIGHT_WX_WHX, (s2,))
 
                         # --- NEW: overlapping-PK split into WHX + WHX with penalty Gwh_whx ---
                         if Gwh_whx != 0.0:  # skip loop if it's 0 for speed
@@ -549,7 +477,7 @@ class RivasEddyEngine:
                                     cand = Gwh_whx + left + right
                                     if cand < best:
                                         best = cand
-                                        best_bp = (RE_BP_WHX_OVERLAP_SPLIT, (r,))
+                                        best_bp = (RivasEddyBacktrackOp.RE_WHX_OVERLAP_SPLIT, (r,))
 
                         # --- INTERIOR (ĨS₂ for WHX via YHX + yhx(r2,s2:k,l)) over r2,s2 covering the hole ---
                         for r2 in range(i, k + 1):
@@ -561,7 +489,7 @@ class RivasEddyEngine:
                                         cand = bridge + inner_y
                                         if cand < best:
                                             best = cand
-                                            best_bp = (RE_BP_WHX_IS2_INNER_YHX, (r2, s2))
+                                            best_bp = (RivasEddyBacktrackOp.RE_WHX_IS2_INNER_YHX, (r2, s2))
 
                         re.whx_matrix.set(i, j, k, l, best)
                         re.whx_back_ptr.set(i, j, k, l, best_bp)
@@ -582,25 +510,26 @@ class RivasEddyEngine:
                         v = re.vhx_matrix.get(i, j, k + 1, l)
                         cand = P_hole + L_ + v
                         if cand < best:
-                            best, best_bp = cand, (RE_BP_VHX_DANGLE_L, (i, j, k + 1, l))
+                            best, best_bp = cand, (RivasEddyBacktrackOp.RE_VHX_DANGLE_L, (i, j, k + 1, l))
 
                         v = re.vhx_matrix.get(i, j, k, l - 1)
                         cand = P_hole + R_ + v
                         if cand < best:
-                            best, best_bp = cand, (RE_BP_VHX_DANGLE_R, (i, j, k, l - 1))
+                            best, best_bp = cand, (RivasEddyBacktrackOp.RE_VHX_DANGLE_R, (i, j, k, l - 1))
 
                         v = re.vhx_matrix.get(i, j, k + 1, l - 1)
                         cand = P_hole + L_ + R_ + v
                         if cand < best:
-                            best, best_bp = cand, (RE_BP_VHX_DANGLE_LR, (i, j, k + 1, l - 1))
+                            best, best_bp = cand, (RivasEddyBacktrackOp.RE_VHX_DANGLE_LR, (i, j, k + 1, l - 1))
 
                         # --- SINGLE-STRAND from ZHX (label left/right)
                         v_zhx = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, l)
                         cand = Q_hole + v_zhx
                         if cand < best:
-                            best, best_bp = cand, (RE_BP_VHX_SS_LEFT, (i, j, k, l))
-                        elif cand == best and best_bp and best_bp[0] in (RE_BP_VHX_SS_LEFT, RE_BP_VHX_SS_RIGHT):
-                            best_bp = (RE_BP_VHX_SS_RIGHT, (i, j, k, l))
+                            best, best_bp = cand, (RivasEddyBacktrackOp.RE_VHX_SS_LEFT, (i, j, k, l))
+                        elif (cand == best and best_bp and best_bp[0] in
+                              (RivasEddyBacktrackOp.RE_VHX_SS_LEFT, RivasEddyBacktrackOp.RE_VHX_SS_RIGHT)):
+                            best_bp = (RivasEddyBacktrackOp.RE_VHX_SS_RIGHT, (i, j, k, l))
 
                         # --- SPLIT on the LEFT: r in [i..k-1]  →  zhx(i,j:r,l) + wx(r+1,k)
                         for r in range(i, k):
@@ -609,7 +538,7 @@ class RivasEddyEngine:
                             cand = left + right
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_VHX_SPLIT_LEFT_ZHX_WX, (r,))
+                                best_bp = (RivasEddyBacktrackOp.RE_VHX_SPLIT_LEFT_ZHX_WX, (r,))
 
                         # --- SPLIT on the RIGHT: s in [l+1..j] →  zhx(i,j:k,s) + wx(l, s-1)
                         for s2 in range(l + 1, j + 1):
@@ -618,7 +547,7 @@ class RivasEddyEngine:
                             cand = left + right
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_VHX_SPLIT_RIGHT_ZHX_WX, (s2,))
+                                best_bp = (RivasEddyBacktrackOp.RE_VHX_SPLIT_RIGHT_ZHX_WX, (s2,))
 
                         # --- INTERIOR (ĨS₂ + zhx(r,s:k,l)) over r,s covering hole ---
                         for r in range(i, k + 1):
@@ -628,7 +557,7 @@ class RivasEddyEngine:
                                     cand = IS2_outer(seq, tables, i, j, r, s2) + inner
                                     if cand < best:
                                         best = cand
-                                        best_bp = (RE_BP_VHX_IS2_INNER_ZHX, (r, s2))
+                                        best_bp = (RivasEddyBacktrackOp.RE_VHX_IS2_INNER_ZHX, (r, s2))
 
                         # --- CLOSE_BOTH: pair both outer (i,j) and hole (k,l) ends in one step
                         close = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k - 1, l + 1)
@@ -636,14 +565,14 @@ class RivasEddyEngine:
                             cand = 2.0 * P_hole + M_vhx + close + Gwi + M_whx
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_VHX_CLOSE_BOTH, (i + 1, j - 1, k - 1, l + 1))
+                                best_bp = (RivasEddyBacktrackOp.RE_VHX_CLOSE_BOTH, (i + 1, j - 1, k - 1, l + 1))
 
                         # --- WRAP via WHX (P̃+M̃ + whx(i+1,j-1:k,l)) ---
                         wrap = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k, l)
                         cand = P_hole + M_vhx + wrap + Gwi + M_whx
                         if cand < best:
                             best = cand
-                            best_bp = (RE_BP_VHX_WRAP_WHX, (i + 1, j - 1))
+                            best_bp = (RivasEddyBacktrackOp.RE_VHX_WRAP_WHX, (i + 1, j - 1))
 
                         re.vhx_matrix.set(i, j, k, l, best)
                         re.vhx_back_ptr.set(i, j, k, l, best_bp)
@@ -666,7 +595,7 @@ class RivasEddyEngine:
                             cand = P_hole + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_ZHX_FROM_VHX, (i, j, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_ZHX_FROM_VHX, (i, j, k, l))
 
                         # DANGLE_LR from VHX
                         v = re.vhx_matrix.get(i, j, k - 1, l + 1)
@@ -676,7 +605,7 @@ class RivasEddyEngine:
                             cand = Lh + Rh + P_hole + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_ZHX_DANGLE_LR, (i, j, k - 1, l + 1))
+                                best_bp = (RivasEddyBacktrackOp.RE_ZHX_DANGLE_LR, (i, j, k - 1, l + 1))
 
                         # DANGLE_R from VHX
                         v = re.vhx_matrix.get(i, j, k - 1, l)
@@ -685,7 +614,7 @@ class RivasEddyEngine:
                             cand = Rh + P_hole + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_ZHX_DANGLE_R, (i, j, k - 1, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_ZHX_DANGLE_R, (i, j, k - 1, l))
 
                         # DANGLE_L from VHX
                         v = re.vhx_matrix.get(i, j, k, l + 1)
@@ -694,7 +623,7 @@ class RivasEddyEngine:
                             cand = Lh + P_hole + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_ZHX_DANGLE_L, (i, j, k, l + 1))
+                                best_bp = (RivasEddyBacktrackOp.RE_ZHX_DANGLE_L, (i, j, k, l + 1))
 
                         # SS_LEFT (prefer left if strictly better)
                         v = re.zhx_matrix.get(i, j, k - 1, l)
@@ -702,7 +631,7 @@ class RivasEddyEngine:
                             cand = Q_hole + v
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_ZHX_SS_LEFT, (i, j, k - 1, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_ZHX_SS_LEFT, (i, j, k - 1, l))
 
                         # SS_RIGHT (on tie with current best, flip to RIGHT for symmetry)
                         v = re.zhx_matrix.get(i, j, k, l + 1)
@@ -710,9 +639,10 @@ class RivasEddyEngine:
                             cand = Q_hole + v
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_ZHX_SS_RIGHT, (i, j, k, l + 1))
-                            elif cand == best and best_bp and best_bp[0] in (RE_BP_ZHX_SS_LEFT, RE_BP_ZHX_SS_RIGHT):
-                                best_bp = (RE_BP_ZHX_SS_RIGHT, (i, j, k, l + 1))
+                                best_bp = (RivasEddyBacktrackOp.RE_ZHX_SS_RIGHT, (i, j, k, l + 1))
+                            elif (cand == best and best_bp and best_bp[0] in
+                                  (RivasEddyBacktrackOp.RE_ZHX_SS_LEFT, RivasEddyBacktrackOp.RE_ZHX_SS_RIGHT)):
+                                best_bp = (RivasEddyBacktrackOp.RE_ZHX_SS_RIGHT, (i, j, k, l + 1))
 
                         for r in range(i, k):
                             left = re.zhx_matrix.get(i, j, r, l)
@@ -721,7 +651,7 @@ class RivasEddyEngine:
                                 cand = left + right
                                 if cand < best:
                                     best = cand
-                                    best_bp = (RE_BP_ZHX_SPLIT_LEFT_ZHX_WX, (r,))
+                                    best_bp = (RivasEddyBacktrackOp.RE_ZHX_SPLIT_LEFT_ZHX_WX, (r,))
 
                         for s2 in range(l + 1, j + 1):
                             left = re.zhx_matrix.get(i, j, k, s2)
@@ -730,7 +660,7 @@ class RivasEddyEngine:
                                 cand = left + right
                                 if cand < best:
                                     best = cand
-                                    best_bp = (RE_BP_ZHX_SPLIT_RIGHT_ZHX_WX, (s2,))
+                                    best_bp = (RivasEddyBacktrackOp.RE_ZHX_SPLIT_RIGHT_ZHX_WX, (s2,))
 
                         for r in range(i, k + 1):
                             for s2 in range(l, j + 1):
@@ -741,7 +671,7 @@ class RivasEddyEngine:
                                         cand = bridge + inner
                                         if cand < best:
                                             best = cand
-                                            best_bp = (RE_BP_ZHX_IS2_INNER_VHX, (r, s2))
+                                            best_bp = (RivasEddyBacktrackOp.RE_ZHX_IS2_INNER_VHX, (r, s2))
 
                         # write back
                         re.zhx_matrix.set(i, j, k, l, best)
@@ -766,7 +696,7 @@ class RivasEddyEngine:
                             cand = Lo + P_out + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_DANGLE_L, (i + 1, j, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_DANGLE_L, (i + 1, j, k, l))
 
                         # Outer dangle R
                         v = re.vhx_matrix.get(i, j - 1, k, l)
@@ -775,7 +705,7 @@ class RivasEddyEngine:
                             cand = Ro + P_out + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_DANGLE_R, (i, j - 1, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_DANGLE_R, (i, j - 1, k, l))
 
                         # Outer dangle LR (both sides)
                         v = re.vhx_matrix.get(i + 1, j - 1, k, l)
@@ -785,7 +715,7 @@ class RivasEddyEngine:
                             cand = Lo + Ro + P_out + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_DANGLE_LR, (i + 1, j - 1, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_DANGLE_LR, (i + 1, j - 1, k, l))
 
                         # Single-strand outer trims: Left
                         v = re.yhx_matrix.get(i + 1, j, k, l)
@@ -793,7 +723,7 @@ class RivasEddyEngine:
                             cand = Q_out + v
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_SS_LEFT, (i + 1, j, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_SS_LEFT, (i + 1, j, k, l))
 
                         # Single-strand outer trims: Right
                         v = re.yhx_matrix.get(i, j - 1, k, l)
@@ -801,9 +731,10 @@ class RivasEddyEngine:
                             cand = Q_out + v
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_SS_RIGHT, (i, j - 1, k, l))
-                            elif cand == best and best_bp and best_bp[0] in (RE_BP_YHX_SS_LEFT, RE_BP_YHX_SS_RIGHT):
-                                best_bp = (RE_BP_YHX_SS_RIGHT, (i, j - 1, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_SS_RIGHT, (i, j - 1, k, l))
+                            elif (cand == best and best_bp and best_bp[0] in
+                                  (RivasEddyBacktrackOp.RE_YHX_SS_LEFT, RivasEddyBacktrackOp.RE_YHX_SS_RIGHT)):
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_SS_RIGHT, (i, j - 1, k, l))
 
                         # Single-strand both sides (shortcut; equivalent to two trims)
                         v = re.yhx_matrix.get(i + 1, j - 1, k, l)
@@ -811,7 +742,7 @@ class RivasEddyEngine:
                             cand = 2.0 * Q_out + v
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_SS_BOTH, (i + 1, j - 1, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_SS_BOTH, (i + 1, j - 1, k, l))
 
                         # Wrap via WHX(i,j:k-1,l+1)
                         v = re.whx_matrix.get(i, j, k - 1, l + 1)
@@ -819,7 +750,7 @@ class RivasEddyEngine:
                             cand = P_out + M_yhx + M_whx + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_WRAP_WHX, (i, j, k - 1, l + 1))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_WRAP_WHX, (i, j, k - 1, l + 1))
 
                         # Wrap + outer dangles L / R / LR
                         v = re.whx_matrix.get(i + 1, j, k - 1, l + 1)
@@ -828,7 +759,7 @@ class RivasEddyEngine:
                             cand = Lo + P_out + M_yhx + M_whx + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_WRAP_WHX_L, (i + 1, j, k - 1, l + 1))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_WRAP_WHX_L, (i + 1, j, k - 1, l + 1))
 
                         v = re.whx_matrix.get(i, j - 1, k - 1, l + 1)
                         if math.isfinite(v):
@@ -836,7 +767,7 @@ class RivasEddyEngine:
                             cand = Ro + P_out + M_yhx + M_whx + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_WRAP_WHX_R, (i, j - 1, k - 1, l + 1))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_WRAP_WHX_R, (i, j - 1, k - 1, l + 1))
 
                         v = re.whx_matrix.get(i + 1, j - 1, k - 1, l + 1)
                         if math.isfinite(v):
@@ -845,7 +776,7 @@ class RivasEddyEngine:
                             cand = Lo + Ro + P_out + M_yhx + M_whx + v + Gwi
                             if cand < best:
                                 best = cand
-                                best_bp = (RE_BP_YHX_WRAP_WHX_LR, (i + 1, j - 1, k - 1, l + 1))
+                                best_bp = (RivasEddyBacktrackOp.RE_YHX_WRAP_WHX_LR, (i + 1, j - 1, k - 1, l + 1))
 
                         # Non-nested OUTER splits with WX
                         #   Left split:  yhx(i,r:k,l) + wx(r+1, j)
@@ -856,7 +787,7 @@ class RivasEddyEngine:
                                 cand = left + right
                                 if cand < best:
                                     best = cand
-                                    best_bp = (RE_BP_YHX_SPLIT_LEFT_YHX_WX, (r,))
+                                    best_bp = (RivasEddyBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX, (r,))
 
                         #   Right split: wx(i, s) + yhx(s+1, j:k,l)
                         for s2 in range(i, j):
@@ -866,7 +797,7 @@ class RivasEddyEngine:
                                 cand = left + right
                                 if cand < best:
                                     best = cand
-                                    best_bp = (RE_BP_YHX_SPLIT_RIGHT_WX_YHX, (s2,))
+                                    best_bp = (RivasEddyBacktrackOp.RE_YHX_SPLIT_RIGHT_WX_YHX, (s2,))
 
                         # --- INTERIOR (ĨS₂ for YHX + whx(r,s:k,l)) over r,s covering hole ---
                         for r2 in range(i, k + 1):
@@ -878,7 +809,7 @@ class RivasEddyEngine:
                                         cand = bridge + inner_w
                                         if cand < best:
                                             best = cand
-                                            best_bp = (RE_BP_YHX_IS2_INNER_WHX, (r2, s2))
+                                            best_bp = (RivasEddyBacktrackOp.RE_YHX_IS2_INNER_WHX, (r2, s2))
 
                         re.yhx_matrix.set(i, j, k, l, best)
                         re.yhx_back_ptr.set(i, j, k, l, best_bp)
@@ -922,7 +853,7 @@ class RivasEddyEngine:
                     cand = min(cand_first, cand_Lc, cand_Rc, cand_both)
                     if cand < best_c:
                         best_c = cand
-                        best_bp = (RE_BP_COMPOSE_WX, (r, k, l))
+                        best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_WX, (r, k, l))
 
                     # (b) yhx + yhx (non-nested branch)
                     left_y = re.yhx_matrix.get(i, r, k, l)
@@ -931,7 +862,7 @@ class RivasEddyEngine:
                         cand_y = Gw + left_y + right_y + cap_pen
                         if cand_y < best_c:
                             best_c = cand_y
-                            best_bp = (RE_BP_COMPOSE_WX_YHX, (r, k, l))
+                            best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_YHX, (r, k, l))
 
                     # (c) MIXED: yhx (left) + whx (right)
                     left_y = re.yhx_matrix.get(i, r, k, l)
@@ -942,12 +873,12 @@ class RivasEddyEngine:
                             cand = Gw + left_y + R_u + cap_pen
                             if cand < best_c:
                                 best_c = cand
-                                best_bp = (RE_BP_COMPOSE_WX_YHX_WHX, (r, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX, (r, k, l))
                         if math.isfinite(R_c):
                             cand = left_y + R_c + cap_pen
                             if cand < best_c:
                                 best_c = cand
-                                best_bp = (RE_BP_COMPOSE_WX_YHX_WHX, (r, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX, (r, k, l))
 
                     # (d) MIXED: whx (left) + yhx (right)
                     right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
@@ -958,12 +889,12 @@ class RivasEddyEngine:
                             cand = Gw + right_y + L_u + cap_pen
                             if cand < best_c:
                                 best_c = cand
-                                best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX, (r, k, l))
                         if math.isfinite(L_c):
                             cand = L_c + right_y + cap_pen
                             if cand < best_c:
                                 best_c = cand
-                                best_bp = (RE_BP_COMPOSE_WX_WHX_YHX, (r, k, l))
+                                best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX, (r, k, l))
 
                     # (e) OPTIONAL: same-hole overlap via YHX+YHX with penalty Gwh
                     if self.cfg.enable_wx_overlap and Gwh_wx != 0.0:
@@ -978,7 +909,7 @@ class RivasEddyEngine:
                                                     _short_hole_penalty(self.cfg.costs, k2, l2))
                                     if cand_overlap < best_c:
                                         best_c = cand_overlap
-                                        best_bp = (RE_BP_COMPOSE_WX_YHX_OVERLAP, (r2, k2, l2))
+                                        best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP, (r2, k2, l2))
 
                     # (f) Optional drift of the complementary hole at the join
                     if self.cfg.enable_join_drift and self.cfg.drift_radius > 0:
@@ -1009,7 +940,7 @@ class RivasEddyEngine:
                                 cand_d = min(cand_first_d, cand_Lc_d, cand_Rc_d, cand_both_d)
                                 if cand_d < best_c:
                                     best_c = cand_d
-                                    best_bp = (RE_BP_COMPOSE_WX_DRIFT, (r, k, l, d))
+                                    best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_DRIFT, (r, k, l, d))
 
                 re.wxc_matrix.set(i, j, best_c)
                 if best_bp is not None:
@@ -1030,7 +961,7 @@ class RivasEddyEngine:
                 if wxu <= wxc:
                     re.wx_matrix.set(i, j, wxu)
                     # prefer neutral path; override any charged bp
-                    re.wx_back_ptr[(i, j)] = (RE_BP_WX_SELECT_UNCHARGED, ())
+                    re.wx_back_ptr[(i, j)] = (RivasEddyBacktrackOp.RE_WX_SELECT_UNCHARGED, ())
                 else:
                     re.wx_matrix.set(i, j, wxc)
 
@@ -1074,7 +1005,7 @@ class RivasEddyEngine:
                     cand = min(cand_first, cand_Lc, cand_Rc, cand_both) + g * coax_total + coax_bonus_term
                     if cand < best_c:
                         best_c = cand
-                        best_bp = (RE_BP_COMPOSE_VX, (r, k, l))
+                        best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_VX, (r, k, l))
 
                     # Optional drift of the complementary hole at the join (VX/ZHX)
                     if self.cfg.enable_join_drift and self.cfg.drift_radius > 0:
@@ -1114,7 +1045,7 @@ class RivasEddyEngine:
                             cand_d = min(cand_first_d, cand_Lc_d, cand_Rc_d, cand_both_d)
                             if cand_d < best_c:
                                 best_c = cand_d
-                                best_bp = (RE_BP_COMPOSE_VX_DRIFT, (r, k, l, d))
+                                best_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_VX_DRIFT, (r, k, l, d))
                 # --- NEW: drift-only fallback (does not depend on ZHX feasibility) ---
                 # If join-drift is enabled and we still haven't beaten the uncharged baseline,
                 # synthesize a charged candidate using only the drift penalty. This guarantees
@@ -1136,7 +1067,7 @@ class RivasEddyEngine:
                                 cand = drift_pen  # no ZHX pieces needed; relies only on the drift incentive
                                 if cand < improved_val:
                                     improved_val = cand
-                                    improved_bp = (RE_BP_COMPOSE_VX_DRIFT, (r, k, l, d))
+                                    improved_bp = (RivasEddyBacktrackOp.RE_PK_COMPOSE_VX_DRIFT, (r, k, l, d))
 
                     # If we improved (i.e., made it strictly below the uncharged baseline or
                     # below whatever 'best_c' we had), adopt it.
@@ -1156,7 +1087,7 @@ class RivasEddyEngine:
                 vxc = re.vxc_matrix.get(i, j)
                 if vxu <= vxc:
                     re.vx_matrix.set(i, j, vxu)
-                    re.vx_back_ptr[(i, j)] = (RE_BP_VX_SELECT_UNCHARGED, ())
+                    re.vx_back_ptr[(i, j)] = (RivasEddyBacktrackOp.RE_VX_SELECT_UNCHARGED, ())
                 else:
                     re.vx_matrix.set(i, j, vxc)
                     # keep the charged path’s detailed BP
