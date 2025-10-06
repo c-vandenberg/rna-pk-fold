@@ -1,6 +1,6 @@
 import math
 
-from rna_pk_fold.folding.fold_state import FoldState, make_fold_state
+from rna_pk_fold.folding.fold_state import ZuckerFoldState, make_fold_state
 from rna_pk_fold.folding.back_pointer import BackPointer, BacktrackOp
 
 
@@ -23,7 +23,7 @@ def test_make_fold_state_shapes_and_defaults():
     fold_state = make_fold_state(seq_len)
 
     # Types
-    assert isinstance(fold_state, FoldState)
+    assert isinstance(fold_state, ZuckerFoldState)
 
     # Shapes
     assert fold_state.w_matrix.shape == (seq_len, seq_len)

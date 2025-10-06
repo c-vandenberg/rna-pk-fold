@@ -4,12 +4,12 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Optional, Tuple, Sequence
 
-__all__ = ["BacktrackOp", "BackPointer"]
+__all__ = ["ZuckerBacktrackOp", "ZuckerBackPointer"]
 
 Interval = Tuple[int, int]
 
 
-class BacktrackOp(Enum):
+class ZuckerBacktrackOp(Enum):
     """
     Operation chosen at a matrix cell. This is to be used during traceback to
     track what recurrence case produced the optimal value at a given cell.
@@ -38,13 +38,13 @@ class BacktrackOp(Enum):
 
 
 @dataclass(frozen=True, slots=True)
-class BackPointer:
+class ZuckerBackPointer:
     """
     Back-pointer describing how a matrix cell's value was derived.
 
     Parameters
     ----------
-    operation : BacktrackOp
+    operation : ZuckerBacktrackOp
                 The recurrence operation selected for this cell.
     split_k   : Optional[int]
                 For bifurcations W[i,j] -> W[i,k] + W[k+1,j], record k.
@@ -58,7 +58,7 @@ class BackPointer:
     note      : Optional[str]
                 Free-form metadata (e.g., “tri-tetra hairpin”, “multi enter”).
     """
-    operation: BacktrackOp = BacktrackOp.NONE
+    operation: ZuckerBacktrackOp = ZuckerBacktrackOp.NONE
 
     # Generic fields
     split_k: Optional[int] = None

@@ -2,7 +2,7 @@ import math
 import pytest
 
 from rna_pk_fold.folding.rivas_eddy import re_recurrences as re_rec
-from rna_pk_fold.folding.fold_state import (FoldState, RivasEddyState, make_fold_state,
+from rna_pk_fold.folding.fold_state import (ZuckerFoldState, RivasEddyState, make_fold_state,
                                             make_re_fold_state, CoreTriMatrix, BackPointer)
 from rna_pk_fold.folding.rivas_eddy.re_matrices import ReTriMatrix, SparseGapMatrix, SparseGapBackptr
 from rna_pk_fold.folding.rivas_eddy.re_dangles import dangle_outer_L, dangle_outer_R
@@ -86,7 +86,7 @@ def _try_build_states(n):
         for i in range(n):
             wm_matrix.set(i, i, 0.0)
 
-        nested = FoldState(
+        nested = ZuckerFoldState(
             w_matrix=w_matrix,
             v_matrix=v_matrix,
             wm_matrix=wm_matrix,

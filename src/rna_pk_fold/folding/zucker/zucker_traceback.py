@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Set, Tuple, Dict
 
-from rna_pk_fold.folding import FoldState, BacktrackOp, BackPointer
+from rna_pk_fold.folding import ZuckerFoldState, BacktrackOp, BackPointer
 from rna_pk_fold.structures import Pair
 
 BRACKETS: List[Tuple[str, str]] = [('(', ')'), ('[', ']'), ('{', '}'), ('<', '>')]
@@ -14,16 +14,16 @@ class TraceResult:
     pairs: List[Pair]        # List of Pair(base_i, base_j) with base_i < base_j
     dot_bracket: str         # E.g., '..((...))..'
 
-def traceback_nested(seq: str, state: FoldState) -> TraceResult:
+def traceback_nested(seq: str, state: ZuckerFoldState) -> TraceResult:
     """Nested-only traceback: raises if a pseudoknot backpointer is encountered."""
     return _traceback_core(seq, state, allow_pk=False)
 
-def traceback_with_pk(seq: str, state: FoldState) -> TraceResult:
+def traceback_with_pk(seq: str, state: ZuckerFoldState) -> TraceResult:
     """Traceback that supports the minimal H-type pseudoknot (two layers)."""
     return _traceback_core(seq, state, allow_pk=True)
 
 
-def traceback_nested_interval(seq: str, state: FoldState, i: int, j: int) -> TraceResult:
+def traceback_nested_interval(seq: str, state: ZuckerFoldState, i: int, j: int) -> TraceResult:
     """
     Run the nested traceback but starting at W[i,j] instead of W[0,N-1].
     Produces a full-length dot-bracket (global coords; dots outside [i..j]).
@@ -45,7 +45,7 @@ def pairs_to_dotbracket(dot_brac_len: int, pairs: List[Pair]) -> str:
     return ''.join(chars)
 
 
-def _traceback_core(seq: str, state: FoldState, *, allow_pk: bool) -> TraceResult:
+def _traceback_core(seq: str, state: ZuckerFoldState, *, allow_pk: bool) -> TraceResult:
     """
     Shared Traceback:
       - start at W[0, N-1]
@@ -217,7 +217,7 @@ def _traceback_core(seq: str, state: FoldState, *, allow_pk: bool) -> TraceResul
 
 def _traceback_core_with_seed(
     seq: str,
-    state: FoldState,
+    state: ZuckerFoldState,
     *,
     seed_frames: List[Tuple[str, int, int, int]],
     allow_pk: bool,

@@ -4,19 +4,17 @@ import json
 from dataclasses import dataclass, field
 from typing import Iterator, Tuple, Dict, Optional, Any
 
-from rna_pk_fold.folding.fold_state import FoldState, RivasEddyState
-from rna_pk_fold.folding.rivas_eddy.re_matrices import (
-    get_whx_with_collapse,
-    get_zhx_with_collapse
-)
+from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
+from rna_pk_fold.folding.rivas_eddy.re_fold_state import RivasEddyFoldState
 from rna_pk_fold.folding.rivas_eddy.re_back_pointer import RivasEddyBacktrackOp
 
-from rna_pk_fold.folding.rivas_eddy.re_is2_bridges import IS2_outer, IS2_outer_yhx
-from rna_pk_fold.folding.rivas_eddy.re_dangles import dangle_hole_L, dangle_hole_R, dangle_outer_L, dangle_outer_R
-from rna_pk_fold.folding.rivas_eddy.re_coax import coax_pack
-from rna_pk_fold.folding.rivas_eddy.re_matrix_accessors import wxI, whx_collapse_with, zhx_collapse_with
-from rna_pk_fold.folding.rivas_eddy.re_penalties import short_hole_penalty
-from rna_pk_fold.folding.rivas_eddy.re_iterators import iter_complementary_tuples, iter_inner_holes
+from rna_pk_fold.folding.rivas_eddy.is2_bridges import IS2_outer, IS2_outer_yhx
+from rna_pk_fold.folding.rivas_eddy.dangles import dangle_hole_L, dangle_hole_R, dangle_outer_L, dangle_outer_R
+from rna_pk_fold.folding.rivas_eddy.coax import coax_pack
+from rna_pk_fold.folding.rivas_eddy.matrix_accessors import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
+                                                             whx_collapse_with, zhx_collapse_with)
+from rna_pk_fold.folding.rivas_eddy.penalties import short_hole_penalty
+from rna_pk_fold.folding.rivas_eddy.iterators import iter_complementary_tuples, iter_inner_holes
 
 @dataclass(slots=True)
 class RERECosts:
@@ -91,7 +89,7 @@ class RivasEddyEngine:
     def __init__(self, config: REREConfig):
         self.cfg = config
 
-    def fill_with_costs(self, seq: str, nested: FoldState, re: RivasEddyState) -> None:
+    def fill_with_costs(self, seq: str, nested: ZuckerFoldState, re: RivasEddyFoldState) -> None:
         """
         Step 12.5:
           - seed wx/vx from nested,
@@ -912,7 +910,7 @@ def costs_from_vienna_like(tbl: Dict[str, Any]) -> RERECosts:
 
     return costs_from_dict(d)
 
-def quick_energy_harness(seq: str, cfg: REREConfig, nested: FoldState, re: RivasEddyState) -> Dict[str, float]:
+def quick_energy_harness(seq: str, cfg: REREConfig, nested: ZuckerFoldState, re: RivasEddyFoldState) -> Dict[str, float]:
     """
     Run fill_with_costs and report a few sentinel energies for regression:
     """

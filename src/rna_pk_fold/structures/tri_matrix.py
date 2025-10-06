@@ -1,11 +1,19 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
+import math
 
-from typing import Generic, TypeVar, List, Tuple, Iterator
+from typing import Generic, TypeVar, List, Tuple, Iterator, Dict
+
+Pair = Tuple[int, int]
+Hole = Tuple[int, int]
+Outer = Tuple[int, int]
+
+INF = math.inf
 
 T = TypeVar("T")
 
 
-class CoreTriMatrix(Generic[T]):
+class ZuckerTriMatrix(Generic[T]):
     """
     Upper-triangular matrix with O(N^2/2) storage.
 
@@ -68,3 +76,41 @@ class CoreTriMatrix(Generic[T]):
         for i in range(n):
             for j in range(i, n):
                 yield i, j
+
+
+@dataclass(slots=True)
+class ReTriMatrix:
+    """
+    Triangular N x N float matrix with +inf default.
+    Only (i <= j) are meaningful. Use get/set.
+    """
+    n: int
+    data: Dict[Outer, float] = field(default_factory=dict)
+
+    def get(self, i: int, j: int) -> float:
+        if i > j:
+            return 0.0 if i == j + 1 else INF  # empty segment convenience
+        if i < 0 or j >= self.n:
+            return INF
+        return self.data.get((i, j), INF)
+
+    def set(self, i: int, j: int, value: float) -> None:
+        self.data[(i, j)] = value
+
+
+@dataclass(slots=True)
+class ReTriBackptr:
+    """
+    Triangular N x N back-pointer matrix for WX/VX.
+    Only (i <= j) are meaningful. Missing entries return None.
+    """
+    n: int
+    data: Dict[Outer, Any] = field(default_factory=dict)  # store RivasEddyBackPointer
+
+    def get(self, i: int, j: int):
+        if i > j or i < 0 or j >= self.n:
+            return None
+        return self.data.get((i, j))
+
+    def set(self, i: int, j: int, value) -> None:
+        self.data[(i, j)] = value

@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from rna_pk_fold.folding import FoldState, BackPointer, BacktrackOp
+from rna_pk_fold.folding import ZuckerFoldState, BackPointer, BacktrackOp
 from rna_pk_fold.energies import SecondaryStructureEnergyModelProtocol
 from rna_pk_fold.rules import can_pair, MIN_HAIRPIN_UNPAIRED
 from rna_pk_fold.energies.energy_ops import best_multiloop_end_bonus
@@ -20,7 +20,7 @@ class SecondaryStructureFoldingEngine:
     energy_model: SecondaryStructureEnergyModelProtocol
     config: RecurrenceConfig
 
-    def fill_all_matrices(self, seq: str, state: FoldState) -> None:
+    def fill_all_matrices(self, seq: str, state: ZuckerFoldState) -> None:
         """
         Fill WM and V bottom-up by span. For each span d:
           1) compute WM[i][j] (uses V on smaller spans)
@@ -49,7 +49,7 @@ class SecondaryStructureFoldingEngine:
         seq: str,
         i: int,
         j: int,
-        state: FoldState,
+        state: ZuckerFoldState,
         branch_cost_b: float,
         unpaired_cost_c: float
     ) -> None:
@@ -107,7 +107,7 @@ class SecondaryStructureFoldingEngine:
         wm_matrix.set(i, j, best_energy)
         wm_back_ptr.set(i, j, best_back_ptr)
 
-    def _fill_v_cell(self, seq: str, i: int, j: int, state: FoldState, multi_close_a: float) -> None:
+    def _fill_v_cell(self, seq: str, i: int, j: int, state: ZuckerFoldState, multi_close_a: float) -> None:
         v_matrix = state.v_matrix
         v_back_ptr = state.v_back_ptr
 
@@ -176,7 +176,7 @@ class SecondaryStructureFoldingEngine:
         v_matrix.set(i, j, best_energy)
         v_back_ptr.set(i, j, best_back_ptr)
 
-    def _fill_w_cell(self, i: int, j: int, state: FoldState) -> None:
+    def _fill_w_cell(self, i: int, j: int, state: ZuckerFoldState) -> None:
         """
         Fill W[i][j] = min(
             W[i+1][j],         # leave i unpaired

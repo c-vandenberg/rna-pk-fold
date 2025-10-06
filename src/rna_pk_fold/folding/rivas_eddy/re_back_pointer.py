@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional, Tuple, Sequence, Any
+from typing import Optional, Tuple, Dict, Sequence, Any
 try:
     from enum import StrEnum
 except Exception:
@@ -10,13 +10,13 @@ except Exception:
 Interval = Tuple[int, int]
 
 
-class AutoName(StrEnum):
+class _AutoName(StrEnum):
     """auto() -> member name as string (stable, readable, serializable)."""
     def _generate_next_value_(name, start, count, last_values):
         return name
 
 
-class RivasEddyBacktrackOp(Enum):
+class RivasEddyBacktrackOp(_AutoName):
     # ----------------------------------------------------------------------
     # WX / VX: Composition, Overlap, Selection, Drift
     # ----------------------------------------------------------------------
@@ -123,27 +123,33 @@ class RivasEddyBackPointer:
     # Unit test payload
     args: Tuple[Any, ...] = field(default_factory=tuple)
 
-    # --- Compatibility helpers ---
-    def to_legacy(self) -> Tuple[str, Tuple[Any, ...]]:
-        """
-        Return (tag_string, args_tuple) so you can store exactly what the
-        existing tests compare against.
-        """
-        return self.op.value, self.args
+    # --- Serialization helpers (nice for logs/debugging) ---
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "op": self.op.value,
+            "outer": self.outer,
+            "hole": self.hole,
+            "split": self.split,
+            "bridge": self.bridge,
+            "drift": self.drift,
+            "charged": self.charged,
+            "meta": self.meta,
+        }
 
     @staticmethod
-    def from_legacy(tag: str, args: Sequence[Any]) -> "RivasEddyBackPointer":
-        """
-        Convert (tag_string, args_tuple) back into a structured object.
-        Safe even if the tag is unknown: it preserves the raw tuple.
-        """
-        op = RivasEddyBacktrackOp.__members__.get(tag)
-        if op is None:
-            # store unknown tag in note; keep args
-            return RivasEddyBackPointer(op=RivasEddyBacktrackOp.RE_WX_SELECT_UNCHARGED,  # harmless sentinel
-                                        args=tuple(args),
-                                        note=f"UNKNOWN_TAG:{tag}")
-        return RivasEddyBackPointer(op=op, args=tuple(args))
+    def from_dict(d: Dict[str, Any]) -> "RivasEddyBackPointer":
+        # Loose loader; unknown strings will raise KeyError (good fail-fast)
+        op = RivasEddyBacktrackOp(d["op"])
+        return RivasEddyBackPointer(
+            op=op,
+            outer=tuple(d["outer"]) if d.get("outer") else None,
+            hole=tuple(d["hole"]) if d.get("hole") else None,
+            split=d.get("split"),
+            bridge=tuple(d["bridge"]) if d.get("bridge") else None,
+            drift=d.get("drift"),
+            charged=d.get("charged"),
+            meta=d.get("meta"),
+        )
 
     @classmethod
     def compose_vx(cls, r: int, k: int, l: int) -> "RivasEddyBackPointer":

@@ -2,8 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Set
 
-from rna_pk_fold.folding import FoldState
-from rna_pk_fold.folding.fold_state import RivasEddyState
+from rna_pk_fold.folding import ZuckerFoldState
+from rna_pk_fold.folding.rivas_eddy.re_fold_state import RivasEddyFoldState
 from rna_pk_fold.folding.traceback import (
     TraceResult, Pair, BRACKETS, _pairs_to_multilayer_dotbracket,
     traceback_nested_interval
@@ -66,7 +66,7 @@ def add_pair_once(
         pair_layer[(i, j)] = layer
 
 
-def traceback_re_with_pk(seq: str, nested: FoldState, re: RivasEddyState) -> RETraceResult:
+def traceback_re_with_pk(seq: str, nested: ZuckerFoldState, re: RivasEddyFoldState) -> RETraceResult:
     """
     Full(er) R&E traceback with layered dot-bracket:
       - Start at WX(0,N-1).

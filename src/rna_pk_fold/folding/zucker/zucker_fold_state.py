@@ -1,0 +1,81 @@
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Dict, Tuple
+
+from rna_pk_fold.structures import ZuckerTriMatrix
+from rna_pk_fold.folding import BackPointer
+
+wx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
+vx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
+
+
+@dataclass(frozen=True, slots=True)
+class ZuckerFoldState:
+    """
+    Holds all numeric and back-pointer tables for Zuker-style folding.
+
+    Attributes
+    ----------
+    w_matrix : ZuckerTriMatrix[float]
+        Optimal substructure energy for span i..j (may include unpaired cases
+        or bifurcations).
+    v_matrix : TriMatrix[float]
+        Optimal energy for spans where i pairs with j (pair-closed contributions).
+    w_back_ptr : TriMatrix[BackPointer]
+        Back-pointers for W matrix cells (i.e. how W[i,j] was derived).
+    v_back_ptr : TriMatrix[BackPointer]
+        Back-pointers for V matrix cells (i.e. how V[i,j] was derived).
+    """
+    w_matrix: ZuckerTriMatrix[float]
+    v_matrix: ZuckerTriMatrix[float]
+    wm_matrix: ZuckerTriMatrix[float]
+    w_back_ptr: ZuckerTriMatrix[BackPointer]
+    v_back_ptr: ZuckerTriMatrix[BackPointer]
+    wm_back_ptr: ZuckerTriMatrix[BackPointer]
+
+
+def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> ZuckerFoldState:
+    """
+    Allocate the folding matrices for a sequence of length N.
+
+    Parameters
+    ----------
+    seq_len : int
+        Sequence length N.
+    init_energy : float, optional
+        Initial fill value for energy cells (default: +∞), so any real score
+        will improve upon it during DP.
+
+    Returns
+    -------
+    ZuckerFoldState
+        A newly allocated bundle containing matrices W, V, and their parallel
+        back-pointer tables.
+
+    Notes
+    -----
+    - All energy cells are initialized to +∞ (or `init_energy` you pass).
+    - All back-pointer cells start as `BackPointer()`.
+    - This module only provides storage & indexing; it does not compute energies.
+      The “recurrence engine” will later read/write these tables.
+    """
+    w_matrix = ZuckerTriMatrix[float](seq_len, init_energy)
+    v_matrix = ZuckerTriMatrix[float](seq_len, init_energy)
+    wm_matrix = ZuckerTriMatrix[float](seq_len, init_energy)
+
+    w_back_ptr = ZuckerTriMatrix[BackPointer](seq_len, BackPointer())
+    v_back_ptr = ZuckerTriMatrix[BackPointer](seq_len, BackPointer())
+    wm_back_ptr = ZuckerTriMatrix[BackPointer](seq_len, BackPointer())
+
+    # bBse case for WM diagonals: Zero cost to have an empty interior
+    for i in range(seq_len):
+        wm_matrix.set(i, i, 0.0)
+
+    return ZuckerFoldState(
+        w_matrix=w_matrix,
+        v_matrix=v_matrix,
+        wm_matrix=wm_matrix,
+        w_back_ptr=w_back_ptr,
+        v_back_ptr=v_back_ptr,
+        wm_back_ptr=wm_back_ptr
+    )
