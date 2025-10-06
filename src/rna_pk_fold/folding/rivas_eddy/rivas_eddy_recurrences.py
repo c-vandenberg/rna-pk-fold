@@ -9,7 +9,7 @@ from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
     get_whx_with_collapse,
     get_zhx_with_collapse
 )
-from rna_pk_fold.utils.nucleotide_utils import dimer_key
+from rna_pk_fold.utils.nucleotide_utils import pair_str
 
 # ======================================================================
 
@@ -114,10 +114,10 @@ def _safe_base(seq: str, idx: int) -> Optional[str]:
     return seq[idx] if 0 <= idx < len(seq) else None
 
 def _pair_key(seq: str, a: int, b: int) -> Optional[str]:
-    ba, bb = _safe_base(seq, a), _safe_base(seq, b)
-    if ba is None or bb is None:
-        return None
-    return dimer_key(ba, bb)  # e.g. "GC", "AU", "GU", ...
+    # Return a simple two-letter base-pair key like "GC", "AU" (RNA-normalized).
+    if 0 <= a < len(seq) and 0 <= b < len(seq):
+        return pair_str(seq, a, b)
+    return None
 
 def _table_lookup(tbl: Dict[Tuple[str, str], float], x: Optional[str], y: Optional[str], default: float) -> float:
     if x is None or y is None:
@@ -1159,7 +1159,7 @@ def _iter_complementary_tuples(i: int, j: int) -> Iterator[Tuple[int, int, int]]
     """
     # i < k ≤ r < l ≤ j  (keeps non-degenerate subspans)
     for r in range(i + 1, j):      # r is a "connector" split inside [i..j]
-        for k in range(i, r + 1):  # hole start (left/before r)
+        for k in range(i + 1, r + 1):  # hole start (left/before r); enforce k > i
             for l in range(r + 1, j + 1):  # hole end (right/after r)
                 # Basic sanity: ensure each index stays in outer bounds
                 # The whx accessors will return +inf for any illegal shapes.
@@ -1181,6 +1181,19 @@ def load_costs_json(path: str) -> RERECosts:
 def save_costs_json(path: str, costs: RERECosts) -> None:
     with open(path, "w") as fh:
         json.dump(costs_to_dict(costs), fh, indent=2, sort_keys=True)
+
+def costs_from_dict(d: Dict) -> RERECosts:
+    """Create RERECosts from a flat dict; keys not present use dataclass defaults."""
+    fields = {f.name for f in RERECosts.__dataclass_fields__.values()}
+    kwargs = {k: v for k, v in d.items() if k in fields}
+    return RERECosts(**kwargs)
+
+def costs_to_dict(costs: RERECosts) -> Dict:
+    """Round-trip exporter useful for saving tuned params."""
+    out = {}
+    for k in RERECosts.__dataclass_fields__.keys():
+        out[k] = getattr(costs, k)
+    return out
 
 def costs_from_vienna_like(tbl: Dict[str, Any]) -> RERECosts:
     """
