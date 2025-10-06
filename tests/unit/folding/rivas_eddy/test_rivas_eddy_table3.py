@@ -1,10 +1,14 @@
 import math
 import pytest
 
-from rna_pk_fold.folding.rivas_eddy import rivas_eddy_recurrences as re_rec
+from rna_pk_fold.folding.rivas_eddy import re_recurrences as re_rec
 from rna_pk_fold.folding.fold_state import (FoldState, RivasEddyState, make_fold_state,
-                                            make_re_fold_state, CoreTriMatrix, ReTriMatrix, SparseGapMatrix,
-                                            SparseGapBackptr, BackPointer)
+                                            make_re_fold_state, CoreTriMatrix, BackPointer)
+from rna_pk_fold.folding.rivas_eddy.re_matrices import ReTriMatrix, SparseGapMatrix, SparseGapBackptr
+from rna_pk_fold.folding.rivas_eddy.re_dangles import dangle_outer_L, dangle_outer_R
+from rna_pk_fold.folding.rivas_eddy.re_coax import coax_energy_for_join
+from rna_pk_fold.folding.rivas_eddy.re_iterators import iter_complementary_tuples, iter_inner_holes
+from rna_pk_fold.folding.rivas_eddy.re_back_pointer import RivasEddyBacktrackOp
 
 
 # ------------------------
@@ -13,15 +17,15 @@ from rna_pk_fold.folding.fold_state import (FoldState, RivasEddyState, make_fold
 
 def test_iter_complementary_tuples_order_and_bounds_small_window():
     i, j = 0, 3
-    triples = list(re_rec._iter_complementary_tuples(i, j))
+    triples = list(iter_complementary_tuples(i, j))
     assert triples, "expected at least one (r,k,l) triple"
     for (r, k, l) in triples:
         assert i < k <= r < l <= j
 
 def test_iter_inner_holes_min_hole_enforced():
     i, j = 0, 5
-    holes0 = list(re_rec._iter_inner_holes(i, j, min_hole=0))
-    holes2 = list(re_rec._iter_inner_holes(i, j, min_hole=2))
+    holes0 = list(iter_inner_holes(i, j, min_hole=0))
+    holes2 = list(iter_inner_holes(i, j, min_hole=2))
     assert all(l >= k + 1 for k, l in holes0)
     assert all(l >= k + 3 for k, l in holes2)
     assert set(holes2).issubset(set(holes0)) and len(holes2) < len(holes0)
@@ -33,16 +37,16 @@ def test_dangle_table_lookup_and_fallbacks():
         dangle_outer_R={("C","G"): -0.4},
     )
     seq = "AUGC"
-    assert re_rec._dangle_outer_L(seq, 0, costs) == -0.3
-    assert re_rec._dangle_outer_L(seq, 1, costs) == pytest.approx(0.7)
+    assert dangle_outer_L(seq, 0, costs) == -0.3
+    assert dangle_outer_L(seq, 1, costs) == pytest.approx(0.7)
     # "_dangle_outer_R(seq, j)" looks up (j-1, j)
-    assert re_rec._dangle_outer_R(seq, 3, costs) == pytest.approx(0.8)
+    assert dangle_outer_R(seq, 3, costs) == pytest.approx(0.8)
 
 def test_coax_energy_for_join_symmetric_lookup():
     costs = re_rec.RERECosts(coax_pairs={("GC","AU"): -1.2})
     seq = "GCAU"
-    e1 = re_rec._coax_energy_for_join(seq, (0,1), (2,3), costs)
-    e2 = re_rec._coax_energy_for_join(seq, (2,3), (0,1), costs)
+    e1 = coax_energy_for_join(seq, (0,1), (2,3), costs)
+    e2 = coax_energy_for_join(seq, (2,3), (0,1), costs)
     assert e1 == e2 == pytest.approx(-1.2)
 
 def test_wxI_prefers_wxi_over_wx():
@@ -394,14 +398,15 @@ def test_wx_selects_uncharged_on_tie_and_sets_backpointer():
     eng.fill_with_costs(seq, nested, re_state)
 
     i, j = 0, n - 1
-    assert re_state.wx_back_ptr.get((i, j), (None,))[0] in (re_rec.RE_BP_WX_SELECT_UNCHARGED, re_rec.RE_BP_COMPOSE_WX,
-                                                            re_rec.RE_BP_COMPOSE_WX_YHX,
-                                                            re_rec.RE_BP_COMPOSE_WX_YHX_WHX,
-                                                            re_rec.RE_BP_COMPOSE_WX_WHX_YHX,
-                                                            re_rec.RE_BP_COMPOSE_WX_YHX_OVERLAP)
+    assert re_state.wx_back_ptr.get((i, j), (None,))[0] in (RivasEddyBacktrackOp.RE_WX_SELECT_UNCHARGED,
+                                                            RivasEddyBacktrackOp.RE_PK_COMPOSE_WX,
+                                                            RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_YHX,
+                                                            RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX,
+                                                            RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX,
+                                                            RivasEddyBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP)
     # If tie happened, the tag should be SELECT_UNCHARGED
     if re_state.wxu_matrix.get(i, j) == re_state.wxc_matrix.get(i, j):
-        assert re_state.wx_back_ptr[(i, j)][0] == re_rec.RE_BP_WX_SELECT_UNCHARGED
+        assert re_state.wx_back_ptr[(i, j)][0] == RivasEddyBacktrackOp.RE_WX_SELECT_UNCHARGED
 
 
 def _min_finite_whx(re_state, n):
@@ -637,7 +642,7 @@ def test_join_drift_with_negative_penalty_can_win_and_sets_bp():
     i, j = 0, n - 1
     # Charged should win; if the best charged candidate was a drift one, BP tag is DRIFT
     tag = re_state.vx_back_ptr.get((i, j), (None,))[0]
-    assert tag in (re_rec.RE_BP_COMPOSE_VX, re_rec.RE_BP_COMPOSE_VX_DRIFT)
+    assert tag in (RivasEddyBacktrackOp.RE_PK_COMPOSE_VX, RivasEddyBacktrackOp.RE_PK_COMPOSE_VX_DRIFT)
     # If DRIFT was beneficial, we should actually see it chosen
     # (allow either outcome if the specific sequence didn't admit a drift improvement)
     # But we still ensure enabling drift did not worsen energy:
@@ -737,6 +742,6 @@ def test_vx_selects_uncharged_on_tie_and_sets_backpointer():
 
     i, j = 0, n - 1
     tag = re_state.vx_back_ptr.get((i, j), (None,))[0]
-    assert tag in (re_rec.RE_BP_VX_SELECT_UNCHARGED, re_rec.RE_BP_COMPOSE_VX)
+    assert tag in (RivasEddyBacktrackOp.RE_VX_SELECT_UNCHARGED, RivasEddyBacktrackOp.RE_PK_COMPOSE_VX)
     if re_state.vxu_matrix.get(i, j) == re_state.vxc_matrix.get(i, j):
-        assert re_state.vx_back_ptr[(i, j)][0] == re_rec.RE_BP_VX_SELECT_UNCHARGED
+        assert re_state.vx_back_ptr[(i, j)][0] == RivasEddyBacktrackOp.RE_VX_SELECT_UNCHARGED

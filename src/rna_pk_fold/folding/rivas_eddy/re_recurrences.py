@@ -14,8 +14,7 @@ from rna_pk_fold.folding.rivas_eddy.re_back_pointer import RivasEddyBacktrackOp
 from rna_pk_fold.folding.rivas_eddy.re_is2_bridges import IS2_outer, IS2_outer_yhx
 from rna_pk_fold.folding.rivas_eddy.re_dangles import dangle_hole_L, dangle_hole_R, dangle_outer_L, dangle_outer_R
 from rna_pk_fold.folding.rivas_eddy.re_coax import coax_pack
-from rna_pk_fold.folding.rivas_eddy.re_matrix_accessors import (wxI, whx_collapse_first, zhx_collapse_first,
-                                                                whx_collapse_with, zhx_collapse_with)
+from rna_pk_fold.folding.rivas_eddy.re_matrix_accessors import wxI, whx_collapse_with, zhx_collapse_with
 from rna_pk_fold.folding.rivas_eddy.re_penalties import short_hole_penalty
 from rna_pk_fold.folding.rivas_eddy.re_iterators import iter_complementary_tuples, iter_inner_holes
 

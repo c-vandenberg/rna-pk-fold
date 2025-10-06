@@ -5,7 +5,7 @@ from typing import Dict, Tuple
 
 from rna_pk_fold.structures import CoreTriMatrix
 from rna_pk_fold.folding import BackPointer
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import ReTriMatrix, SparseGapMatrix, SparseGapBackptr
+from rna_pk_fold.folding.rivas_eddy.re_matrices import ReTriMatrix, SparseGapMatrix, SparseGapBackptr
 
 wx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
 vx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
