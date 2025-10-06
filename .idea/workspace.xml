@@ -5,11 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="412c1b24-9f3a-48e6-b1d0-5a7a528ee298" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/LICENSE" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rna_pk_fold/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rna_pk_fold/__main__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/folding/rivas_eddy/test_rivas_eddy_table3.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/rivas_eddy/test_rivas_eddy_table3.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -26,9 +22,9 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 5
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 5
+}</component>
   <component name="ProjectId" id="33HlMkXpZY8BjpiKproJHoKLVvG" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
@@ -37,8 +33,9 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "Python tests.Python tests in test_rivas_eddy_table3.py.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "feature/phase-1-step-1-energy-layer"
+    "git-widget-placeholder": "feature/phase-3-full-rivas-eddy-matrices"
   }
 }]]></component>
   <component name="SharedIndexes">

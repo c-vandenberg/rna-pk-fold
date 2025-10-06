@@ -2,7 +2,10 @@ import math
 import pytest
 
 from rna_pk_fold.folding.rivas_eddy import rivas_eddy_recurrences as re_rec
-from rna_pk_fold.folding.fold_state import FoldState, RivasEddyState
+from rna_pk_fold.folding.fold_state import (FoldState, RivasEddyState, make_fold_state,
+                                            make_re_fold_state, CoreTriMatrix, ReTriMatrix, SparseGapMatrix,
+                                            SparseGapBackptr, BackPointer)
+
 
 # ------------------------
 # Pure helper / iterator tests
@@ -59,16 +62,83 @@ def test_wxI_prefers_wxi_over_wx():
 
 def _try_build_states(n):
     try:
-        nested = FoldState(n)
-        re_state = RivasEddyState(n)
-    except Exception as e:
-        pytest.skip(f"Cannot construct FoldState/RivasEddyState(n): {e}")
-    # Seed nested W/V baselines to zeros (finite)
+        # Preferred: use package factories if they exist
+        nested = make_fold_state(n, init_energy=math.inf)
+        re_state = make_re_fold_state(n)
+    except Exception:
+        # Fallback: construct everything explicitly with keyword args
+        inf = math.inf
+
+        # --- Nested (Zuker) state ---
+        w_matrix = CoreTriMatrix[float](n, inf)
+        v_matrix = CoreTriMatrix[float](n, inf)
+        wm_matrix = CoreTriMatrix[float](n, inf)
+
+        w_back_ptr = CoreTriMatrix[BackPointer](n, BackPointer())
+        v_back_ptr = CoreTriMatrix[BackPointer](n, BackPointer())
+        wm_back_ptr = CoreTriMatrix[BackPointer](n, BackPointer())
+
+        # Typical multiloop base case: empty span -> 0
+        for i in range(n):
+            wm_matrix.set(i, i, 0.0)
+
+        nested = FoldState(
+            w_matrix=w_matrix,
+            v_matrix=v_matrix,
+            wm_matrix=wm_matrix,
+            w_back_ptr=w_back_ptr,
+            v_back_ptr=v_back_ptr,
+            wm_back_ptr=wm_back_ptr,
+        )
+
+        # --- Rivas & Eddy state ---
+        wx_matrix = ReTriMatrix(n)
+        vx_matrix = ReTriMatrix(n)
+        wxi_matrix = ReTriMatrix(n)
+        wxu_matrix = ReTriMatrix(n)
+        wxc_matrix = ReTriMatrix(n)
+        vxu_matrix = ReTriMatrix(n)
+        vxc_matrix = ReTriMatrix(n)
+
+        whx_matrix = SparseGapMatrix(n)
+        vhx_matrix = SparseGapMatrix(n)
+        yhx_matrix = SparseGapMatrix(n)
+        zhx_matrix = SparseGapMatrix(n)
+
+        whx_back_ptr = SparseGapBackptr(n)
+        vhx_back_ptr = SparseGapBackptr(n)
+        yhx_back_ptr = SparseGapBackptr(n)
+        zhx_back_ptr = SparseGapBackptr(n)
+
+        re_state = RivasEddyState(
+            n=n,
+            wx_matrix=wx_matrix, vx_matrix=vx_matrix,
+            wxi_matrix=wxi_matrix, wxu_matrix=wxu_matrix, wxc_matrix=wxc_matrix,
+            vxu_matrix=vxu_matrix, vxc_matrix=vxc_matrix,
+            wx_back_ptr={}, vx_back_ptr={},
+            whx_matrix=whx_matrix, vhx_matrix=vhx_matrix,
+            yhx_matrix=yhx_matrix, zhx_matrix=zhx_matrix,
+            whx_back_ptr=whx_back_ptr, vhx_back_ptr=vhx_back_ptr,
+            yhx_back_ptr=yhx_back_ptr, zhx_back_ptr=zhx_back_ptr,
+        )
+
+        # Reasonable base cases for publish tables (helps some tests initialize sanely)
+        for i in range(n):
+            re_state.wx_matrix.set(i, i, 0.0)
+            re_state.wxi_matrix.set(i, i, 0.0)
+            re_state.wxu_matrix.set(i, i, 0.0)
+            re_state.wxc_matrix.set(i, i, 0.0)
+            re_state.vx_matrix.set(i, i, inf)
+            re_state.vxu_matrix.set(i, i, inf)
+            re_state.vxc_matrix.set(i, i, inf)
+
+        # The tests seed W/V to zero for all spans; keep that behavior:
     for s in range(n):
         for i in range(0, n - s):
             j = i + s
             nested.w_matrix.set(i, j, 0.0)
             nested.v_matrix.set(i, j, 0.0)
+
     return nested, re_state
 
 
