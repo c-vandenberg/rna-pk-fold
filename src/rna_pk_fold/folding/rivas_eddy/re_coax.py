@@ -11,7 +11,7 @@ def _coax_energy_for_join(seq: str, left_pair: Tuple[int, int], right_pair: Tupl
         return 0.0
     return costs.coax_pairs.get((lp, rp), costs.coax_pairs.get((rp, lp), 0.0))
 
-def _coax_pack(seq: str, i: int, j: int, r: int, k: int, l: int, cfg, costs, adjacent: bool):
+def coax_pack(seq: str, i: int, j: int, r: int, k: int, l: int, cfg, costs, adjacent: bool):
     left_len  = (r - i + 1)
     right_len = (j - (k + 1) + 1)
     if left_len < costs.coax_min_helix_len or right_len < costs.coax_min_helix_len:

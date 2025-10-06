@@ -165,7 +165,7 @@ class RivasEddyBackPointer:
 
     @classmethod
     def whx_shrink_left(cls, i: int, j: int, k1: int, l: int) -> "RivasEddyBackPointer":
-        return cls(op=RivasEddyBacktrackOp.RE_SHRINK_LEFT,
+        return cls(op=RivasEddyBacktrackOp.RE_WHX_SHRINK_LEFT,
                    outer=(i, j), hole=(k1, l), args=(i, j, k1, l))
 
     @classmethod
