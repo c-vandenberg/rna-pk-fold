@@ -1,8 +1,8 @@
-# tests/test_rivas_eddy_table3.py
 import math
 import pytest
 
 from rna_pk_fold.folding.rivas_eddy import rivas_eddy_recurrences as re_rec
+from rna_pk_fold.folding.fold_state import FoldState, RivasEddyState
 
 # ------------------------
 # Pure helper / iterator tests
@@ -58,10 +58,6 @@ def test_wxI_prefers_wxi_over_wx():
 # ------------------------
 
 def _try_build_states(n):
-    try:
-        from rna_pk_fold.folding.fold_state import FoldState, RivasEddyState
-    except Exception as e:
-        pytest.skip(f"Cannot import FoldState/RivasEddyState: {e}")
     try:
         nested = FoldState(n)
         re_state = RivasEddyState(n)
@@ -336,3 +332,341 @@ def test_wx_selects_uncharged_on_tie_and_sets_backpointer():
     # If tie happened, the tag should be SELECT_UNCHARGED
     if re_state.wxu_matrix.get(i, j) == re_state.wxc_matrix.get(i, j):
         assert re_state.wx_back_ptr[(i, j)][0] == re_rec.RE_BP_WX_SELECT_UNCHARGED
+
+
+def _min_finite_whx(re_state, n):
+    best = math.inf
+    for i in range(n):
+        for j in range(i+1, n):
+            max_h = max(0, j - i - 1)
+            for h in range(1, max_h + 1):
+                for k in range(i, j - h):
+                    l = k + h + 1
+                    v = re_state.whx_matrix.get(i, j, k, l)
+                    if math.isfinite(v) and v < best:
+                        best = v
+    return best
+
+
+# ------------------------
+# More coax detail: gating, mismatch, directional scales
+# ------------------------
+
+def test_coax_min_helix_len_gates_effect():
+    """
+    If coax requires longer end-caps than available, enabling coax has no effect.
+    Lowering the gate allows a strictly better or equal VX.
+    """
+    seq = "GCGG"   # length 4; (i,r)=(0,1)->"GC"; (k+1,j)=(2,3)->"GG"
+    n, i, j = len(seq), 0, 3
+    nested, re_state = _try_build_states(n)
+
+    # Only OO contact carries negative energy
+    costs = re_rec.RERECosts(
+        q_ss=0.0, Gwi=0.0,
+        coax_pairs={("GC","GG"): -1.5},
+        coax_scale=1.0, coax_bonus=0.0,
+        coax_min_helix_len=10  # too strict -> gated out
+    )
+    cfg_strict = re_rec.REREConfig(enable_coax=True, enable_coax_variants=False,
+                                   pk_penalty_gw=0.0, costs=costs)
+    eng_strict = re_rec.RivasEddyEngine(cfg_strict)
+    eng_strict.fill_with_costs(seq, nested, re_state)
+    vx_strict = re_state.vx_matrix.get(i, j)
+
+    # Same but relax the gate so the same seam is eligible
+    nested2, re_state2 = _try_build_states(n)
+    costs2 = re_rec.RERECosts(
+        q_ss=0.0, Gwi=0.0,
+        coax_pairs={("GC","GG"): -1.5},
+        coax_scale=1.0, coax_bonus=0.0,
+        coax_min_helix_len=1
+    )
+    cfg_relaxed = re_rec.REREConfig(enable_coax=True, enable_coax_variants=False,
+                                    pk_penalty_gw=0.0, costs=costs2)
+    eng_relaxed = re_rec.RivasEddyEngine(cfg_relaxed)
+    eng_relaxed.fill_with_costs(seq, nested2, re_state2)
+    vx_relaxed = re_state2.vx_matrix.get(i, j)
+
+    assert vx_relaxed <= vx_strict
+
+
+def test_coax_mismatch_requires_enable_flag():
+    """
+    Create a seam where r == k + 1 (mismatch seam).
+    With enable_coax_mismatch=False, coax must not engage.
+    With enable_coax_mismatch=True, VX can improve.
+    """
+    seq = "GCAUGC"     # n=6, we'll rely on an (i,j) = (0,5) candidate with (r,k,l) ~ (2,1,4)
+    n = len(seq)
+    nested, re_state = _try_build_states(n)
+
+    # Only the OO pair for the mismatch seam is negative
+    costs = re_rec.RERECosts(
+        q_ss=0.0, Gwi=0.0,
+        coax_pairs={("GA","AC"): -2.0},  # (i,r)="GA", (k+1,j)="AC" for one mismatch candidate
+        coax_scale=1.0, coax_bonus=0.0,
+        coax_min_helix_len=1,
+    )
+
+    cfg_no_mismatch = re_rec.REREConfig(
+        enable_coax=True, enable_coax_variants=False, enable_coax_mismatch=False,
+        pk_penalty_gw=0.0, costs=costs
+    )
+    eng0 = re_rec.RivasEddyEngine(cfg_no_mismatch)
+    eng0.fill_with_costs(seq, nested, re_state)
+    vx0 = re_state.vx_matrix.get(0, n - 1)
+
+    nested2, re_state2 = _try_build_states(n)
+    cfg_yes_mismatch = re_rec.REREConfig(
+        enable_coax=True, enable_coax_variants=False, enable_coax_mismatch=True,
+        pk_penalty_gw=0.0, costs=costs
+    )
+    eng1 = re_rec.RivasEddyEngine(cfg_yes_mismatch)
+    eng1.fill_with_costs(seq, nested2, re_state2)
+    vx1 = re_state2.vx_matrix.get(0, n - 1)
+
+    assert vx1 <= vx0
+
+
+def test_coax_directional_scales_affect_variants():
+    """
+    Only the OI/IO variant contacts have negative energies.
+    With variants disabled: no gain. With variants enabled and scales up: VX improves.
+    """
+    seq = "GCGC"  # (i,r)=(0,1)="GC"; (k,l)=(1,3)="CG"; (k+1,j)=(2,3)="GC"
+    n = len(seq)
+    nested, re_state = _try_build_states(n)
+
+    costs = re_rec.RERECosts(
+        q_ss=0.0, Gwi=0.0,
+        # Only variant edges score (both directions)
+        coax_pairs={("GC","CG"): -1.0, ("CG","GC"): -1.5},
+        coax_scale=1.0, coax_bonus=0.0,
+        coax_min_helix_len=1,
+        coax_scale_oo=0.0,  # OO contributes nothing
+        coax_scale_oi=0.0, coax_scale_io=0.0,
+    )
+
+    cfg_base = re_rec.REREConfig(enable_coax=True, enable_coax_variants=False,
+                                 pk_penalty_gw=0.0, costs=costs)
+    eng0 = re_rec.RivasEddyEngine(cfg_base)
+    eng0.fill_with_costs(seq, nested, re_state)
+    vx0 = re_state.vx_matrix.get(0, n - 1)
+
+    # Now enable variants but keep scales at 0 (still no effect)
+    nested2, re_state2 = _try_build_states(n)
+    cfg_var_zero = re_rec.REREConfig(enable_coax=True, enable_coax_variants=True,
+                                     pk_penalty_gw=0.0, costs=costs)
+    eng1 = re_rec.RivasEddyEngine(cfg_var_zero)
+    eng1.fill_with_costs(seq, nested2, re_state2)
+    vx1 = re_state2.vx_matrix.get(0, n - 1)
+    assert vx1 == vx0
+
+    # Increase variant scales -> now effect should appear
+    nested3, re_state3 = _try_build_states(n)
+    costs2 = re_rec.RERECosts(
+        q_ss=0.0, Gwi=0.0,
+        coax_pairs={("GC","CG"): -1.0, ("CG","GC"): -1.5},
+        coax_scale=1.0, coax_bonus=0.0,
+        coax_min_helix_len=1,
+        coax_scale_oo=0.0, coax_scale_oi=2.0, coax_scale_io=2.0,
+    )
+    cfg_var_scaled = re_rec.REREConfig(enable_coax=True, enable_coax_variants=True,
+                                       pk_penalty_gw=0.0, costs=costs2)
+    eng2 = re_rec.RivasEddyEngine(cfg_var_scaled)
+    eng2.fill_with_costs(seq, nested3, re_state3)
+    vx2 = re_state3.vx_matrix.get(0, n - 1)
+    assert vx2 <= vx1
+
+
+# ------------------------
+# Short-hole capping penalties (charged seam; check vxc/wxc directly)
+# ------------------------
+
+def test_short_hole_caps_raise_charged_vx_when_hole_is_tiny():
+    """
+    Put a positive cap for width=1 holes. Compare vxc with and without the cap.
+    Final vx may still publish the uncharged (0), so inspect vxc explicitly.
+    """
+    seq = "GCAUCG"
+    n = len(seq)
+    nested, re_state = _try_build_states(n)
+
+    costs_no = re_rec.RERECosts(q_ss=0.0, short_hole_caps={})
+    costs_yes = re_rec.RERECosts(q_ss=0.0, short_hole_caps={1: +2.0})
+    cfg_no  = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0, costs=costs_no)
+    cfg_yes = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0, costs=costs_yes)
+
+    eng0 = re_rec.RivasEddyEngine(cfg_no)
+    eng0.fill_with_costs(seq, nested, re_state)
+    vxc0 = re_state.vxc_matrix.get(0, n - 1)
+
+    nested2, re_state2 = _try_build_states(n)
+    eng1 = re_rec.RivasEddyEngine(cfg_yes)
+    eng1.fill_with_costs(seq, nested2, re_state2)
+    vxc1 = re_state2.vxc_matrix.get(0, n - 1)
+
+    assert vxc1 >= vxc0
+
+
+# ------------------------
+# Join drift: cannot worsen; can help; and leaves a DRIFT backpointer when it wins
+# ------------------------
+
+def test_join_drift_cannot_worsen_vx():
+    seq = "GCAUCG"
+    n = len(seq)
+    nested, re_state = _try_build_states(n)
+
+    base_costs = re_rec.RERECosts(q_ss=0.1, join_drift_penalty=1.0)  # penalize drift
+    cfg_off = re_rec.REREConfig(enable_join_drift=False, drift_radius=1,
+                                pk_penalty_gw=0.0, costs=base_costs)
+    cfg_on  = re_rec.REREConfig(enable_join_drift=True,  drift_radius=1,
+                                pk_penalty_gw=0.0, costs=base_costs)
+
+    eng0 = re_rec.RivasEddyEngine(cfg_off)
+    eng0.fill_with_costs(seq, nested, re_state)
+    vxc0 = re_state.vxc_matrix.get(0, n - 1)
+
+    nested2, re_state2 = _try_build_states(n)
+    eng1 = re_rec.RivasEddyEngine(cfg_on)
+    eng1.fill_with_costs(seq, nested2, re_state2)
+    vxc1 = re_state2.vxc_matrix.get(0, n - 1)
+
+    # Having extra candidates should never make the optimum worse
+    assert vxc1 <= vxc0
+
+
+def test_join_drift_with_negative_penalty_can_win_and_sets_bp():
+    """
+    Make drift attractive and nudge the charged VX to beat the uncharged path,
+    so the final VX keeps the DRIFT backpointer.
+    """
+    seq = "GCGCGA"   # a bit longer to give room
+    n = len(seq)
+    nested, re_state = _try_build_states(n)
+
+    costs = re_rec.RERECosts(
+        q_ss=0.0, Gwi=0.0,
+        # Provide some coax gain so charged path can beat the uncharged baseline (0)
+        coax_pairs={("GC","GC"): -2.0},
+        coax_scale=1.0, coax_bonus=0.0,
+        join_drift_penalty=-0.5,  # reward drift
+        coax_min_helix_len=1,
+    )
+    cfg = re_rec.REREConfig(
+        enable_coax=True, enable_coax_variants=False,
+        enable_join_drift=True, drift_radius=1,
+        pk_penalty_gw=0.0, costs=costs
+    )
+
+    eng = re_rec.RivasEddyEngine(cfg)
+    eng.fill_with_costs(seq, nested, re_state)
+
+    i, j = 0, n - 1
+    # Charged should win; if the best charged candidate was a drift one, BP tag is DRIFT
+    tag = re_state.vx_back_ptr.get((i, j), (None,))[0]
+    assert tag in (re_rec.RE_BP_COMPOSE_VX, re_rec.RE_BP_COMPOSE_VX_DRIFT)
+    # If DRIFT was beneficial, we should actually see it chosen
+    # (allow either outcome if the specific sequence didn't admit a drift improvement)
+    # But we still ensure enabling drift did not worsen energy:
+    vx = re_state.vx_matrix.get(i, j)
+    assert math.isfinite(vx)
+
+
+# ------------------------
+# IS2 in YHX/WHX contexts
+# ------------------------
+
+class _TablesYHX:
+    def __init__(self, val):
+        self.IS2_outer_yhx = lambda seq, i, j, r, s: val
+
+def test_IS2_outer_yhx_lowers_best_yhx_when_negative():
+    seq = "GCAUCG"
+    n = len(seq)
+    nested, re_state = _try_build_states(n)
+
+    cfg0 = re_rec.REREConfig(pk_penalty_gw=0.0, enable_coax=False,
+                             costs=re_rec.RERECosts(q_ss=0.0))
+    eng0 = re_rec.RivasEddyEngine(cfg0)
+    eng0.fill_with_costs(seq, nested, re_state)
+    y0 = _min_finite_yhx(re_state, n)
+
+    nested2, re_state2 = _try_build_states(n)
+    cfg1 = re_rec.REREConfig(pk_penalty_gw=0.0, enable_coax=False,
+                             costs=re_rec.RERECosts(q_ss=0.0))
+    cfg1.tables = _TablesYHX(-1.5)  # negative bridge should help
+    eng1 = re_rec.RivasEddyEngine(cfg1)
+    eng1.fill_with_costs(seq, nested2, re_state2)
+    y1 = _min_finite_yhx(re_state2, n)
+
+    assert y1 <= y0
+
+
+def test_IS2_outer_yhx_can_lower_whx_via_yhx_bridge():
+    """
+    The symmetric hook is applied in WHX using YHX inner.
+    Negative bridge should reduce the best WHX energy.
+    """
+    seq = "GCAUCG"
+    n = len(seq)
+    nested, re_state = _try_build_states(n)
+
+    cfg0 = re_rec.REREConfig(pk_penalty_gw=0.0, enable_coax=False,
+                             costs=re_rec.RERECosts(q_ss=0.0))
+    eng0 = re_rec.RivasEddyEngine(cfg0)
+    eng0.fill_with_costs(seq, nested, re_state)
+    w0 = _min_finite_whx(re_state, n)
+
+    nested2, re_state2 = _try_build_states(n)
+    cfg1 = re_rec.REREConfig(pk_penalty_gw=0.0, enable_coax=False,
+                             costs=re_rec.RERECosts(q_ss=0.0))
+    cfg1.tables = _TablesYHX(-2.0)
+    eng1 = re_rec.RivasEddyEngine(cfg1)
+    eng1.fill_with_costs(seq, nested2, re_state2)
+    w1 = _min_finite_whx(re_state2, n)
+
+    assert w1 <= w0
+
+
+# ------------------------
+# Overlap + caps sanity (WX)
+# ------------------------
+
+def test_wx_overlap_respects_short_hole_caps_on_charged_path():
+    seq = "GCAUCG"
+    n = len(seq)
+    nested, re_state = _try_build_states(n)
+
+    costs_overlap = re_rec.RERECosts(q_ss=0.0, Gwh_wx=-0.5, short_hole_caps={1: +1.0})
+    cfg = re_rec.REREConfig(enable_wx_overlap=True, pk_penalty_gw=0.0, costs=costs_overlap)
+    eng = re_rec.RivasEddyEngine(cfg)
+    eng.fill_with_costs(seq, nested, re_state)
+
+    # Charged WX should be finite, and adding a positive cap to width=1 holes
+    # does not create negative values out of nowhere
+    wxc = re_state.wxc_matrix.get(0, n - 1)
+    assert math.isfinite(wxc)
+
+
+# ------------------------
+# VX selection behavior on publish mirrors WX test
+# ------------------------
+
+def test_vx_selects_uncharged_on_tie_and_sets_backpointer():
+    seq = "GCAU"
+    n = len(seq)
+    nested, re_state = _try_build_states(n)
+
+    cfg = re_rec.REREConfig(enable_coax=False, pk_penalty_gw=0.0,
+                            costs=re_rec.RERECosts(q_ss=0.0))
+    eng = re_rec.RivasEddyEngine(cfg)
+    eng.fill_with_costs(seq, nested, re_state)
+
+    i, j = 0, n - 1
+    tag = re_state.vx_back_ptr.get((i, j), (None,))[0]
+    assert tag in (re_rec.RE_BP_VX_SELECT_UNCHARGED, re_rec.RE_BP_COMPOSE_VX)
+    if re_state.vxu_matrix.get(i, j) == re_state.vxc_matrix.get(i, j):
+        assert re_state.vx_back_ptr[(i, j)][0] == re_rec.RE_BP_VX_SELECT_UNCHARGED

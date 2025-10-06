@@ -1,7 +1,8 @@
 from __future__ import annotations
 import math
+import json
 from dataclasses import dataclass, field
-from typing import Iterator, Tuple, Dict, Optional
+from typing import Iterator, Tuple, Dict, Optional, Any
 
 from rna_pk_fold.folding.fold_state import FoldState, RivasEddyState
 from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
@@ -24,6 +25,7 @@ RE_BP_VX_SELECT_UNCHARGED = "RE_VX_SELECT_UNCHARGED"
 RE_BP_COMPOSE_WX_DRIFT = "RE_PK_COMPOSE_WX_DRIFT"
 RE_BP_COMPOSE_VX_DRIFT = "RE_PK_COMPOSE_VX_DRIFT"
 RE_BP_YHX_IS2_INNER_WHX = "RE_YHX_IS2_INNER_WHX"
+RE_BP_WHX_IS2_INNER_YHX = "RE_WHX_IS2_INNER_YHX"
 
 # ======================================================================
 
@@ -101,6 +103,13 @@ def IS2_outer(seq: str, tables, i: int, j: int, r: int, s: int) -> float:
         return fn(seq, i, j, r, s) if callable(fn) else float(fn)
     return 0.0
 
+def IS2_outer_yhx(seq: str, tables, i: int, j: int, r: int, s: int) -> float:
+    """Mirror IS2 hook for YHX/WHX contexts."""
+    if tables and hasattr(tables, "IS2_outer_yhx"):
+        fn = tables.IS2_outer_yhx
+        return fn(seq, i, j, r, s) if callable(fn) else float(fn)
+    return 0.0
+
 def _safe_base(seq: str, idx: int) -> Optional[str]:
     return seq[idx] if 0 <= idx < len(seq) else None
 
@@ -143,13 +152,6 @@ def _short_hole_penalty(costs: "RERECosts", k: int, l: int) -> float:
     """Energetic penalty for tiny holes; applied once at compose time."""
     h = l - k - 1
     return costs.short_hole_caps.get(h, 0.0)
-
-def IS2_outer_yhx(seq: str, tables, i: int, j: int, r: int, s: int) -> float:
-    """Mirror IS2 hook for YHX/WHX contexts."""
-    if tables and hasattr(tables, "IS2_outer_yhx"):
-        fn = tables.IS2_outer_yhx
-        return fn(seq, i, j, r, s) if callable(fn) else float(fn)
-    return 0.0
 
 def _coax_pack(seq: str, i: int, j: int, r: int, k: int, l: int,
                cfg: "REREConfig", costs: "RERECosts", adjacent: bool) -> Tuple[float, float]:
@@ -194,7 +196,6 @@ def _coax_pack(seq: str, i: int, j: int, r: int, k: int, l: int,
 
     # Apply global scale g at the call site; we return the raw summed contact energy.
     return total, costs.coax_bonus
-
 
 @dataclass(slots=True)
 class RERECosts:
@@ -545,6 +546,18 @@ class RivasEddyEngine:
                                     if cand < best:
                                         best = cand
                                         best_bp = (RE_BP_WHX_OVERLAP_SPLIT, (r,))
+
+                        # --- INTERIOR (ĨS₂ for WHX via YHX + yhx(r2,s2:k,l)) over r2,s2 covering the hole ---
+                        for r2 in range(i, k + 1):
+                            for s2 in range(l, j + 1):
+                                if r2 <= k and l <= s2 and r2 <= s2:
+                                    inner_y = re.yhx_matrix.get(r2, s2, k, l)
+                                    if math.isfinite(inner_y):
+                                        bridge = IS2_outer_yhx(seq, tables, i, j, r2, s2)
+                                        cand = bridge + inner_y
+                                        if cand < best:
+                                            best = cand
+                                            best_bp = (RE_BP_WHX_IS2_INNER_YHX, (r2, s2))
 
                         re.whx_matrix.set(i, j, k, l, best)
                         re.whx_back_ptr.set(i, j, k, l, best_bp)
@@ -1159,3 +1172,73 @@ def _iter_inner_holes(i: int, j: int, min_hole: int = 0):
     for k in range(i, j):
         for l in range(k + 1 + min_hole, j + 1):
             yield k, l
+
+def load_costs_json(path: str) -> RERECosts:
+    with open(path, "r") as fh:
+        d = json.load(fh)
+    return costs_from_dict(d)
+
+def save_costs_json(path: str, costs: RERECosts) -> None:
+    with open(path, "w") as fh:
+        json.dump(costs_to_dict(costs), fh, indent=2, sort_keys=True)
+
+def costs_from_vienna_like(tbl: Dict[str, Any]) -> RERECosts:
+    """
+    Map a Vienna-like dict to RERECosts.
+    Expected keys (suggested, adapt to your source):
+      - 'q_ss', 'Gw', 'Gwi', 'Gwh', 'coax_scale', 'coax_bonus',
+      - 'coax_pairs': { "GC|CG": -0.5, "AU|UA": -0.3, ... },
+      - 'dangle_outer_L/R', 'dangle_hole_L/R': { "GA": -0.1, ... },
+      - 'short_hole_caps': { "1": 2.0, "2": 1.0 },
+      - optional: 'mismatch_coax_scale', 'mismatch_coax_bonus',
+                  'coax_min_helix_len', 'coax_scale_oo/oi/io',
+                  'P_tilde_out', 'P_tilde_hole', 'Q_tilde_out', 'Q_tilde_hole',
+                  'M_tilde_yhx', 'M_tilde_vhx', 'M_tilde_whx'.
+    """
+    d = {}
+
+    # simple scalars
+    for k in [
+        "q_ss","Gwh","Gwi","coax_scale","coax_bonus",
+        "mismatch_coax_scale","mismatch_coax_bonus",
+        "coax_min_helix_len","coax_scale_oo","coax_scale_oi","coax_scale_io",
+        "P_tilde_out","P_tilde_hole","Q_tilde_out","Q_tilde_hole",
+        "M_tilde_yhx","M_tilde_vhx","M_tilde_whx"
+    ]:
+        if k in tbl: d[k] = tbl[k]
+
+    # coax pairs: accept "XY|UV" keys
+    coax_pairs = {}
+    for key, val in tbl.get("coax_pairs", {}).items():
+        left,right = key.split("|")
+        coax_pairs[(left, right)] = float(val)
+    d["coax_pairs"] = coax_pairs
+
+    # dangles: accept bigrams like "GA": value
+    for name in ["dangle_outer_L","dangle_outer_R","dangle_hole_L","dangle_hole_R"]:
+        m = {}
+        for bigram, val in tbl.get(name, {}).items():
+            if len(bigram) == 2:
+                m[(bigram[0], bigram[1])] = float(val)
+        d[name] = m
+
+    # short-hole caps
+    caps = {}
+    for h, val in tbl.get("short_hole_caps", {}).items():
+        caps[int(h)] = float(val)
+    d["short_hole_caps"] = caps
+
+    return costs_from_dict(d)
+
+def quick_energy_harness(seq: str, cfg: REREConfig, nested: FoldState, re: RivasEddyState) -> Dict[str, float]:
+    """
+    Run fill_with_costs and report a few sentinel energies for regression:
+    """
+    eng = RivasEddyEngine(cfg)
+    eng.fill_with_costs(seq, nested, re)
+    out = {
+        "W(0,n-1)": re.wx_matrix.get(0, re.n - 1),
+        "V(0,n-1)": re.vx_matrix.get(0, re.n - 1),
+    }
+    # Add any other coordinates you want to track here.
+    return out
