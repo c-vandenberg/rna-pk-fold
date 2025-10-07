@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, Tuple, Iterable
+from typing import Optional, Tuple
 
 def safe_base(seq: str, idx: int) -> Optional[str]:
     return seq[idx] if 0 <= idx < len(seq) else None

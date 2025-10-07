@@ -2,16 +2,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Optional, Tuple
 
-from rna_pk_fold.energies.types import SecondaryStructureEnergies
+from rna_pk_fold.energies.energy_types import SecondaryStructureEnergies
 from rna_pk_fold.energies.energy_ops import (
     hairpin_energy, stack_energy, internal_loop_energy, multiloop_linear_energy,
 )
-from rna_pk_fold.energies.pk_energy_ops import (
+from rna_pk_fold.energies.energy_pk_ops import (
     PKCoaxConfig, PKEnergyCosts,
-    dangle_hole_L as pk_dangle_hole_left_fn,
-    dangle_hole_R as pk_dangle_hole_right_fn,
-    dangle_outer_L as pk_dangle_outer_left_fn,
-    dangle_outer_R as pk_dangle_outer_right_fn,
+    dangle_hole_left as pk_dangle_hole_left_fn,
+    dangle_hole_right as pk_dangle_hole_right_fn,
+    dangle_outer_left as pk_dangle_outer_left_fn,
+    dangle_outer_right as pk_dangle_outer_right_fn,
     coax_pack as pk_coax_pack_fn,
     short_hole_penalty as pk_short_hole_penalty_fn,
 )

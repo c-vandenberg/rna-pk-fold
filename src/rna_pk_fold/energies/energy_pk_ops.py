@@ -34,19 +34,19 @@ class PKEnergyCosts(Protocol):
     # short-hole caps
     short_hole_caps: Dict[int, float]
 
-def dangle_hole_L(seq: str, k: int, costs: PKEnergyCosts) -> float:
+def dangle_hole_left(seq: str, k: int, costs: PKEnergyCosts) -> float:
     # uses (k-1, k)
     return table_lookup(costs.dangle_hole_L, safe_base(seq, k - 1), safe_base(seq, k), costs.L_tilde)
 
-def dangle_hole_R(seq: str, l: int, costs: PKEnergyCosts) -> float:
+def dangle_hole_right(seq: str, l: int, costs: PKEnergyCosts) -> float:
     # uses (l, l+1)
     return table_lookup(costs.dangle_hole_R, safe_base(seq, l), safe_base(seq, l + 1), costs.R_tilde)
 
-def dangle_outer_L(seq: str, i: int, costs: PKEnergyCosts) -> float:
+def dangle_outer_left(seq: str, i: int, costs: PKEnergyCosts) -> float:
     # uses (i, i+1)
     return table_lookup(costs.dangle_outer_L, safe_base(seq, i), safe_base(seq, i + 1), costs.L_tilde)
 
-def dangle_outer_R(seq: str, j: int, costs: PKEnergyCosts) -> float:
+def dangle_outer_right(seq: str, j: int, costs: PKEnergyCosts) -> float:
     # uses (j-1, j)
     return table_lookup(costs.dangle_outer_R, safe_base(seq, j - 1), safe_base(seq, j), costs.R_tilde)
 

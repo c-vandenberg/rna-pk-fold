@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Protocol
 
-from rna_pk_fold.energies.types import SecondaryStructureEnergies
+from rna_pk_fold.energies.energy_types import SecondaryStructureEnergies
 
 # --- Protocols For Structural Contracts & Dependency Inversion
 class HairpinFn(Protocol):

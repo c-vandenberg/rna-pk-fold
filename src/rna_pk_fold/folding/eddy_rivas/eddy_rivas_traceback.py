@@ -1,6 +1,6 @@
 # rna_pk_fold/folding/eddy_rivas/eddy_rivas_traceback.py
 from __future__ import annotations
-from typing import List, Tuple, Dict, Set, Callable, Any, Optional
+from typing import List, Tuple, Dict, Set, Callable, Any
 
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import pairs_to_multilayer_dotbracket, TraceResult

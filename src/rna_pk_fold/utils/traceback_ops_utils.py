@@ -1,4 +1,3 @@
-# rna_pk_fold/folding/utils/trace_ops.py
 from __future__ import annotations
 from typing import Set, Dict, Tuple, Callable, Any
 from rna_pk_fold.structures import Pair

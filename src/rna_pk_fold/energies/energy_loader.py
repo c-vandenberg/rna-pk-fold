@@ -1,8 +1,6 @@
 from __future__ import annotations
-import yaml
 from pathlib import Path
-
-from typing import Literal, Dict, Tuple, Any, Optional
+from typing import Literal, Dict, Any, Optional
 
 from .data.yaml_io import read_yaml
 from .data.parsers import (
@@ -160,56 +158,3 @@ class SecondaryStructureEnergyLoader:
             # optional global PK penalty scaling (if you included this in the dataclass)
             pk_penalty_gw=get_float(node, "pk_penalty_gw", 1.0),
         )
-
-
-def pk_costs_dict(src: SecondaryStructureEnergies | PseudoknotEnergies) -> Dict[str, Any]:
-    """
-    Convert a PseudoknotEnergies instance (directly) or a SecondaryStructureEnergies
-    (by reading .PSEUDOKNOT) into the flat dict that RivasEddyCosts expects.
-    """
-    if isinstance(src, SecondaryStructureEnergies):
-        if src.PSEUDOKNOT is None:
-            raise ValueError("No pseudoknot block found in SecondaryStructureEnergies.")
-        pk = src.PSEUDOKNOT
-    elif isinstance(src, PseudoknotEnergies):
-        pk = src
-    else:
-        raise TypeError("pk_costs_dict expects SecondaryStructureEnergies or PseudoknotEnergies.")
-
-    return {
-        "q_ss": pk.q_ss,
-        "P_tilde_out": pk.P_tilde_out,
-        "P_tilde_hole": pk.P_tilde_hole,
-        "Q_tilde_out": pk.Q_tilde_out,
-        "Q_tilde_hole": pk.Q_tilde_hole,
-        "L_tilde": pk.L_tilde,
-        "R_tilde": pk.R_tilde,
-        "M_tilde_yhx": pk.M_tilde_yhx,
-        "M_tilde_vhx": pk.M_tilde_vhx,
-        "M_tilde_whx": pk.M_tilde_whx,
-
-        "dangle_hole_L": pk.dangle_hole_left or {},
-        "dangle_hole_R": pk.dangle_hole_right or {},
-        "dangle_outer_L": pk.dangle_outer_left or {},
-        "dangle_outer_R": pk.dangle_outer_right or {},
-        "coax_pairs": pk.coax_pairs or {},
-
-        "coax_bonus": pk.coax_bonus,
-        "coax_scale_oo": pk.coax_scale_oo,
-        "coax_scale_oi": pk.coax_scale_oi,
-        "coax_scale_io": pk.coax_scale_io,
-        "coax_min_helix_len": pk.coax_min_helix_len,
-        "coax_scale": pk.coax_scale,
-
-        "mismatch_coax_scale": pk.mismatch_coax_scale,
-        "mismatch_coax_bonus": pk.mismatch_coax_bonus,
-
-        "join_drift_penalty": pk.join_drift_penalty,
-
-        "short_hole_caps": pk.short_hole_caps or {},
-
-        "Gwh": pk.Gwh,
-        "Gwi": pk.Gwi,
-        "Gwh_wx": pk.Gwh_wx,
-        "Gwh_whx": pk.Gwh_whx,
-    }

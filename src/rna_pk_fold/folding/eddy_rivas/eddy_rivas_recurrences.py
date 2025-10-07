@@ -12,8 +12,8 @@ from rna_pk_fold.folding.eddy_rivas.iterators import (iter_spans, iter_holes, it
                                                       iter_inner_holes)
 from rna_pk_fold.folding.eddy_rivas.matrix_accessors import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
                                                              whx_collapse_with, zhx_collapse_with)
-from rna_pk_fold.energies.pk_energy_ops import (dangle_hole_L, dangle_hole_R, dangle_outer_L, dangle_outer_R,
-                                                coax_pack, short_hole_penalty)
+from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
+                                                dangle_outer_right, coax_pack, short_hole_penalty, PKEnergyCosts)
 
 
 def take_best(
@@ -42,7 +42,7 @@ def make_bp(i: int, j: int, k: int, l: int) -> Callable[..., EddyRivasBackPointe
 # Config & Costs
 # -----------------------
 @dataclass(slots=True)
-class EddyRivasFoldingCosts:
+class EddyRivasFoldingCosts(PKEnergyCosts):
     # Per-step single-strand “gap” cost (move a boundary by 1, or trim outer by 1)
 
     # Tilde params fallback (used if tables don’t have an entry)
@@ -60,10 +60,10 @@ class EddyRivasFoldingCosts:
     M_tilde_whx: float = 0.0  # (optional hook) M~ inside WHX contexts
 
     # Dangle/coax tables (keyed on local bases or pair types)
-    dangle_hole_L: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (k-1, k)
-    dangle_hole_R: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (l, l+1)
-    dangle_outer_L: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (i, i+1)
-    dangle_outer_R: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (j-1, j)
+    dangle_hole_left: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (k-1, k)
+    dangle_hole_right: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (l, l+1)
+    dangle_outer_left: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (i, i+1)
+    dangle_outer_right: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (j-1, j)
     coax_pairs: Dict[Tuple[str, str], float] = field(default_factory=dict)  # ((pairTypeA),(pairTypeB))
 
     # Bonuses/penalties
@@ -488,8 +488,8 @@ class EddyRivasFoldingEngine:
                 # DANGLE_LR from VHX
                 v = re.vhx_matrix.get(i, j, k - 1, l + 1)
                 if math.isfinite(v):
-                    Lh = dangle_hole_L(seq, k, self.cfg.costs)
-                    Rh = dangle_hole_R(seq, l, self.cfg.costs)
+                    Lh = dangle_hole_left(seq, k, self.cfg.costs)
+                    Rh = dangle_hole_right(seq, l, self.cfg.costs)
                     cand = Lh + Rh + P_hole + v + Gwi
                     best, best_bp = take_best(
                         best, best_bp, cand,
@@ -503,7 +503,7 @@ class EddyRivasFoldingEngine:
                 # DANGLE_R from VHX
                 v = re.vhx_matrix.get(i, j, k - 1, l)
                 if math.isfinite(v):
-                    Rh = dangle_hole_R(seq, l - 1, self.cfg.costs)
+                    Rh = dangle_hole_right(seq, l - 1, self.cfg.costs)
                     cand = Rh + P_hole + v + Gwi
                     best, best_bp = take_best(
                         best, best_bp, cand,
@@ -517,7 +517,7 @@ class EddyRivasFoldingEngine:
                 # DANGLE_L from VHX
                 v = re.vhx_matrix.get(i, j, k, l + 1)
                 if math.isfinite(v):
-                    Lh = dangle_hole_L(seq, k + 1, self.cfg.costs)
+                    Lh = dangle_hole_left(seq, k + 1, self.cfg.costs)
                     cand = Lh + P_hole + v + Gwi
                     best, best_bp = take_best(
                         best, best_bp, cand,
@@ -636,7 +636,7 @@ class EddyRivasFoldingEngine:
                     # Outer dangle L
                     v = re.vhx_matrix.get(i + 1, j, k, l)
                     if math.isfinite(v):
-                        Lo = dangle_outer_L(seq, i, self.cfg.costs)
+                        Lo = dangle_outer_left(seq, i, self.cfg.costs)
                         cand = Lo + P_out + v + Gwi
                         best, best_bp = take_best(
                             best, best_bp, cand,
@@ -650,7 +650,7 @@ class EddyRivasFoldingEngine:
                     # Outer dangle R
                     v = re.vhx_matrix.get(i, j - 1, k, l)
                     if math.isfinite(v):
-                        Ro = dangle_outer_R(seq, j, self.cfg.costs)
+                        Ro = dangle_outer_right(seq, j, self.cfg.costs)
                         cand = Ro + P_out + v + Gwi
                         best, best_bp = take_best(
                             best, best_bp, cand,
@@ -664,8 +664,8 @@ class EddyRivasFoldingEngine:
                     # Outer dangle LR
                     v = re.vhx_matrix.get(i + 1, j - 1, k, l)
                     if math.isfinite(v):
-                        Lo = dangle_outer_L(seq, i, self.cfg.costs)
-                        Ro = dangle_outer_R(seq, j, self.cfg.costs)
+                        Lo = dangle_outer_left(seq, i, self.cfg.costs)
+                        Ro = dangle_outer_right(seq, j, self.cfg.costs)
                         cand = Lo + Ro + P_out + v + Gwi
                         best, best_bp = take_best(
                             best, best_bp, cand,
@@ -738,7 +738,7 @@ class EddyRivasFoldingEngine:
                     # Wrap + outer dangles
                     v = re.whx_matrix.get(i + 1, j, k - 1, l + 1)
                     if math.isfinite(v):
-                        Lo = dangle_outer_L(seq, i, self.cfg.costs)
+                        Lo = dangle_outer_left(seq, i, self.cfg.costs)
                         cand = Lo + P_out + M_yhx + M_whx + v + Gwi
                         best, best_bp = take_best(
                             best, best_bp, cand,
@@ -751,7 +751,7 @@ class EddyRivasFoldingEngine:
 
                     v = re.whx_matrix.get(i, j - 1, k - 1, l + 1)
                     if math.isfinite(v):
-                        Ro = dangle_outer_R(seq, j, self.cfg.costs)
+                        Ro = dangle_outer_right(seq, j, self.cfg.costs)
                         cand = Ro + P_out + M_yhx + M_whx + v + Gwi
                         best, best_bp = take_best(
                             best, best_bp, cand,
@@ -764,8 +764,8 @@ class EddyRivasFoldingEngine:
 
                     v = re.whx_matrix.get(i + 1, j - 1, k - 1, l + 1)
                     if math.isfinite(v):
-                        Lo = dangle_outer_L(seq, i, self.cfg.costs)
-                        Ro = dangle_outer_R(seq, j, self.cfg.costs)
+                        Lo = dangle_outer_left(seq, i, self.cfg.costs)
+                        Ro = dangle_outer_right(seq, j, self.cfg.costs)
                         cand = Lo + Ro + P_out + M_yhx + M_whx + v + Gwi
                         best, best_bp = take_best(
                             best, best_bp, cand,
@@ -1163,7 +1163,7 @@ def costs_from_vienna_like(tbl: Dict[str, Any]) -> EddyRivasFoldingCosts:
     Expected keys (suggested, adapt to your source):
       - 'q_ss', 'Gw', 'Gwi', 'Gwh', 'coax_scale', 'coax_bonus',
       - 'coax_pairs': { "GC|CG": -0.5, "AU|UA": -0.3, ... },
-      - 'dangle_outer_L/R', 'dangle_hole_L/R': { "GA": -0.1, ... },
+      - 'dangle_outer_left/R', 'dangle_hole_left/R': { "GA": -0.1, ... },
       - 'short_hole_caps': { "1": 2.0, "2": 1.0 },
       - optional: 'mismatch_coax_scale', 'mismatch_coax_bonus',
                   'coax_min_helix_len', 'coax_scale_oo/oi/io',
@@ -1190,7 +1190,7 @@ def costs_from_vienna_like(tbl: Dict[str, Any]) -> EddyRivasFoldingCosts:
     d["coax_pairs"] = coax_pairs
 
     # dangles: accept bigrams like "GA": value
-    for name in ["dangle_outer_L","dangle_outer_R","dangle_hole_L","dangle_hole_R"]:
+    for name in ["dangle_outer_left","dangle_outer_right","dangle_hole_left","dangle_hole_right"]:
         m = {}
         for bigram, val in tbl.get(name, {}).items():
             if len(bigram) == 2:

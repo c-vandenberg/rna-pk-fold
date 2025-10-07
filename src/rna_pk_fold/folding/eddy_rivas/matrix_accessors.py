@@ -2,7 +2,7 @@ import math
 
 from rna_pk_fold.structures.gap_matrix import SparseGapMatrix
 from rna_pk_fold.structures.tri_matrix import RivasEddyTriMatrix
-from rna_pk_fold.folding.eddy_rivas.re_fold_state import EddyRivasFoldState
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 
 
 def get_whx_with_collapse(whx: SparseGapMatrix, wx: RivasEddyTriMatrix,

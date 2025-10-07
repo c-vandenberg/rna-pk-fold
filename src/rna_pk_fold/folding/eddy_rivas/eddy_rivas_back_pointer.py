@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional, Tuple, Dict, Sequence, Any
+from typing import Optional, Tuple, Dict, Any
 try:
     from enum import StrEnum
 except Exception:

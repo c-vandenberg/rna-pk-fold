@@ -1,4 +1,3 @@
-# rna_pk_fold/folding/eddy_rivas/bp_access.py
 from __future__ import annotations
 from typing import Optional
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
