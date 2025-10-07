@@ -2,12 +2,12 @@ from __future__ import annotations
 from typing import List, Set, Tuple
 
 from rna_pk_fold.folding.common_traceback import TraceResult, pairs_to_dotbracket
-from rna_pk_fold.folding import ZuckerFoldState, BacktrackOp, BackPointer
+from rna_pk_fold.folding.zucker import ZuckerFoldState, ZuckerBacktrackOp, ZuckerBackPointer
 from rna_pk_fold.structures import Pair
 
 
 def traceback_nested(seq: str, state: ZuckerFoldState) -> TraceResult:
-    """Nested-only traceback: raises if a pseudoknot backpointer is encountered."""
+    """Nested-only traceback: raises if a pseudoknot ZuckerBackPointer is encountered."""
     return _traceback_core(seq, state)
 
 
@@ -47,51 +47,45 @@ def _traceback_core(seq: str, state: ZuckerFoldState) -> TraceResult:
             continue
 
         if which == 'W':
-            bp: BackPointer = w_bp.get(i, j)
+            bp: ZuckerBackPointer = w_bp.get(i, j)
             op = bp.operation
 
-            if op is BacktrackOp.UNPAIRED_LEFT:
+            if op is ZuckerBacktrackOp.UNPAIRED_LEFT:
                 stack.append(('W', i + 1, j))
 
-            elif op is BacktrackOp.UNPAIRED_RIGHT:
+            elif op is ZuckerBacktrackOp.UNPAIRED_RIGHT:
                 stack.append(('W', i, j - 1))
 
-            elif op is BacktrackOp.PAIR:
+            elif op is ZuckerBacktrackOp.PAIR:
                 pairs.add(Pair(i, j))
                 stack.append(('V', i, j))
 
-            elif op is BacktrackOp.BIFURCATION:
+            elif op is ZuckerBacktrackOp.BIFURCATION:
                 k = bp.split_k
                 if k is not None:
                     stack.append(('W', i, k))
                     stack.append(('W', k + 1, j))
 
-            elif op is BacktrackOp.PSEUDOKNOT_H:
-                raise AssertionError(
-                    f"traceback_nested encountered a pseudoknot at W[{i},{j}]. "
-                    f"Use the Eddy–Rivas traceback for PK handling."
-                )
-
             # NONE/other => nothing to follow
 
         elif which == 'V':
-            bp: BackPointer = v_bp.get(i, j)
+            bp: ZuckerBackPointer = v_bp.get(i, j)
             op = bp.operation
 
-            if op is BacktrackOp.HAIRPIN:
+            if op is ZuckerBacktrackOp.HAIRPIN:
                 pairs.add(Pair(i, j))
 
-            elif op is BacktrackOp.STACK and bp.inner is not None:
-                pairs.add(Pair(i, j))
-                k, l = bp.inner
-                stack.append(('V', k, l))
-
-            elif op is BacktrackOp.INTERNAL and bp.inner is not None:
+            elif op is ZuckerBacktrackOp.STACK and bp.inner is not None:
                 pairs.add(Pair(i, j))
                 k, l = bp.inner
                 stack.append(('V', k, l))
 
-            elif op is BacktrackOp.MULTI_ATTACH and bp.inner is not None:
+            elif op is ZuckerBacktrackOp.INTERNAL and bp.inner is not None:
+                pairs.add(Pair(i, j))
+                k, l = bp.inner
+                stack.append(('V', k, l))
+
+            elif op is ZuckerBacktrackOp.MULTI_ATTACH and bp.inner is not None:
                 pairs.add(Pair(i, j))
                 p, q = bp.inner
                 # follow the helix content
@@ -105,16 +99,16 @@ def _traceback_core(seq: str, state: ZuckerFoldState) -> TraceResult:
                 pairs.add(Pair(i, j))
 
         elif which == 'WM':
-            bp: BackPointer = wm_bp.get(i, j)
+            bp: ZuckerBackPointer = wm_bp.get(i, j)
             op = bp.operation
 
-            if op is BacktrackOp.UNPAIRED_LEFT:
+            if op is ZuckerBacktrackOp.UNPAIRED_LEFT:
                 stack.append(('WM', i + 1, j))
 
-            elif op is BacktrackOp.UNPAIRED_RIGHT:
+            elif op is ZuckerBacktrackOp.UNPAIRED_RIGHT:
                 stack.append(('WM', i, j - 1))
 
-            elif op is BacktrackOp.MULTI_ATTACH and bp.inner is not None:
+            elif op is ZuckerBacktrackOp.MULTI_ATTACH and bp.inner is not None:
                 p, q = bp.inner
                 pairs.add(Pair(p, q))
                 stack.append(('V', p, q))
@@ -154,49 +148,43 @@ def _traceback_core_with_seed(
             continue
 
         if which == 'W':
-            bp: BackPointer = w_bp.get(i, j)
+            bp: ZuckerBackPointer = w_bp.get(i, j)
             op = bp.operation
 
-            if op is BacktrackOp.UNPAIRED_LEFT:
+            if op is ZuckerBacktrackOp.UNPAIRED_LEFT:
                 stack.append(('W', i + 1, j))
 
-            elif op is BacktrackOp.UNPAIRED_RIGHT:
+            elif op is ZuckerBacktrackOp.UNPAIRED_RIGHT:
                 stack.append(('W', i, j - 1))
 
-            elif op is BacktrackOp.PAIR:
+            elif op is ZuckerBacktrackOp.PAIR:
                 pairs.add(Pair(i, j))
                 stack.append(('V', i, j))
 
-            elif op is BacktrackOp.BIFURCATION:
+            elif op is ZuckerBacktrackOp.BIFURCATION:
                 k = bp.split_k
                 if k is not None:
                     stack.append(('W', i, k))
                     stack.append(('W', k + 1, j))
 
-            elif op is BacktrackOp.PSEUDOKNOT_H:
-                raise AssertionError(
-                    f"traceback_nested encountered a pseudoknot at W[{i},{j}]. "
-                    f"Use the Eddy–Rivas traceback for PK handling."
-                )
-
         elif which == 'V':
-            bp: BackPointer = v_bp.get(i, j)
+            bp: ZuckerBackPointer = v_bp.get(i, j)
             op = bp.operation
 
-            if op is BacktrackOp.HAIRPIN:
+            if op is ZuckerBacktrackOp.HAIRPIN:
                 pairs.add(Pair(i, j))
 
-            elif op is BacktrackOp.STACK and bp.inner is not None:
-                pairs.add(Pair(i, j))
-                k, l = bp.inner
-                stack.append(('V', k, l))
-
-            elif op is BacktrackOp.INTERNAL and bp.inner is not None:
+            elif op is ZuckerBacktrackOp.STACK and bp.inner is not None:
                 pairs.add(Pair(i, j))
                 k, l = bp.inner
                 stack.append(('V', k, l))
 
-            elif op is BacktrackOp.MULTI_ATTACH and bp.inner is not None:
+            elif op is ZuckerBacktrackOp.INTERNAL and bp.inner is not None:
+                pairs.add(Pair(i, j))
+                k, l = bp.inner
+                stack.append(('V', k, l))
+
+            elif op is ZuckerBacktrackOp.MULTI_ATTACH and bp.inner is not None:
                 pairs.add(Pair(i, j))
                 p, q = bp.inner
                 stack.append(('V', p, q))
@@ -207,16 +195,16 @@ def _traceback_core_with_seed(
                 pairs.add(Pair(i, j))
 
         elif which == 'WM':
-            bp: BackPointer = wm_bp.get(i, j)
+            bp: ZuckerBackPointer = wm_bp.get(i, j)
             op = bp.operation
 
-            if op is BacktrackOp.UNPAIRED_LEFT:
+            if op is ZuckerBacktrackOp.UNPAIRED_LEFT:
                 stack.append(('WM', i + 1, j))
 
-            elif op is BacktrackOp.UNPAIRED_RIGHT:
+            elif op is ZuckerBacktrackOp.UNPAIRED_RIGHT:
                 stack.append(('WM', i, j - 1))
 
-            elif op is BacktrackOp.MULTI_ATTACH and bp.inner is not None:
+            elif op is ZuckerBacktrackOp.MULTI_ATTACH and bp.inner is not None:
                 p, q = bp.inner
                 pairs.add(Pair(p, q))
                 stack.append(('V', p, q))

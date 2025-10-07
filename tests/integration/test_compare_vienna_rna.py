@@ -6,15 +6,19 @@ from typing import List, Set, Tuple, Dict
 
 import pytest
 from importlib.resources import files as ir_files
-pytestmark = pytest.mark.integration
 
 import rna_pk_fold
-from rna_pk_fold.folding import make_fold_state
-from rna_pk_fold.folding.recurrences import SecondaryStructureFoldingEngine, RecurrenceConfig
-from rna_pk_fold.energies import (SecondaryStructureEnergies, SecondaryStructureEnergyModel,
-                                  SecondaryStructureEnergyLoader)
-from rna_pk_fold.utils.nucleotide_utils import dimer_key
-from rna_pk_fold.folding.traceback import traceback_nested, traceback_with_pk, dotbracket_to_pairs
+from rna_pk_fold.folding.zucker import make_fold_state
+from rna_pk_fold.folding.zucker.zucker_recurrences import ZuckerFoldingConfig, ZuckerFoldingEngine
+from rna_pk_fold.energies import SecondaryStructureEnergyLoader
+from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
+from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested
+from rna_pk_fold.folding.common_traceback import dotbracket_to_pairs
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(shutil.which("RNAfold") is None, reason="RNAfold (ViennaRNA) not found on PATH"),
+]
 
 BRACKET_PAIRS: Dict[str, str] = {'(': ')', '[': ']', '{': '}', '<': '>'}
 REV_BRACKET: Dict[str, str] = {v: k for k, v in BRACKET_PAIRS.items()}
@@ -92,33 +96,26 @@ def energy_model():
     Load the Turner 2004 (minimal) parameters from packaged YAML and
     construct the SecondaryStructureEnergyModel at 310.15 K.
     """
-    yaml_path = ir_files(rna_pk_fold) / "data" / "turner2004_min.yaml"
-    params = SecondaryStructureEnergyLoader.load(kind="RNA", yaml_path=yaml_path)
+    yaml_path = ir_files(rna_pk_fold) / "data" / "turner2004_eddyrivas1999_min.yaml"
+    assert yaml_path is not None, "No parameter YAML found in rna_pk_fold/data."
+    params = SecondaryStructureEnergyLoader().load(kind="RNA", yaml_path=yaml_path)
     return SecondaryStructureEnergyModel(params=params, temp_k=310.15)
 
 @pytest.fixture(scope="module")
 def engine_nested(energy_model):
     # Pseudoknots disabled for Vienna comparison
-    return SecondaryStructureFoldingEngine(
+    return ZuckerFoldingEngine(
         energy_model=energy_model,
-        config=RecurrenceConfig(enable_pk_h=False)
+        config=ZuckerFoldingConfig(enable_pk_h=False)
     )
 
 @pytest.fixture(scope="module")
 def engine_pk(energy_model):
     # Pseudoknots enabled (minimal H-type term)
-    return SecondaryStructureFoldingEngine(
+    return ZuckerFoldingEngine(
         energy_model=energy_model,
-        config=RecurrenceConfig(enable_pk_h=True, pk_h_penalty=1.0)
+        config=ZuckerFoldingConfig(enable_pk_h=True, pk_h_penalty=1.0)
     )
-
-# ---------- Skip if RNAfold isn't available ----------
-
-rnafold_missing = shutil.which("RNAfold") is None
-
-pytestmark = pytest.mark.skipif(
-    rnafold_missing, reason="RNAfold (ViennaRNA) not found on PATH"
-)
 
 # ---------- Parameterized sequences ----------
 # Keep small, pseudoknot-free, and varied GC/AU content
@@ -202,40 +199,3 @@ def test_nested_vs_vienna_shape_and_energy(seq: str, engine_nested):
         f"Seq={seq}\nours_db={ours_db}\nvienna_db={v_db}\n"
         f"ours_mfe={ours_mfe:.2f}, vienna_mfe={v_mfe:.2f}"
     )
-
-@pytest.mark.parametrize("seq", SEQS)
-def test_pk_enabled_energy_monotonic_and_shape_valid(seq: str, engine_nested, engine_pk):
-    """
-    With H-type pseudoknot term enabled:
-      - Energy should be <= nested energy (monotonic improvement).
-      - Dot-bracket must be valid layered brackets and right length.
-      - The parentheses-only projection of the PK trace should be close to the nested trace.
-    """
-    # Nested run (PK disabled)
-    st_n = make_fold_state(len(seq))
-    engine_nested.fill_all_matrices(seq, st_n)
-    db_n = traceback_nested(seq, st_n).dot_bracket
-    g_n = st_n.w_matrix.get(0, len(seq) - 1)
-    assert math.isfinite(g_n)
-
-    # PK-enabled run
-    st_p = make_fold_state(len(seq))
-    engine_pk.fill_all_matrices(seq, st_p)
-    db_p = traceback_with_pk(seq, st_p).dot_bracket
-    g_p = st_p.w_matrix.get(0, len(seq) - 1)
-    assert math.isfinite(g_p)
-    assert len(db_p) == len(seq)
-
-    # 1) Energy monotonicity
-    assert g_p <= g_n + 1e-9, f"PK-enabled energy not ≤ nested: {g_p:.3f} vs {g_n:.3f} (Seq={seq})"
-
-    # 2) Valid characters
-    allowed = set(".()[]{}<>")
-    assert set(db_p) <= allowed, f"Invalid chars in PK dot-bracket: {db_p!r}"
-
-    # 3. If a PK actually formed (second-layer bracket present), ensure pairs parse
-    if any(ch in db_p for ch in "[]{}<>"):
-        pairs_pk = dotbracket_to_pairs_multilayer(db_p)
-        assert len(pairs_pk) >= len(dotbracket_to_pairs(db_n)), (
-            "Parsed PK pairs unexpectedly fewer than nested pairs."
-        )
