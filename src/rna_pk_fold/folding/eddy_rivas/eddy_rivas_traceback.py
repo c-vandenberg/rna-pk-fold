@@ -7,7 +7,7 @@ from rna_pk_fold.folding.common_traceback import pairs_to_multilayer_dotbracket,
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import EddyRivasBacktrackOp
 from rna_pk_fold.utils.traceback_ops_utils import add_pair_once, merge_nested_interval
-from rna_pk_fold.utils.back_pointer_access_utils import wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
+from rna_pk_fold.utils.back_pointer_utils import wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
 
 
 def traceback_with_pk(

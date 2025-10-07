@@ -2,8 +2,9 @@ from __future__ import annotations
 import math
 import json
 from dataclasses import dataclass, field, fields
-from typing import Iterator, Tuple, Dict, Optional, Any, Callable
+from typing import Tuple, Dict, Optional, Any, Callable
 
+from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
@@ -13,7 +14,7 @@ from rna_pk_fold.folding.eddy_rivas.iterators import (iter_spans, iter_holes, it
 from rna_pk_fold.folding.eddy_rivas.matrix_accessors import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
                                                              whx_collapse_with, zhx_collapse_with)
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
-                                                dangle_outer_right, coax_pack, short_hole_penalty, PKEnergyCosts)
+                                                dangle_outer_right, coax_pack, short_hole_penalty)
 
 
 def take_best(
@@ -38,55 +39,6 @@ def make_bp(i: int, j: int, k: int, l: int) -> Callable[..., EddyRivasBackPointe
     return BP
 
 
-# -----------------------
-# Config & Costs
-# -----------------------
-@dataclass(slots=True)
-class EddyRivasFoldingCosts(PKEnergyCosts):
-    # Per-step single-strand “gap” cost (move a boundary by 1, or trim outer by 1)
-
-    # Tilde params fallback (used if tables don’t have an entry)
-    q_ss: float = 0.2 # Per-step single-strand “gap” cost (move a boundary by 1, or trim outer by 1)
-    P_tilde: float = 1.0  # pair score used in gap recurrences (acts like P~)
-    P_tilde_out: float = 1.0  # outer pairing weight (YHX-side)
-    P_tilde_hole: float = 1.0  # hole pairing weight (VHX/ZHX-side)
-    Q_tilde_out: float = 0.2  # outer single-strand (YHX SS trims)
-    Q_tilde_hole: float = 0.2  # hole single-strand (ZHX SS; VHX→ZHX SS)
-    L_tilde: float = 0.0  # 5′ dangle on gap edge (acts like L~)
-    R_tilde: float = 0.0  # 3′ dangle on gap edge (acts like R~)
-    M_tilde: float = 0.0  # multiloop-ish term inside vhx/yhx closures (acts like M~)
-    M_tilde_yhx: float = 0.0  # M~ inside YHX wrap
-    M_tilde_vhx: float = 0.0  # M~ inside VHX wrap
-    M_tilde_whx: float = 0.0  # (optional hook) M~ inside WHX contexts
-
-    # Dangle/coax tables (keyed on local bases or pair types)
-    dangle_hole_left: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (k-1, k)
-    dangle_hole_right: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (l, l+1)
-    dangle_outer_left: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (i, i+1)
-    dangle_outer_right: Dict[Tuple[str, str], float] = field(default_factory=dict)  # (j-1, j)
-    coax_pairs: Dict[Tuple[str, str], float] = field(default_factory=dict)  # ((pairTypeA),(pairTypeB))
-
-    # Bonuses/penalties
-    coax_bonus: float = 0.0  # used in your vx path; leave 0.0 unless you want it
-    coax_scale_oo: float = 1.0  # outer↔outer seam scale (default behavior)
-    coax_scale_oi: float = 1.0  # outer↔inner (variant)
-    coax_scale_io: float = 1.0  # inner↔outer (variant)
-    coax_min_helix_len: int = 1  # require ≥ this many nts in each end-cap span
-    coax_scale: float = 1.0
-    join_drift_penalty: float = 0.0  # if 0.0, code falls back to q_ss
-
-    # Mismatch/dangling coax
-    mismatch_coax_scale: float = 0.5  # attenuate coax when |k-r|==1
-    mismatch_coax_bonus: float = 0.0  # constant sweetener for mismatch seams
-
-    # Short-hole capping (energetic)
-    short_hole_caps: Dict[int, float] = field(default_factory=dict)  # e.g., {1:+2.0, 2:+1.0}
-
-    Gwh: float = 0.0  # penalty for overlapping PKs (not used yet)
-    Gwi: float = 0.0 # inner-gap/inner-PK entry penalty (Ĝ_wI)
-    Gwh_wx: float = 0.0  # used by WX-level YHX+YHX “same-hole overlap”
-    Gwh_whx: float = 0.0  # used by WHX-level overlap-split
-
 @dataclass(slots=True)
 class EddyRivasFoldingConfig:
     enable_coax: bool = False # keep off initially
@@ -100,7 +52,7 @@ class EddyRivasFoldingConfig:
     min_outer_left: int = 0  # minimal length of [i..r]
     min_outer_right: int = 0  # minimal length of [r+1..j]
     strict_complement_order: bool = True  # enforce i<k<=r<l<=j
-    costs: EddyRivasFoldingCosts = field(default_factory=EddyRivasFoldingCosts)
+    costs: Optional[PseudoknotEnergies] = None
     tables: object = None
 
 
@@ -1138,26 +1090,26 @@ class EddyRivasFoldingEngine:
                 re.vx_matrix.set(i, j, vxc)
 
 
-def load_costs_json(path: str) -> EddyRivasFoldingCosts:
+def load_costs_json(path: str) -> PseudoknotEnergies:
     with open(path, "r") as fh:
         d = json.load(fh)
     return costs_from_dict(d)
 
-def save_costs_json(path: str, costs: EddyRivasFoldingCosts) -> None:
+def save_costs_json(path: str, costs: PseudoknotEnergies) -> None:
     with open(path, "w") as fh:
         json.dump(costs_to_dict(costs), fh, indent=2, sort_keys=True)
 
-def costs_from_dict(d: Dict) -> EddyRivasFoldingCosts:
+def costs_from_dict(d: Dict) -> PseudoknotEnergies:
     """Create RERECosts from a flat dict; keys not present use dataclass defaults."""
-    field_names = {f.name for f in fields(EddyRivasFoldingCosts)}
+    field_names = {f.name for f in fields(PseudoknotEnergies)}
     kwargs = {k: v for k, v in d.items() if k in field_names}
-    return EddyRivasFoldingCosts(**kwargs)
+    return PseudoknotEnergies(**kwargs)
 
-def costs_to_dict(costs: EddyRivasFoldingCosts) -> Dict:
+def costs_to_dict(costs: PseudoknotEnergies) -> Dict:
     """Round-trip exporter useful for saving tuned params."""
-    return {f.name: getattr(costs, f.name) for f in fields(EddyRivasFoldingCosts)}
+    return {f.name: getattr(costs, f.name) for f in fields(PseudoknotEnergies)}
 
-def costs_from_vienna_like(tbl: Dict[str, Any]) -> EddyRivasFoldingCosts:
+def costs_from_vienna_like(tbl: Dict[str, Any]) -> PseudoknotEnergies:
     """
     Map a Vienna-like dict to RERECosts.
     Expected keys (suggested, adapt to your source):
