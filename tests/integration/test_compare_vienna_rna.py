@@ -88,8 +88,7 @@ def run_rnafold(seq: str) -> Tuple[str, float]:
     mfe = float(m.group(2))
     return db, mfe
 
-# ---------- Fixtures you must supply ----------
-
+# ---------- Fixtures ----------
 @pytest.fixture(scope="module")
 def energy_model():
     """
@@ -100,6 +99,7 @@ def energy_model():
     assert yaml_path is not None, "No parameter YAML found in rna_pk_fold/data."
     params = SecondaryStructureEnergyLoader().load(kind="RNA", yaml_path=yaml_path)
     return SecondaryStructureEnergyModel(params=params, temp_k=310.15)
+
 
 @pytest.fixture(scope="module")
 def engine_nested(energy_model):
