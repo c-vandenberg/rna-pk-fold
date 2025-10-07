@@ -71,7 +71,7 @@ class SecondaryStructureEnergies:
     HAIRPIN_MISMATCH: Optional[PairEnergies] = None
     MULTI_MISMATCH: Optional[PairEnergies] = None
     SPECIAL_HAIRPINS: Optional[PairEnergies] = None
-    PSEUDOKNOT: Optional["PseudoknotEnergies"] = None
+    PSEUDOKNOT: Optional[PseudoknotEnergies] = None
 
     @staticmethod
     def delta_g(delta_h: float, delta_s: float, temp_k: float) -> float:

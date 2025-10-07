@@ -1,7 +1,7 @@
 from __future__ import annotations
 import math
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, fields
 from typing import Iterator, Tuple, Dict, Optional, Any, Callable
 
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
@@ -1149,13 +1149,13 @@ def save_costs_json(path: str, costs: EddyRivasFoldingCosts) -> None:
 
 def costs_from_dict(d: Dict) -> EddyRivasFoldingCosts:
     """Create RERECosts from a flat dict; keys not present use dataclass defaults."""
-    field_names = {f.name for f in field(EddyRivasFoldingCosts)}
+    field_names = {f.name for f in fields(EddyRivasFoldingCosts)}
     kwargs = {k: v for k, v in d.items() if k in field_names}
     return EddyRivasFoldingCosts(**kwargs)
 
 def costs_to_dict(costs: EddyRivasFoldingCosts) -> Dict:
     """Round-trip exporter useful for saving tuned params."""
-    return {f.name: getattr(costs, f.name) for f in field(EddyRivasFoldingCosts)}
+    return {f.name: getattr(costs, f.name) for f in fields(EddyRivasFoldingCosts)}
 
 def costs_from_vienna_like(tbl: Dict[str, Any]) -> EddyRivasFoldingCosts:
     """

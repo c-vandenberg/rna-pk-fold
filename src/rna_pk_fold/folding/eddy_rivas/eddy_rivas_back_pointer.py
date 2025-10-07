@@ -12,7 +12,7 @@ Interval = Tuple[int, int]
 
 class _AutoName(StrEnum):
     """auto() -> member name as string (stable, readable, serializable)."""
-    def _generate_next_value_(name, start, count, last_values):
+    def _generate_next_value_(self, name, start, count, last_values):
         return name
 
 
@@ -133,7 +133,7 @@ class EddyRivasBackPointer:
             "bridge": self.bridge,
             "drift": self.drift,
             "charged": self.charged,
-            "meta": self.meta,
+            "meta": self.note,
         }
 
     @staticmethod
@@ -148,7 +148,7 @@ class EddyRivasBackPointer:
             bridge=tuple(d["bridge"]) if d.get("bridge") else None,
             drift=d.get("drift"),
             charged=d.get("charged"),
-            meta=d.get("meta"),
+            note=d.get("note"),
         )
 
     @classmethod

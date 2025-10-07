@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Optional, Tuple
 
-from rna_pk_fold.energies.energy_types import SecondaryStructureEnergies
+from rna_pk_fold.energies.energy_types import SecondaryStructureEnergies, PseudoknotEnergies
 from rna_pk_fold.energies.energy_ops import (
     hairpin_energy, stack_energy, internal_loop_energy, multiloop_linear_energy,
 )
@@ -67,21 +67,29 @@ class SecondaryStructureEnergyModel:
     def multiloop(self, branches: int, unpaired_bases: int) -> float:
         return multiloop_linear_energy(branches, unpaired_bases, self.params)
 
-    def pk_dangle_hole_left(self, k: int, seq: str, costs: PKEnergyCosts) -> float:
-        return pk_dangle_hole_left_fn(seq, k, costs)
+    def pk_dangle_hole_left(self, k: int, seq: str, costs: Optional[PKEnergyCosts] = None) -> float:
+        return pk_dangle_hole_left_fn(seq, k, self._pk_costs(costs))
 
-    def pk_dangle_hole_right(self, l: int, seq: str, costs: PKEnergyCosts) -> float:
-        return pk_dangle_hole_right_fn(seq, l, costs)
+    def pk_dangle_hole_right(self, l: int, seq: str, costs: Optional[PKEnergyCosts] = None) -> float:
+        return pk_dangle_hole_right_fn(seq, l, self._pk_costs(costs))
 
-    def pk_dangle_outer_left(self, i: int, seq: str, costs: PKEnergyCosts) -> float:
-        return pk_dangle_outer_left_fn(seq, i, costs)
+    def pk_dangle_outer_left(self, i: int, seq: str, costs: Optional[PKEnergyCosts] = None) -> float:
+        return pk_dangle_outer_left_fn(seq, i, self._pk_costs(costs))
 
-    def pk_dangle_outer_right(self, j: int, seq: str, costs: PKEnergyCosts) -> float:
-        return pk_dangle_outer_right_fn(seq, j, costs)
+    def pk_dangle_outer_right(self, j: int, seq: str, costs: Optional[PKEnergyCosts] = None) -> float:
+        return pk_dangle_outer_right_fn(seq, j, self._pk_costs(costs))
 
     def pk_coax_pack(self, i: int, j: int, r: int, k: int, l: int, seq: str,
-                     cfg: PKCoaxConfig, costs: PKEnergyCosts, adjacent: bool) -> Tuple[float, float]:
-        return pk_coax_pack_fn(seq, i, j, r, k, l, cfg, costs, adjacent)
+                     cfg: PKCoaxConfig, costs: Optional[PKEnergyCosts] = None, adjacent: bool = False) -> Tuple[float, float]:
+        return pk_coax_pack_fn(seq, i, j, r, k, l, cfg, self._pk_costs(costs), adjacent)
 
-    def pk_short_hole_penalty(self, k: int, l: int, costs: PKEnergyCosts) -> float:
-        return pk_short_hole_penalty_fn(costs, k, l)
+    def pk_short_hole_penalty(self, k: int, l: int, costs: Optional[PKEnergyCosts] = None) -> float:
+        return pk_short_hole_penalty_fn(self._pk_costs(costs), k, l)
+
+    def _pk_costs(self, costs: Optional[PKEnergyCosts]) -> PKEnergyCosts:
+        if costs is not None:
+            return costs
+        pk: Optional[PseudoknotEnergies] = self.params.PSEUDOKNOT
+        if pk is None:
+            raise ValueError("Pseudoknot parameters are not loaded in self.params.PSEUDOKNOT.")
+        return pk

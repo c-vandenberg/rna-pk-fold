@@ -9,7 +9,7 @@ from rna_pk_fold.energies.energy_ops import best_multiloop_end_bonus
 
 
 @dataclass(slots=True)
-class RecurrenceConfig:
+class ZuckerFoldingConfig:
     temp_k: float = 310.15
     enable_pk_h: bool = False
     pk_h_penalty: float = 1.0
@@ -18,7 +18,7 @@ class RecurrenceConfig:
 @dataclass(slots=True)
 class ZuckerFoldingEngine:
     energy_model: SecondaryStructureEnergyModelProtocol
-    config: RecurrenceConfig
+    config: ZuckerFoldingConfig
 
     def fill_all_matrices(self, seq: str, state: ZuckerFoldState) -> None:
         """
