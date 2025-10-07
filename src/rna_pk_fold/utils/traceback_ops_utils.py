@@ -3,6 +3,7 @@ from typing import Set, Dict, Tuple, Callable, Any
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.utils.indices_utils import canonical_pair
 
+
 def add_pair_once(
     pairs: Set[Pair],
     pair_layer: Dict[Tuple[int, int], int],
@@ -15,6 +16,7 @@ def add_pair_once(
     if pr not in pairs:
         pairs.add(pr)
         pair_layer[(i, j)] = layer
+
 
 def merge_nested_interval(
     seq: str,

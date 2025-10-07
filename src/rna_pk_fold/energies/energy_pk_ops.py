@@ -1,11 +1,17 @@
 from __future__ import annotations
-from typing import Tuple, Mapping
+from typing import Tuple, Mapping, Protocol, Optional
 
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import EddyRivasFoldingConfig
 from rna_pk_fold.utils.indices_utils import safe_base
 from rna_pk_fold.utils.table_lookup_utils import table_lookup
 from rna_pk_fold.utils.energy_pk_utils import coax_energy_for_join
+
+
+class CoaxConfigLike(Protocol):
+    """Minimal interface used by energy_pk_ops to avoid circular imports."""
+    enable_coax: bool
+    enable_coax_mismatch: bool
+    enable_coax_variants: Optional[bool]
 
 # --------------------- DANGLES ---------------------------------------------
 
@@ -30,7 +36,7 @@ def dangle_outer_right(seq: str, j: int, costs: PseudoknotEnergies) -> float:
 
 def coax_pack(seq: str,
               i: int, j: int, r: int, k: int, l: int,
-              cfg: EddyRivasFoldingConfig,
+              cfg: CoaxConfigLike,
               costs: PseudoknotEnergies,
               adjacent: bool) -> Tuple[float, float]:
     """

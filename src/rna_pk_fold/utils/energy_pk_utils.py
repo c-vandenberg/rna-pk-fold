@@ -2,12 +2,14 @@ from __future__ import annotations
 from typing import Optional, Tuple, Mapping
 from rna_pk_fold.utils.nucleotide_utils import pair_str
 
+
 def coax_pair_key(seq: str, a: int, b: int) -> Optional[str]:
     # Safe, returns None if out-of-range or non-canonical handled upstream
     n = len(seq)
     if 0 <= a < n and 0 <= b < n:
         return pair_str(seq, a, b)
     return None
+
 
 def coax_energy_for_join(
     seq: str,

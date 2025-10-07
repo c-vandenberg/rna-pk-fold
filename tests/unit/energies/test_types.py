@@ -2,18 +2,15 @@ import math
 import pytest
 from dataclasses import FrozenInstanceError
 
-from rna_pk_fold.energies import SecondaryStructureEnergies
+from rna_pk_fold.energies.energy_types import (
+    SecondaryStructureEnergies,
+    PseudoknotEnergies,
+)
 
 
 def test_secondary_structure_energies_is_frozen_and_slotted():
     """
-    Validate dataclass immutability and slotted behavior.
-
-    Expected
-    --------
-    - Assigning to any field raises `FrozenInstanceError`.
-    - Object has `__slots__` and no `__dict__`.
-    - Adding a new attribute raises `AttributeError` or `TypeError`.
+    Validate dataclass immutability and slotted behavior for the refactored fields.
     """
     energies = SecondaryStructureEnergies(
         BULGE={1: (10.6, 21.9)},
@@ -22,38 +19,69 @@ def test_secondary_structure_energies_is_frozen_and_slotted():
         HAIRPIN={3: (1.3, -13.2)},
         MULTILOOP=(2.5, 0.1, 0.4, 2.0),
         INTERNAL={4: (-7.2, -26.8)},
-        INTERNAL_MM={"UU/AG": (-12.8, -37.1)},
-        NN={"AU/UA": (-7.7, -20.6)},
-        TERMINAL_MM={"UA/UA": (0.0, 0.0)},
-        SPECIAL_HAIRPINS=None,
+        NN_STACK={"AU/UA": (-7.7, -20.6)},
+        INTERNAL_MISMATCH={"UU/AG": (-12.8, -37.1)},
+        TERMINAL_MISMATCH={"UA/UA": (0.0, 0.0)},
+        # Optional fields default to None: HAIRPIN_MISMATCH, MULTI_MISMATCH, SPECIAL_HAIRPINS, PSEUDOKNOT
     )
 
-    # Frozen: Changing a field should fail
+    # Frozen: changing a field should fail
     with pytest.raises(FrozenInstanceError):
         energies.BULGE = {}
 
-    # `slots=True`. Therefore, __slots__ should exist and __dict__ should not
+    # Slotted: has __slots__, no __dict__, adding new attribute should fail
     assert hasattr(energies, "__slots__")
     assert not hasattr(energies, "__dict__")
-
-    # Slots: Adding a new attribute should fail
     with pytest.raises((AttributeError, TypeError)):
         setattr(energies, "new_field", 123)
 
 
 def test_delta_g_helper_matches_formula():
     """
-    ΔG helper must match the analytical formula.
-
-    Expected
-    --------
-    - `SecondaryStructureEnergies.delta_g(dh, ds, T)` equals
-      `dh - T * (ds/1000)` within tight tolerance.
+    ΔG helper must match the analytical formula: ΔG = ΔH - T * (ΔS / 1000).
     """
-    # ΔG = ΔH - T * (ΔS/1000)
-    delta_h, delta_s = (-7.7, -20.6)         # kcal/mol, cal/(K·mol)
-    temp = 310.15                            # 37°C in Kelvin
-    expected = delta_h - temp * (delta_s / 1000.0)
-
-    got = SecondaryStructureEnergies.delta_g(delta_h, delta_s, temp)
+    dh, ds = (-7.7, -20.6)      # kcal/mol, cal/(K·mol)
+    T = 310.15                  # 37 °C in Kelvin
+    expected = dh - T * (ds / 1000.0)
+    got = SecondaryStructureEnergies.delta_g(dh, ds, T)
     assert math.isclose(got, expected, rel_tol=1e-12)
+
+
+def test_delta_g_with_none_returns_inf():
+    """
+    Guard behavior: if either ΔH or ΔS is None, delta_g returns +∞.
+    """
+    T = 310.15
+    assert math.isinf(SecondaryStructureEnergies.delta_g(None, -1.0, T))
+    assert math.isinf(SecondaryStructureEnergies.delta_g(-1.0, None, T))
+
+
+def test_pseudoknot_energies_is_frozen_slotted_and_defaults():
+    """
+    Validate immutability/slots and a couple of defaults on PseudoknotEnergies.
+    """
+    pk = PseudoknotEnergies(
+        q_ss=0.2,
+        P_tilde_out=1.0,
+        P_tilde_hole=1.0,
+        Q_tilde_out=0.2,
+        Q_tilde_hole=0.2,
+        L_tilde=0.0,
+        R_tilde=0.0,
+        M_tilde_yhx=0.0,
+        M_tilde_vhx=0.0,
+        M_tilde_whx=0.0,
+        # optional maps omitted → default None
+        # coax_* controls & others use their defaults
+    )
+
+    # Frozen & slotted
+    with pytest.raises(FrozenInstanceError):
+        pk.q_ss = 0.0
+    assert hasattr(pk, "__slots__")
+    assert not hasattr(pk, "__dict__")
+
+    # Defaults: optional maps None; some scalar defaults
+    assert pk.coax_pairs is None
+    assert pk.coax_min_helix_len == 1
+    assert pk.pk_penalty_gw == 1.0
