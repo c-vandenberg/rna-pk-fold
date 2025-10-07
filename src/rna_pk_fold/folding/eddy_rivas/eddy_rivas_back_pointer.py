@@ -12,7 +12,7 @@ Interval = Tuple[int, int]
 
 class _AutoName(StrEnum):
     """auto() -> member name as string (stable, readable, serializable)."""
-    def _generate_next_value_(self, name, start, count, last_values):
+    def _generate_next_value_(name, start, count, last_values):
         return name
 
 

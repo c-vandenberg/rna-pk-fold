@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Dict, Tuple
 
 from rna_pk_fold.structures import ZuckerTriMatrix
-from rna_pk_fold.folding import BackPointer
+from rna_pk_fold.folding.zucker.zucker_back_pointer import ZuckerBackPointer
 
 wx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
 vx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
@@ -29,9 +29,9 @@ class ZuckerFoldState:
     w_matrix: ZuckerTriMatrix[float]
     v_matrix: ZuckerTriMatrix[float]
     wm_matrix: ZuckerTriMatrix[float]
-    w_back_ptr: ZuckerTriMatrix[BackPointer]
-    v_back_ptr: ZuckerTriMatrix[BackPointer]
-    wm_back_ptr: ZuckerTriMatrix[BackPointer]
+    w_back_ptr: ZuckerTriMatrix[ZuckerBackPointer]
+    v_back_ptr: ZuckerTriMatrix[ZuckerBackPointer]
+    wm_back_ptr: ZuckerTriMatrix[ZuckerBackPointer]
 
 
 def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> ZuckerFoldState:
@@ -63,9 +63,9 @@ def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> ZuckerFo
     v_matrix = ZuckerTriMatrix[float](seq_len, init_energy)
     wm_matrix = ZuckerTriMatrix[float](seq_len, init_energy)
 
-    w_back_ptr = ZuckerTriMatrix[BackPointer](seq_len, BackPointer())
-    v_back_ptr = ZuckerTriMatrix[BackPointer](seq_len, BackPointer())
-    wm_back_ptr = ZuckerTriMatrix[BackPointer](seq_len, BackPointer())
+    w_back_ptr = ZuckerTriMatrix[ZuckerBackPointer](seq_len, ZuckerBackPointer())
+    v_back_ptr = ZuckerTriMatrix[ZuckerBackPointer](seq_len, ZuckerBackPointer())
+    wm_back_ptr = ZuckerTriMatrix[ZuckerBackPointer](seq_len, ZuckerBackPointer())
 
     # bBse case for WM diagonals: Zero cost to have an empty interior
     for i in range(seq_len):
