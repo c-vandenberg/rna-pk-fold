@@ -630,3 +630,60 @@ dangle3_matrix:
 # Measurements: ΔG37 (kcal/mol) and ΔH (kcal/mol)
 # ------------------------------------------------------
 special_hairpins: {}
+
+# ------------------------------------------------------
+# PSEUDOKNOT PARAMETERS (Rivas–Eddy extensions)
+# Notes:
+# - All entries optional; unspecified values use loader defaults.
+# - dangle_* tables are keyed by base bigrams: "AU": -0.2 means (A,U).
+# - coax_pairs keyed by "PAIR|PAIR" (e.g., "CG|UA": -0.4).
+# ------------------------------------------------------
+pseudoknot:
+  # per-step/tilde scalars
+  q_ss: 0.2
+  P_tilde_out: 1.0
+  P_tilde_hole: 1.0
+  Q_tilde_out: 0.2
+  Q_tilde_hole: 0.2
+  L_tilde: 0.0
+  R_tilde: 0.0
+  M_tilde_yhx: 0.0
+  M_tilde_vhx: 0.0
+  M_tilde_whx: 0.0
+
+  # optional dangle maps (bigrams)
+  dangle_hole_L:
+    AU: -0.1
+    UA: -0.1
+  dangle_hole_R: {}
+  dangle_outer_L: {}
+  dangle_outer_R: {}
+
+  # coax seam energies and variants
+  coax_pairs:
+    CG|UA: -0.4
+    GC|CG: -0.6
+  coax_bonus: 0.0
+  coax_scale_oo: 1.0
+  coax_scale_oi: 1.0
+  coax_scale_io: 1.0
+  coax_min_helix_len: 1
+  coax_scale: 1.0
+  mismatch_coax_scale: 0.5
+  mismatch_coax_bonus: 0.0
+
+  # join drift and narrow-hole caps
+  join_drift_penalty: 0.0
+  short_hole_caps:
+    0: 0.0
+    1: 2.0
+    2: 1.0
+
+  # overlap/charging penalties
+  Gwh: 0.0
+  Gwi: 0.0
+  Gwh_wx: 0.0
+  Gwh_whx: 0.0
+
+  # pseudoknot introduction penalty
+  pk_penalty_gw: 1.0

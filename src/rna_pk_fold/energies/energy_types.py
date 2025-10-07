@@ -9,7 +9,7 @@ MultiLoopCoeffs = Tuple[float, float, float, float]
 PairEnergies = Dict[str, Tuple[float, float]]
 LoopEnergies = Dict[int, Tuple[float, float]]
 
-Bigram = Tuple[str, str]   # e.g., ("G","A") for adjacent nts
+BigramBaseEnergyMap = Dict[Tuple[str, str], float]  # e.g., ("G","A") for adjacent nts
 PairType = Tuple[str, str] # e.g., ("GC","CG") for coax pair types
 
 
@@ -88,26 +88,28 @@ class PseudoknotEnergies:
     These mirror the fields your RE costs/config expect, but live in the
     'energies' layer so they can be loaded/validated like the Zuker params.
     """
-    # per-step / tilde scalars
-    q_ss: float = 0.2
-    P_tilde_out: float = 1.0
-    P_tilde_hole: float = 1.0
-    Q_tilde_out: float = 0.2
-    Q_tilde_hole: float = 0.2
-    L_tilde: float = 0.0
-    R_tilde: float = 0.0
-    M_tilde_yhx: float = 0.0
-    M_tilde_vhx: float = 0.0
-    M_tilde_whx: float = 0.0
+    # Gap + tilde scalars
+    q_ss: float
+    P_tilde_out: float
+    P_tilde_hole: float
+    Q_tilde_out: float
+    Q_tilde_hole: float
+    L_tilde: float
+    R_tilde: float
+    M_tilde_yhx: float
+    M_tilde_vhx: float
+    M_tilde_whx: float
 
-    # tables
-    dangle_hole_L: Optional[Dict[Bigram, float]] = None       # (k-1, k)
-    dangle_hole_R: Optional[Dict[Bigram, float]] = None       # (l, l+1)
-    dangle_outer_L: Optional[Dict[Bigram, float]] = None      # (i, i+1)
-    dangle_outer_R: Optional[Dict[Bigram, float]] = None      # (j-1, j)
-    coax_pairs: Optional[Dict[PairType, float]] = None        # ("GC","CG") → ΔG
+    # dangle/coax tables (simple bigram maps; keys like "AU", "CG", etc.)
+    dangle_hole_left: Optional[BigramBaseEnergyMap] = None # (k-1, k)
+    dangle_hole_right: Optional[BigramBaseEnergyMap] = None # (l, l+1)
+    dangle_outer_left: Optional[BigramBaseEnergyMap] = None # (i, i+1)
+    dangle_outer_right: Optional[BigramBaseEnergyMap] = None # (j-1, j)
 
-    # coax / penalties / misc
+    # coax pairs keyed as "XY|ZW" (string pair keys) -> ΔG
+    coax_pairs: Optional[BigramBaseEnergyMap] = None        # ("GC","CG") → ΔG
+
+    # Coax controls
     coax_bonus: float = 0.0
     coax_scale_oo: float = 1.0
     coax_scale_oi: float = 1.0
@@ -118,15 +120,15 @@ class PseudoknotEnergies:
     mismatch_coax_scale: float = 0.5
     mismatch_coax_bonus: float = 0.0
 
+    # Join drift & short-hole caps
     join_drift_penalty: float = 0.0
-
     short_hole_caps: Optional[Dict[int, float]] = None
 
-    # overlap/inner penalties
+    # Overlap/inner penalties
     Gwh: float = 0.0
     Gwi: float = 0.0
     Gwh_wx: float = 0.0
     Gwh_whx: float = 0.0
 
-    # pseudoknot introduction penalty used by WX/VX composition
+    # Pseudoknot introduction penalty used by WX/VX composition
     pk_penalty_gw: float = 1.0

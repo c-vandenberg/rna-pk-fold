@@ -11,7 +11,7 @@ from .data.parsers import (
     parse_dangles, parse_mismatch, parse_special_hairpins,
 )
 
-from rna_pk_fold.energies.types import (
+from rna_pk_fold.energies.energy_types import (
     SecondaryStructureEnergies,
     PseudoknotEnergies,
     BasePairMap,
@@ -121,10 +121,10 @@ class SecondaryStructureEnergyLoader:
         if not node:
             return None
 
-        def _f(key: str, default: float) -> float:
+        def _float_data(key: str, default: float) -> float:
             return float(node.get(key, default))
 
-        def _i(key: str, default: int) -> int:
+        def _int_data(key: str, default: int) -> int:
             return int(node.get(key, default))
 
         def _bigram_map(key: str) -> Dict[Tuple[str, str], float]:
@@ -155,16 +155,16 @@ class SecondaryStructureEnergyLoader:
             return out
 
         return PseudoknotEnergies(
-            q_ss=_f("q_ss", 0.2),
-            P_tilde_out=_f("P_tilde_out", 1.0),
-            P_tilde_hole=_f("P_tilde_hole", 1.0),
-            Q_tilde_out=_f("Q_tilde_out", 0.2),
-            Q_tilde_hole=_f("Q_tilde_hole", 0.2),
-            L_tilde=_f("L_tilde", 0.0),
-            R_tilde=_f("R_tilde", 0.0),
-            M_tilde_yhx=_f("M_tilde_yhx", 0.0),
-            M_tilde_vhx=_f("M_tilde_vhx", 0.0),
-            M_tilde_whx=_f("M_tilde_whx", 0.0),
+            q_ss=_float_data("q_ss", 0.2),
+            P_tilde_out=_float_data("P_tilde_out", 1.0),
+            P_tilde_hole=_float_data("P_tilde_hole", 1.0),
+            Q_tilde_out=_float_data("Q_tilde_out", 0.2),
+            Q_tilde_hole=_float_data("Q_tilde_hole", 0.2),
+            L_tilde=_float_data("L_tilde", 0.0),
+            R_tilde=_float_data("R_tilde", 0.0),
+            M_tilde_yhx=_float_data("M_tilde_yhx", 0.0),
+            M_tilde_vhx=_float_data("M_tilde_vhx", 0.0),
+            M_tilde_whx=_float_data("M_tilde_whx", 0.0),
 
             dangle_hole_L=_bigram_map("dangle_hole_L") or None,
             dangle_hole_R=_bigram_map("dangle_hole_R") or None,
@@ -172,26 +172,26 @@ class SecondaryStructureEnergyLoader:
             dangle_outer_R=_bigram_map("dangle_outer_R") or None,
             coax_pairs=_coax_map("coax_pairs") or None,
 
-            coax_bonus=_f("coax_bonus", 0.0),
-            coax_scale_oo=_f("coax_scale_oo", 1.0),
-            coax_scale_oi=_f("coax_scale_oi", 1.0),
-            coax_scale_io=_f("coax_scale_io", 1.0),
-            coax_min_helix_len=_i("coax_min_helix_len", 1),
-            coax_scale=_f("coax_scale", 1.0),
+            coax_bonus=_float_data("coax_bonus", 0.0),
+            coax_scale_oo=_float_data("coax_scale_oo", 1.0),
+            coax_scale_oi=_float_data("coax_scale_oi", 1.0),
+            coax_scale_io=_float_data("coax_scale_io", 1.0),
+            coax_min_helix_len=_int_data("coax_min_helix_len", 1),
+            coax_scale=_float_data("coax_scale", 1.0),
 
-            mismatch_coax_scale=_f("mismatch_coax_scale", 0.5),
-            mismatch_coax_bonus=_f("mismatch_coax_bonus", 0.0),
+            mismatch_coax_scale=_float_data("mismatch_coax_scale", 0.5),
+            mismatch_coax_bonus=_float_data("mismatch_coax_bonus", 0.0),
 
-            join_drift_penalty=_f("join_drift_penalty", 0.0),
+            join_drift_penalty=_float_data("join_drift_penalty", 0.0),
 
             short_hole_caps=_caps("short_hole_caps") or None,
 
-            Gwh=_f("Gwh", 0.0),
-            Gwi=_f("Gwi", 0.0),
-            Gwh_wx=_f("Gwh_wx", 0.0),
-            Gwh_whx=_f("Gwh_whx", 0.0),
+            Gwh=_float_data("Gwh", 0.0),
+            Gwi=_float_data("Gwi", 0.0),
+            Gwh_wx=_float_data("Gwh_wx", 0.0),
+            Gwh_whx=_float_data("Gwh_whx", 0.0),
 
-            pk_penalty_gw=_f("pk_penalty_gw", 1.0),
+            pk_penalty_gw=_float_data("pk_penalty_gw", 1.0),
         )
 
 
@@ -221,10 +221,10 @@ def pk_costs_dict(src: SecondaryStructureEnergies | PseudoknotEnergies) -> Dict[
         "M_tilde_vhx": pk.M_tilde_vhx,
         "M_tilde_whx": pk.M_tilde_whx,
 
-        "dangle_hole_L": pk.dangle_hole_L or {},
-        "dangle_hole_R": pk.dangle_hole_R or {},
-        "dangle_outer_L": pk.dangle_outer_L or {},
-        "dangle_outer_R": pk.dangle_outer_R or {},
+        "dangle_hole_L": pk.dangle_hole_left or {},
+        "dangle_hole_R": pk.dangle_hole_right or {},
+        "dangle_outer_L": pk.dangle_outer_left or {},
+        "dangle_outer_R": pk.dangle_outer_right or {},
         "coax_pairs": pk.coax_pairs or {},
 
         "coax_bonus": pk.coax_bonus,
