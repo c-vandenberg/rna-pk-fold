@@ -3,12 +3,12 @@ import pytest
 
 from rna_pk_fold.folding.fold_state import make_re_fold_state, RivasEddyState
 from rna_pk_fold.folding import make_fold_state, BackPointer, BacktrackOp
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_recurrences import (
+from rna_pk_fold.folding.eddy_rivas.rivas_eddy_recurrences import (
     RivasEddyEngine, REREConfig, RERECosts,
     RE_BP_COMPOSE_WX,
 )
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import get_whx_with_collapse
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_traceback import traceback_re_with_pk
+from rna_pk_fold.folding.eddy_rivas.rivas_eddy_matrices import get_whx_with_collapse
+from rna_pk_fold.folding.eddy_rivas.rivas_eddy_traceback import traceback_re_with_pk
 from rna_pk_fold.folding.traceback import traceback_nested_interval, TraceResult
 from rna_pk_fold.structures import Pair
 

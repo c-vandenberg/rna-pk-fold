@@ -3,12 +3,12 @@ from dataclasses import dataclass
 from typing import List, Tuple, Dict, Set
 
 from rna_pk_fold.folding import ZuckerFoldState
-from rna_pk_fold.folding.rivas_eddy.re_fold_state import RivasEddyFoldState
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.traceback import (
     TraceResult, Pair, BRACKETS, _pairs_to_multilayer_dotbracket,
     traceback_nested_interval
 )
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_recurrences import (
+from rna_pk_fold.folding.eddy_rivas.rivas_eddy_recurrences import (
     # Top-level compositions backpointer tags
     RE_BP_COMPOSE_WX, RE_BP_COMPOSE_WX_YHX,
     RE_BP_COMPOSE_WX_YHX_WHX, RE_BP_COMPOSE_WX_WHX_YHX,
@@ -66,7 +66,7 @@ def add_pair_once(
         pair_layer[(i, j)] = layer
 
 
-def traceback_with_pk(seq: str, nested: ZuckerFoldState, re: RivasEddyFoldState) -> RivasEddyTraceResult:
+def traceback_with_pk(seq: str, nested: ZuckerFoldState, re: EddyRivasFoldState) -> RivasEddyTraceResult:
     """
     Full(er) R&E traceback with layered dot-bracket:
       - Start at WX(0,N-1).

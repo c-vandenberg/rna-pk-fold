@@ -5,14 +5,14 @@ from typing import Dict, Tuple
 
 from rna_pk_fold.structures.tri_matrix import RivasEddyTriMatrix, RivasEddyTriBackPointer
 from rna_pk_fold.structures.gap_matrix import SparseGapMatrix, SparseGapBackptr
-from rna_pk_fold.folding.rivas_eddy.re_back_pointer import RivasEddyBackPointer
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer
 
 wx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
 vx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
 
 
 @dataclass(slots=True)
-class RivasEddyFoldState:
+class EddyRivasFoldState:
     """
     Holds the non-gap and gap matrices for the R&E algorithm.
     Values only for scaffolding; Step 12 will fill recurrences.
@@ -45,8 +45,8 @@ class RivasEddyFoldState:
     zhx_back_ptr: SparseGapBackptr
 
 
-def make_re_fold_state(n: int) -> RivasEddyFoldState:
-    re = RivasEddyFoldState(
+def make_re_fold_state(n: int) -> EddyRivasFoldState:
+    re = EddyRivasFoldState(
         n=n,
 
         # Non-gap (Energies, 2D)

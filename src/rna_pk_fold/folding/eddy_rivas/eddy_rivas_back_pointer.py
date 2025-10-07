@@ -16,7 +16,7 @@ class _AutoName(StrEnum):
         return name
 
 
-class RivasEddyBacktrackOp(_AutoName):
+class EddyRivasBacktrackOp(_AutoName):
     # ----------------------------------------------------------------------
     # WX / VX: Composition, Overlap, Selection, Drift
     # ----------------------------------------------------------------------
@@ -95,7 +95,7 @@ class RivasEddyBacktrackOp(_AutoName):
 
 
 @dataclass(frozen=True, slots=True)
-class RivasEddyBackPointer:
+class EddyRivasBackPointer:
     """
     Structured Rivas–Eddy back pointer.
 
@@ -110,7 +110,7 @@ class RivasEddyBackPointer:
         - note: Free-form metadata
         - args: Payload used by unit tests (tuple of ints)
     """
-    op: RivasEddyBacktrackOp
+    op: EddyRivasBacktrackOp
     outer: Optional[Interval] = None
     hole: Optional[Interval] = None
     split: Optional[int] = None
@@ -137,10 +137,10 @@ class RivasEddyBackPointer:
         }
 
     @staticmethod
-    def from_dict(d: Dict[str, Any]) -> "RivasEddyBackPointer":
+    def from_dict(d: Dict[str, Any]) -> "EddyRivasBackPointer":
         # Loose loader; unknown strings will raise KeyError (good fail-fast)
-        op = RivasEddyBacktrackOp(d["op"])
-        return RivasEddyBackPointer(
+        op = EddyRivasBacktrackOp(d["op"])
+        return EddyRivasBackPointer(
             op=op,
             outer=tuple(d["outer"]) if d.get("outer") else None,
             hole=tuple(d["hole"]) if d.get("hole") else None,
@@ -152,29 +152,29 @@ class RivasEddyBackPointer:
         )
 
     @classmethod
-    def compose_vx(cls, r: int, k: int, l: int) -> "RivasEddyBackPointer":
-        return cls(op=RivasEddyBacktrackOp.RE_PK_COMPOSE_VX,
+    def compose_vx(cls, r: int, k: int, l: int) -> "EddyRivasBackPointer":
+        return cls(op=EddyRivasBacktrackOp.RE_PK_COMPOSE_VX,
                    split=r, hole=(k, l), args=(r, k, l))
 
     @classmethod
-    def compose_vx_drift(cls, r: int, k: int, l: int, d: int) -> "RivasEddyBackPointer":
-        return cls(op=RivasEddyBacktrackOp.RE_PK_COMPOSE_VX_DRIFT,
+    def compose_vx_drift(cls, r: int, k: int, l: int, d: int) -> "EddyRivasBackPointer":
+        return cls(op=EddyRivasBacktrackOp.RE_PK_COMPOSE_VX_DRIFT,
                    split=r, hole=(k, l), drift=d, args=(r, k, l, d))
 
     @classmethod
-    def vx_select_uncharged(cls) -> "RivasEddyBackPointer":
-        return cls(op=RivasEddyBacktrackOp.RE_VX_SELECT_UNCHARGED, args=())
+    def vx_select_uncharged(cls) -> "EddyRivasBackPointer":
+        return cls(op=EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED, args=())
 
     @classmethod
-    def wx_select_uncharged(cls) -> "RivasEddyBackPointer":
-        return cls(op=RivasEddyBacktrackOp.RE_WX_SELECT_UNCHARGED, args=())
+    def wx_select_uncharged(cls) -> "EddyRivasBackPointer":
+        return cls(op=EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED, args=())
 
     @classmethod
-    def whx_shrink_left(cls, i: int, j: int, k1: int, l: int) -> "RivasEddyBackPointer":
-        return cls(op=RivasEddyBacktrackOp.RE_WHX_SHRINK_LEFT,
+    def whx_shrink_left(cls, i: int, j: int, k1: int, l: int) -> "EddyRivasBackPointer":
+        return cls(op=EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT,
                    outer=(i, j), hole=(k1, l), args=(i, j, k1, l))
 
     @classmethod
-    def whx_split_left_whx_wx(cls, r: int) -> "RivasEddyBackPointer":
-        return cls(op=RivasEddyBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX,
+    def whx_split_left_whx_wx(cls, r: int) -> "EddyRivasBackPointer":
+        return cls(op=EddyRivasBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX,
                    split=r, args=(r,))

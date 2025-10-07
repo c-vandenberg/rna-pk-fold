@@ -4,8 +4,8 @@ import pytest
 from rna_pk_fold.folding import make_fold_state
 from rna_pk_fold.folding.recurrences import SecondaryStructureFoldingEngine, RecurrenceConfig
 from rna_pk_fold.folding.fold_state import make_re_fold_state
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_recurrences import RivasEddyEngine, REREConfig
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import get_whx_with_collapse
+from rna_pk_fold.folding.eddy_rivas.rivas_eddy_recurrences import RivasEddyEngine, REREConfig
+from rna_pk_fold.folding.eddy_rivas.rivas_eddy_matrices import get_whx_with_collapse
 
 @pytest.mark.parametrize("seq", ["GCAU", "GCAUCU", "AUGCUA"])
 def test_fill_minimal_makes_whx_finite_via_collapse(seq: str):

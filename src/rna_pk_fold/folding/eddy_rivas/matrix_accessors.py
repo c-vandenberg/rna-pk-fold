@@ -2,7 +2,7 @@ import math
 
 from rna_pk_fold.structures.gap_matrix import SparseGapMatrix
 from rna_pk_fold.structures.tri_matrix import RivasEddyTriMatrix
-from rna_pk_fold.folding.rivas_eddy.re_fold_state import RivasEddyFoldState
+from rna_pk_fold.folding.eddy_rivas.re_fold_state import EddyRivasFoldState
 
 
 def get_whx_with_collapse(whx: SparseGapMatrix, wx: RivasEddyTriMatrix,
@@ -65,24 +65,24 @@ def get_vhx_with_collapse(
     return vhx.get(i, j, k, l)
 
 
-def wxI(re: RivasEddyFoldState, i: int, j: int) -> float:
+def wxI(re: EddyRivasFoldState, i: int, j: int) -> float:
     mat = getattr(re, "wxi_matrix", None)
     return mat.get(i, j) if mat is not None else re.wx_matrix.get(i, j)
 
-def whx_collapse_first(re: RivasEddyFoldState, i: int, j: int, k: int, l: int) -> float:
+def whx_collapse_first(re: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> float:
     v = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l)
     return v if math.isfinite(v) else re.whx_matrix.get(i, j, k, l)
 
-def zhx_collapse_first(re: RivasEddyFoldState, i: int, j: int, k: int, l: int) -> float:
+def zhx_collapse_first(re: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> float:
     v = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, l)
     return v if math.isfinite(v) else re.zhx_matrix.get(i, j, k, l)
 
-def whx_collapse_with(re: RivasEddyFoldState, i, j, k, l, charged: bool) -> float:
+def whx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool) -> float:
     wx = re.wxc_matrix if charged else re.wxu_matrix
     v = get_whx_with_collapse(re.whx_matrix, wx, i, j, k, l)
     return v if math.isfinite(v) else re.whx_matrix.get(i, j, k, l)
 
-def zhx_collapse_with(re: RivasEddyFoldState, i, j, k, l, charged: bool) -> float:
+def zhx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool) -> float:
     vx = re.vxc_matrix if charged else re.vxu_matrix
     v = get_zhx_with_collapse(re.zhx_matrix, vx, i, j, k, l)
     return v if math.isfinite(v) else re.zhx_matrix.get(i, j, k, l)

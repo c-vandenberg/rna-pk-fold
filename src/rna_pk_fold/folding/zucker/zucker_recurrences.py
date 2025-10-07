@@ -16,7 +16,7 @@ class RecurrenceConfig:
 
 
 @dataclass(slots=True)
-class SecondaryStructureFoldingEngine:
+class ZuckerFoldingEngine:
     energy_model: SecondaryStructureEnergyModelProtocol
     config: RecurrenceConfig
 

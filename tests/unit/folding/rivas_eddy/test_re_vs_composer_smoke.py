@@ -4,7 +4,7 @@ import pytest
 from rna_pk_fold.folding import make_fold_state
 from rna_pk_fold.folding.recurrences import SecondaryStructureFoldingEngine, RecurrenceConfig
 from rna_pk_fold.folding.fold_state import make_re_fold_state
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_recurrences import RivasEddyEngine, REREConfig
+from rna_pk_fold.folding.eddy_rivas.rivas_eddy_recurrences import RivasEddyEngine, REREConfig
 
 @pytest.mark.parametrize("seq", ["GCAU", "GCAUCU", "AUGCUA"])
 def test_vx_two_gap_composition_can_reduce_energy(seq: str):

@@ -1,7 +1,7 @@
 import math
 import pytest
 
-from rna_pk_fold.folding.rivas_eddy.rivas_eddy_matrices import (
+from rna_pk_fold.folding.eddy_rivas.rivas_eddy_matrices import (
     ReTriMatrix, SparseGapMatrix, get_zhx_with_collapse
 )
 
