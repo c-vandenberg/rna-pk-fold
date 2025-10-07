@@ -1,7 +1,7 @@
 from __future__ import annotations
 import math
 import json
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 from typing import Tuple, Dict, Optional, Any, Callable
 
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
@@ -9,9 +9,8 @@ from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.folding.eddy_rivas.is2_bridges import IS2_outer, IS2_outer_yhx
-from rna_pk_fold.folding.eddy_rivas.iterators import (iter_spans, iter_holes, iter_complementary_tuples,
-                                                      iter_inner_holes)
-from rna_pk_fold.folding.eddy_rivas.matrix_accessors import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
+from rna_pk_fold.utils.iter_utils import iter_spans, iter_holes, iter_complementary_tuples, iter_inner_holes
+from rna_pk_fold.utils.matrix_utils import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
                                                              whx_collapse_with, zhx_collapse_with)
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
                                                 dangle_outer_right, coax_pack, short_hole_penalty)
