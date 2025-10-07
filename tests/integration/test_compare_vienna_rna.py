@@ -96,7 +96,7 @@ def energy_model():
     Load the Turner 2004 (minimal) parameters from packaged YAML and
     construct the SecondaryStructureEnergyModel at 310.15 K.
     """
-    yaml_path = ir_files(rna_pk_fold) / "data" / "turner2004_eddyrivas1999_min.yaml"
+    yaml_path = ir_files(rna_pk_fold) / "data" / "turner2004_min.yaml"
     assert yaml_path is not None, "No parameter YAML found in rna_pk_fold/data."
     params = SecondaryStructureEnergyLoader().load(kind="RNA", yaml_path=yaml_path)
     return SecondaryStructureEnergyModel(params=params, temp_k=310.15)
