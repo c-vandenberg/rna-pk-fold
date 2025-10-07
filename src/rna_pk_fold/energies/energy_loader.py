@@ -13,12 +13,10 @@ from .data.parsers import (
 
 from rna_pk_fold.energies.energy_types import (
     SecondaryStructureEnergies,
-    PseudoknotEnergies,
-    BasePairMap,
-    MultiLoopCoeffs,
-    PairEnergies,
-    LoopEnergies,
+    PseudoknotEnergies
 )
+from rna_pk_fold.energies.data.parsers import (get_float, get_int, parse_bigram_float_map, parse_coax_pairs_map,
+                                               parse_int_float_map)
 
 Kind = Literal["RNA"]
 
@@ -107,91 +105,60 @@ class SecondaryStructureEnergyLoader:
             INTERNAL_MISMATCH=internal_mm,
             TERMINAL_MISMATCH=terminal_mm,
             HAIRPIN_MISMATCH=hairpin_mm,
+            MULTI_MISMATCH=multi_mm,
             SPECIAL_HAIRPINS=special_hairpin,
             PSEUDOKNOT=pseudoknots
         )
 
     @staticmethod
     def _parse_pseudoknot_block(data: Dict[str, Any]) -> Optional[PseudoknotEnergies]:
-        """
-        Parse optional 'pseudoknot' YAML section and return a PseudoknotEnergies
-        instance (or None if absent). Missing keys fall back to defaults.
-        """
         node = data.get("pseudoknot")
         if not node:
             return None
 
-        def _float_data(key: str, default: float) -> float:
-            return float(node.get(key, default))
-
-        def _int_data(key: str, default: int) -> int:
-            return int(node.get(key, default))
-
-        def _bigram_map(key: str) -> Dict[Tuple[str, str], float]:
-            out: Dict[Tuple[str, str], float] = {}
-            raw = node.get(key, {}) or {}
-            for bigram, val in raw.items():
-                if isinstance(bigram, str) and len(bigram) == 2:
-                    out[(bigram[0], bigram[1])] = float(val)
-            return out
-
-        def _coax_map(key: str) -> Dict[Tuple[str, str], float]:
-            out: Dict[Tuple[str, str], float] = {}
-            raw = node.get(key, {}) or {}
-            for k, val in raw.items():
-                if isinstance(k, str) and "|" in k:
-                    left, right = k.split("|", 1)
-                    out[(left.strip(), right.strip())] = float(val)
-            return out
-
-        def _caps(key: str) -> Dict[int, float]:
-            out: Dict[int, float] = {}
-            raw = node.get(key, {}) or {}
-            for h, val in raw.items():
-                try:
-                    out[int(h)] = float(val)
-                except Exception:
-                    continue
-            return out
-
         return PseudoknotEnergies(
-            q_ss=_float_data("q_ss", 0.2),
-            P_tilde_out=_float_data("P_tilde_out", 1.0),
-            P_tilde_hole=_float_data("P_tilde_hole", 1.0),
-            Q_tilde_out=_float_data("Q_tilde_out", 0.2),
-            Q_tilde_hole=_float_data("Q_tilde_hole", 0.2),
-            L_tilde=_float_data("L_tilde", 0.0),
-            R_tilde=_float_data("R_tilde", 0.0),
-            M_tilde_yhx=_float_data("M_tilde_yhx", 0.0),
-            M_tilde_vhx=_float_data("M_tilde_vhx", 0.0),
-            M_tilde_whx=_float_data("M_tilde_whx", 0.0),
+            # scalars
+            q_ss=get_float(node, "q_ss", 0.2),
+            P_tilde_out=get_float(node, "P_tilde_out", 1.0),
+            P_tilde_hole=get_float(node, "P_tilde_hole", 1.0),
+            Q_tilde_out=get_float(node, "Q_tilde_out", 0.2),
+            Q_tilde_hole=get_float(node, "Q_tilde_hole", 0.2),
+            L_tilde=get_float(node, "L_tilde", 0.0),
+            R_tilde=get_float(node, "R_tilde", 0.0),
+            M_tilde_yhx=get_float(node, "M_tilde_yhx", 0.0),
+            M_tilde_vhx=get_float(node, "M_tilde_vhx", 0.0),
+            M_tilde_whx=get_float(node, "M_tilde_whx", 0.0),
 
-            dangle_hole_L=_bigram_map("dangle_hole_L") or None,
-            dangle_hole_R=_bigram_map("dangle_hole_R") or None,
-            dangle_outer_L=_bigram_map("dangle_outer_L") or None,
-            dangle_outer_R=_bigram_map("dangle_outer_R") or None,
-            coax_pairs=_coax_map("coax_pairs") or None,
+            # maps
+            dangle_hole_left=(parse_bigram_float_map(node, "dangle_hole_L") or None),
+            dangle_hole_right=(parse_bigram_float_map(node, "dangle_hole_R") or None),
+            dangle_outer_left=(parse_bigram_float_map(node, "dangle_outer_L") or None),
+            dangle_outer_right=(parse_bigram_float_map(node, "dangle_outer_R") or None),
+            coax_pairs=(parse_coax_pairs_map(node, "coax_pairs") or None),
 
-            coax_bonus=_float_data("coax_bonus", 0.0),
-            coax_scale_oo=_float_data("coax_scale_oo", 1.0),
-            coax_scale_oi=_float_data("coax_scale_oi", 1.0),
-            coax_scale_io=_float_data("coax_scale_io", 1.0),
-            coax_min_helix_len=_int_data("coax_min_helix_len", 1),
-            coax_scale=_float_data("coax_scale", 1.0),
+            # coax controls
+            coax_bonus=get_float(node, "coax_bonus", 0.0),
+            coax_scale_oo=get_float(node, "coax_scale_oo", 1.0),
+            coax_scale_oi=get_float(node, "coax_scale_oi", 1.0),
+            coax_scale_io=get_float(node, "coax_scale_io", 1.0),
+            coax_min_helix_len=get_int(node, "coax_min_helix_len", 1),
+            coax_scale=get_float(node, "coax_scale", 1.0),
 
-            mismatch_coax_scale=_float_data("mismatch_coax_scale", 0.5),
-            mismatch_coax_bonus=_float_data("mismatch_coax_bonus", 0.0),
+            mismatch_coax_scale=get_float(node, "mismatch_coax_scale", 0.5),
+            mismatch_coax_bonus=get_float(node, "mismatch_coax_bonus", 0.0),
 
-            join_drift_penalty=_float_data("join_drift_penalty", 0.0),
+            # composition variants / penalties
+            join_drift_penalty=get_float(node, "join_drift_penalty", 0.0),
+            short_hole_caps=(parse_int_float_map(node, "short_hole_caps") or None),
 
-            short_hole_caps=_caps("short_hole_caps") or None,
+            # composition offsets
+            Gwh=get_float(node, "Gwh", 0.0),
+            Gwi=get_float(node, "Gwi", 0.0),
+            Gwh_wx=get_float(node, "Gwh_wx", 0.0),
+            Gwh_whx=get_float(node, "Gwh_whx", 0.0),
 
-            Gwh=_float_data("Gwh", 0.0),
-            Gwi=_float_data("Gwi", 0.0),
-            Gwh_wx=_float_data("Gwh_wx", 0.0),
-            Gwh_whx=_float_data("Gwh_whx", 0.0),
-
-            pk_penalty_gw=_float_data("pk_penalty_gw", 1.0),
+            # optional global PK penalty scaling (if you included this in the dataclass)
+            pk_penalty_gw=get_float(node, "pk_penalty_gw", 1.0),
         )
 
 

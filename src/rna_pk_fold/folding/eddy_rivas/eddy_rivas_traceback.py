@@ -5,47 +5,10 @@ from typing import List, Tuple, Dict, Set, Callable, Any, Optional
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import pairs_to_multilayer_dotbracket, TraceResult
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import (
-    EddyRivasBackPointer,
-    EddyRivasBacktrackOp,
-)
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import EddyRivasBacktrackOp
+from rna_pk_fold.utils.traceback_ops_utils import add_pair_once, merge_nested_interval
+from rna_pk_fold.utils.back_pointer_access_utils import wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
 
-# ----------------------- backpointer helpers (top-level) -----------------------
-
-def _wx_bp(re_state: EddyRivasFoldState, i: int, j: int) -> Optional[EddyRivasBackPointer]:
-    return re_state.wx_back_ptr.get(i, j)
-
-def _whx_bp(re_state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
-    return re_state.whx_back_ptr.get(i, j, k, l)
-
-def _yhx_bp(re_state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
-    return re_state.yhx_back_ptr.get(i, j, k, l)
-
-def _zhx_bp(re_state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
-    return re_state.zhx_back_ptr.get(i, j, k, l)
-
-def _vhx_bp(re_state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
-    return re_state.vhx_back_ptr.get(i, j, k, l)
-
-
-# ------------------------------- core utilities --------------------------------
-
-def _add_pair_once(
-    pairs: Set[Pair],
-    pair_layer: Dict[Tuple[int, int], int],
-    i: int,
-    j: int,
-    layer: int,
-) -> None:
-    if i > j:
-        i, j = j, i
-    pr = Pair(i, j)
-    if pr not in pairs:
-        pairs.add(pr)
-        pair_layer[(i, j)] = layer
-
-
-# --------------------------------- traceback -----------------------------------
 
 def traceback_with_pk(
     seq: str,
@@ -56,6 +19,23 @@ def traceback_with_pk(
 ) -> TraceResult:
     """
     Full Rivas–Eddy traceback (layered dot-bracket) WITHOUT importing Zucker.
+
+    Parameters
+    ----------
+    seq : str
+        RNA sequence
+    nested_state : Any
+        State object for the nested-only engine (e.g., ZuckerFoldState).
+        Opaque here; only passed to `trace_nested_interval`.
+    re_state : EddyRivasFoldState
+        Filled Rivas–Eddy DP/backpointer state.
+    trace_nested_interval : Callable
+        Function: (seq, nested_state, i, j) -> TraceResult for the interval [i..j].
+
+    Returns
+    -------
+    TraceResult
+        pairs + multilayer dot-bracket.
     """
     n = re_state.n
     if n == 0:
@@ -80,23 +60,22 @@ def traceback_with_pk(
         # ---------------- WX ----------------
         if tag == "WX":
             _, i, j, layer = frame
-            bp = _wx_bp(re_state, i, j)
+            bp = wx_bp(re_state, i, j)
 
             if not bp:
-                base = trace_nested_interval(seq, nested_state, i, j)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, i, j, layer,
+                                      trace_nested_interval, pairs, pair_layer)
                 continue
 
             op = bp.op
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX:
+                # hole indices are on bp.hole (k,l), split r on bp.split
                 r = bp.split
                 k, l = bp.hole if bp.hole else (None, None)
                 if r is None or k is None or l is None:
-                    base = trace_nested_interval(seq, nested_state, i, j)
-                    for p in base.pairs:
-                        _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                    merge_nested_interval(seq, nested_state, i, j, layer,
+                                          trace_nested_interval, pairs, pair_layer)
                     continue
                 stack.append(("WHX", i, r, k, l, layer))
                 stack.append(("WHX", k + 1, j, l - 1, r + 1, layer + 1))
@@ -106,9 +85,8 @@ def traceback_with_pk(
                 r = bp.split
                 k, l = bp.hole if bp.hole else (None, None)
                 if r is None or k is None or l is None:
-                    base = trace_nested_interval(seq, nested_state, i, j)
-                    for p in base.pairs:
-                        _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                    merge_nested_interval(seq, nested_state, i, j, layer,
+                                          trace_nested_interval, pairs, pair_layer)
                     continue
                 stack.append(("YHX", i, r, k, l, layer))
                 stack.append(("YHX", k + 1, j, l - 1, r + 1, layer + 1))
@@ -131,53 +109,53 @@ def traceback_with_pk(
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP:
                 r = bp.split
                 k, l = bp.hole if bp.hole else (None, None)
+                # left branch on current layer, right on next
                 stack.append(("YHX", i, r, k, l, layer))
                 stack.append(("YHX", r + 1, j, k, l, layer + 1))
                 continue
 
             # Fallback: treat as nested
-            base = trace_nested_interval(seq, nested_state, i, j)
-            for p in base.pairs:
-                _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+            merge_nested_interval(seq, nested_state, i, j, layer,
+                                  trace_nested_interval, pairs, pair_layer)
             continue
 
         # ---------------- WHX ----------------
         if tag == "WHX":
             _, i, j, k, l, layer = frame
-            bp = _whx_bp(re_state, i, j, k, l)
+            bp = whx_bp(re_state, i, j, k, l)
             if not bp:
-                base = trace_nested_interval(seq, nested_state, i, j)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, i, j, layer,
+                                      trace_nested_interval, pairs, pair_layer)
                 continue
 
             op = bp.op
 
-            if op in (EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT, EddyRivasBacktrackOp.RE_WHX_SHRINK_RIGHT,
-                      EddyRivasBacktrackOp.RE_WHX_TRIM_LEFT, EddyRivasBacktrackOp.RE_WHX_TRIM_RIGHT,
-                      EddyRivasBacktrackOp.RE_WHX_SS_BOTH):
+            if op in (
+                EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT, EddyRivasBacktrackOp.RE_WHX_SHRINK_RIGHT,
+                EddyRivasBacktrackOp.RE_WHX_TRIM_LEFT, EddyRivasBacktrackOp.RE_WHX_TRIM_RIGHT,
+                EddyRivasBacktrackOp.RE_WHX_SS_BOTH,
+            ):
+                # Continue WHX with the coords provided on the backpointer
                 (ni, nj) = bp.outer if bp.outer else (i, j)
-                (nk, nl) = bp.hole  if bp.hole  else (k, l)
+                (nk, nl) = bp.hole if bp.hole else (k, l)
                 stack.append(("WHX", ni, nj, nk, nl, layer))
 
             elif op is EddyRivasBacktrackOp.RE_WHX_COLLAPSE:
+                # Collapse to nested WX on the provided outer interval
                 (ni, nj) = bp.outer if bp.outer else (i, j)
-                base = trace_nested_interval(seq, nested_state, ni, nj)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, ni, nj, layer,
+                                      trace_nested_interval, pairs, pair_layer)
 
             elif op is EddyRivasBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX:
                 r = bp.split if bp.split is not None else (i + j) // 2
                 stack.append(("WHX", i, r, k, l, layer))
-                base = trace_nested_interval(seq, nested_state, r + 1, j)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, r + 1, j, layer,
+                                      trace_nested_interval, pairs, pair_layer)
 
             elif op is EddyRivasBacktrackOp.RE_WHX_SPLIT_RIGHT_WX_WHX:
                 s2 = bp.split if bp.split is not None else (i + j) // 2
-                base = trace_nested_interval(seq, nested_state, i, s2)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, i, s2, layer,
+                                      trace_nested_interval, pairs, pair_layer)
                 stack.append(("WHX", s2 + 1, j, k, l, layer))
 
             elif op is EddyRivasBacktrackOp.RE_WHX_OVERLAP_SPLIT:
@@ -190,42 +168,47 @@ def traceback_with_pk(
         # ---------------- YHX ----------------
         if tag == "YHX":
             _, i, j, k, l, layer = frame
-            _add_pair_once(pairs, pair_layer, k, l, layer)
+            add_pair_once(pairs, pair_layer, k, l, layer)  # ensure inner helix recorded
 
-            bp = _yhx_bp(re_state, i, j, k, l)
+            bp = yhx_bp(re_state, i, j, k, l)
             if not bp:
                 continue
             op = bp.op
 
-            if op in (EddyRivasBacktrackOp.RE_YHX_DANGLE_L, EddyRivasBacktrackOp.RE_YHX_DANGLE_R, EddyRivasBacktrackOp.RE_YHX_DANGLE_LR,
-                      EddyRivasBacktrackOp.RE_YHX_SS_LEFT, EddyRivasBacktrackOp.RE_YHX_SS_RIGHT, EddyRivasBacktrackOp.RE_YHX_SS_BOTH):
+            if op in (
+                EddyRivasBacktrackOp.RE_YHX_DANGLE_L, EddyRivasBacktrackOp.RE_YHX_DANGLE_R,
+                EddyRivasBacktrackOp.RE_YHX_DANGLE_LR,
+                EddyRivasBacktrackOp.RE_YHX_SS_LEFT, EddyRivasBacktrackOp.RE_YHX_SS_RIGHT,
+                EddyRivasBacktrackOp.RE_YHX_SS_BOTH,
+            ):
                 (ni, nj) = bp.outer if bp.outer else (i, j)
-                (nk, nl) = bp.hole  if bp.hole  else (k, l)
+                (nk, nl) = bp.hole if bp.hole else (k, l)
                 stack.append(("YHX", ni, nj, nk, nl, layer))
 
-            elif op in (EddyRivasBacktrackOp.RE_YHX_WRAP_WHX, EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L,
-                        EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R, EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR):
+            elif op in (
+                EddyRivasBacktrackOp.RE_YHX_WRAP_WHX, EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L,
+                EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R, EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR,
+            ):
                 (wi, wj) = bp.outer if bp.outer else (i, j)
-                (wk, wl) = bp.hole  if bp.hole  else (k, l)
+                (wk, wl) = bp.hole if bp.hole else (k, l)
                 stack.append(("WHX", wi, wj, wk, wl, layer))
 
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX:
                 r = bp.split if bp.split is not None else (i + j) // 2
                 stack.append(("YHX", i, r, k, l, layer))
-                base = trace_nested_interval(seq, nested_state, r + 1, j)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, r + 1, j, layer,
+                                      trace_nested_interval, pairs, pair_layer)
 
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_RIGHT_WX_YHX:
                 s2 = bp.split if bp.split is not None else (i + j) // 2
-                base = trace_nested_interval(seq, nested_state, i, s2)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, i, s2, layer,
+                                      trace_nested_interval, pairs, pair_layer)
                 stack.append(("YHX", s2 + 1, j, k, l, layer))
 
             elif op is EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX:
+                # IS2 outer context then delegate to WHX
                 (wi, wj) = bp.outer if bp.outer else (i, j)
-                (wk, wl) = bp.hole  if bp.hole  else (k, l)
+                (wk, wl) = bp.hole if bp.hole else (k, l)
                 stack.append(("WHX", wi, wj, wk, wl, layer))
 
             continue
@@ -233,39 +216,40 @@ def traceback_with_pk(
         # ---------------- ZHX ----------------
         if tag == "ZHX":
             _, i, j, k, l, layer = frame
-            _add_pair_once(pairs, pair_layer, i, j, layer)
+            add_pair_once(pairs, pair_layer, i, j, layer)  # ensure outer helix recorded
 
-            bp = _zhx_bp(re_state, i, j, k, l)
+            bp = zhx_bp(re_state, i, j, k, l)
             if not bp:
                 continue
             op = bp.op
 
-            if op in (EddyRivasBacktrackOp.RE_ZHX_FROM_VHX, EddyRivasBacktrackOp.RE_ZHX_DANGLE_L, EddyRivasBacktrackOp.RE_ZHX_DANGLE_R,
-                      EddyRivasBacktrackOp.RE_ZHX_DANGLE_LR):
+            if op in (
+                EddyRivasBacktrackOp.RE_ZHX_FROM_VHX, EddyRivasBacktrackOp.RE_ZHX_DANGLE_L,
+                EddyRivasBacktrackOp.RE_ZHX_DANGLE_R, EddyRivasBacktrackOp.RE_ZHX_DANGLE_LR,
+            ):
                 (ni, nj) = bp.outer if bp.outer else (i, j)
-                (nk, nl) = bp.hole  if bp.hole  else (k, l)
+                (nk, nl) = bp.hole if bp.hole else (k, l)
                 stack.append(("VHX", ni, nj, nk, nl, layer))
 
             elif op in (EddyRivasBacktrackOp.RE_ZHX_SS_LEFT, EddyRivasBacktrackOp.RE_ZHX_SS_RIGHT):
                 (ni, nj) = bp.outer if bp.outer else (i, j)
-                (nk, nl) = bp.hole  if bp.hole  else (k, l)
+                (nk, nl) = bp.hole if bp.hole else (k, l)
                 stack.append(("ZHX", ni, nj, nk, nl, layer))
 
             elif op is EddyRivasBacktrackOp.RE_ZHX_SPLIT_LEFT_ZHX_WX:
                 r = bp.split if bp.split is not None else (i + k) // 2
                 stack.append(("ZHX", i, j, r, l, layer))
-                base = trace_nested_interval(seq, nested_state, r + 1, k)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, r + 1, k, layer,
+                                      trace_nested_interval, pairs, pair_layer)
 
             elif op is EddyRivasBacktrackOp.RE_ZHX_SPLIT_RIGHT_ZHX_WX:
                 s2 = bp.split if bp.split is not None else (l + j) // 2
                 stack.append(("ZHX", i, j, k, s2, layer))
-                base = trace_nested_interval(seq, nested_state, l, s2 - 1)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, l, s2 - 1, layer,
+                                      trace_nested_interval, pairs, pair_layer)
 
             elif op is EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX:
+                # bridge=(r,s2)
                 (r, s2) = bp.bridge if bp.bridge else (k, l)
                 stack.append(("VHX", r, s2, k, l, layer))
 
@@ -274,36 +258,37 @@ def traceback_with_pk(
         # ---------------- VHX ----------------
         if tag == "VHX":
             _, i, j, k, l, layer = frame
-            _add_pair_once(pairs, pair_layer, k, l, layer)
+            add_pair_once(pairs, pair_layer, k, l, layer)  # ensure inner helix recorded
 
-            bp = _vhx_bp(re_state, i, j, k, l)
+            bp = vhx_bp(re_state, i, j, k, l)
             if not bp:
                 continue
             op = bp.op
 
-            if op in (EddyRivasBacktrackOp.RE_VHX_DANGLE_L, EddyRivasBacktrackOp.RE_VHX_DANGLE_R, EddyRivasBacktrackOp.RE_VHX_DANGLE_LR):
+            if op in (
+                EddyRivasBacktrackOp.RE_VHX_DANGLE_L, EddyRivasBacktrackOp.RE_VHX_DANGLE_R,
+                EddyRivasBacktrackOp.RE_VHX_DANGLE_LR,
+            ):
                 (ni, nj) = bp.outer if bp.outer else (i, j)
-                (nk, nl) = bp.hole  if bp.hole  else (k, l)
+                (nk, nl) = bp.hole if bp.hole else (k, l)
                 stack.append(("VHX", ni, nj, nk, nl, layer))
 
             elif op in (EddyRivasBacktrackOp.RE_VHX_SS_LEFT, EddyRivasBacktrackOp.RE_VHX_SS_RIGHT):
                 (ni, nj) = bp.outer if bp.outer else (i, j)
-                (nk, nl) = bp.hole  if bp.hole  else (k, l)
+                (nk, nl) = bp.hole if bp.hole else (k, l)
                 stack.append(("ZHX", ni, nj, nk, nl, layer))
 
             elif op is EddyRivasBacktrackOp.RE_VHX_SPLIT_LEFT_ZHX_WX:
                 r = bp.split if bp.split is not None else (i + k) // 2
                 stack.append(("ZHX", i, j, r, l, layer))
-                base = trace_nested_interval(seq, nested_state, r + 1, k)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, r + 1, k, layer,
+                                      trace_nested_interval, pairs, pair_layer)
 
             elif op is EddyRivasBacktrackOp.RE_VHX_SPLIT_RIGHT_ZHX_WX:
                 s2 = bp.split if bp.split is not None else (l + j) // 2
                 stack.append(("ZHX", i, j, k, s2, layer))
-                base = trace_nested_interval(seq, nested_state, l, s2 - 1)
-                for p in base.pairs:
-                    _add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+                merge_nested_interval(seq, nested_state, l, s2 - 1, layer,
+                                      trace_nested_interval, pairs, pair_layer)
 
             elif op is EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX:
                 (r, s2) = bp.bridge if bp.bridge else (i, j)
@@ -314,8 +299,9 @@ def traceback_with_pk(
                 stack.append(("WHX", wi, wj, k, l, layer))
 
             elif op is EddyRivasBacktrackOp.RE_VHX_CLOSE_BOTH:
-                _add_pair_once(pairs, pair_layer, i, j, layer)
-                _add_pair_once(pairs, pair_layer, k, l, layer)
+                add_pair_once(pairs, pair_layer, i, j, layer)
+                add_pair_once(pairs, pair_layer, k, l, layer)
+                # optional inner WHX to descend into:
                 if bp.outer and bp.hole:
                     wi, wj = bp.outer
                     wk, wl = bp.hole

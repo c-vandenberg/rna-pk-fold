@@ -1,6 +1,9 @@
 from __future__ import annotations
-from typing import Optional, Tuple, Dict, Protocol
-from rna_pk_fold.utils.nucleotide_utils import pair_str
+from typing import Tuple, Dict, Protocol
+
+from rna_pk_fold.utils.indices_utils import safe_base
+from rna_pk_fold.utils.table_lookup_utils import table_lookup
+from rna_pk_fold.utils.energy_pk_utils import coax_energy_for_join
 
 # --- Light protocols so we can stay duck-typed and avoid import cycles -----
 class PKCoaxConfig(Protocol):
@@ -31,51 +34,24 @@ class PKEnergyCosts(Protocol):
     # short-hole caps
     short_hole_caps: Dict[int, float]
 
-
-# --------------------- DANGLES (hole & outer) -------------------------------
-def _safe_base(seq: str, idx: int) -> Optional[str]:
-    return seq[idx] if 0 <= idx < len(seq) else None
-
-def _table_lookup(tbl: Dict[Tuple[str, str], float],
-                  x: Optional[str],
-                  y: Optional[str],
-                  default: float) -> float:
-    if x is None or y is None:
-        return 0.0
-    return tbl.get((x, y), default)
-
 def dangle_hole_L(seq: str, k: int, costs: PKEnergyCosts) -> float:
     # uses (k-1, k)
-    return _table_lookup(costs.dangle_hole_L, _safe_base(seq, k - 1), _safe_base(seq, k), costs.L_tilde)
+    return table_lookup(costs.dangle_hole_L, safe_base(seq, k - 1), safe_base(seq, k), costs.L_tilde)
 
 def dangle_hole_R(seq: str, l: int, costs: PKEnergyCosts) -> float:
     # uses (l, l+1)
-    return _table_lookup(costs.dangle_hole_R, _safe_base(seq, l), _safe_base(seq, l + 1), costs.R_tilde)
+    return table_lookup(costs.dangle_hole_R, safe_base(seq, l), safe_base(seq, l + 1), costs.R_tilde)
 
 def dangle_outer_L(seq: str, i: int, costs: PKEnergyCosts) -> float:
     # uses (i, i+1)
-    return _table_lookup(costs.dangle_outer_L, _safe_base(seq, i), _safe_base(seq, i + 1), costs.L_tilde)
+    return table_lookup(costs.dangle_outer_L, safe_base(seq, i), safe_base(seq, i + 1), costs.L_tilde)
 
 def dangle_outer_R(seq: str, j: int, costs: PKEnergyCosts) -> float:
     # uses (j-1, j)
-    return _table_lookup(costs.dangle_outer_R, _safe_base(seq, j - 1), _safe_base(seq, j), costs.R_tilde)
+    return table_lookup(costs.dangle_outer_R, safe_base(seq, j - 1), safe_base(seq, j), costs.R_tilde)
 
 
 # --------------------- COAX PACKING ----------------------------------------
-
-def _pair_key(seq: str, a: int, b: int) -> Optional[str]:
-    return pair_str(seq, a, b) if (0 <= a < len(seq) and 0 <= b < len(seq)) else None
-
-def coax_energy_for_join(seq: str,
-                         left_pair: Tuple[int, int],
-                         right_pair: Tuple[int, int],
-                         costs: PKEnergyCosts) -> float:
-    lp = _pair_key(seq, *left_pair)
-    rp = _pair_key(seq, *right_pair)
-    if lp is None or rp is None:
-        return 0.0
-    # symmetric lookup
-    return costs.coax_pairs.get((lp, rp), costs.coax_pairs.get((rp, lp), 0.0))
 
 
 def coax_pack(seq: str,
@@ -103,7 +79,7 @@ def coax_pack(seq: str,
 
     total = 0.0
     # outer↔outer seam
-    e = coax_energy_for_join(seq, (i, r), (k + 1, j), costs)
+    e = coax_energy_for_join(seq, (i, r), (k + 1, j), costs.coax_pairs)
     if mismatch:
         e = e * costs.mismatch_coax_scale + costs.mismatch_coax_bonus
     if e > 0.0:  # clamp to non-positive
@@ -112,11 +88,11 @@ def coax_pack(seq: str,
 
     # optional variants
     if getattr(cfg, "enable_coax_variants", False):
-        e_oi = coax_energy_for_join(seq, (i, r), (k, l), costs)
+        e_oi = coax_energy_for_join(seq, (i, r), (k, l), costs.coax_pairs)
         if e_oi > 0.0: e_oi = 0.0
         total += costs.coax_scale_oi * e_oi
 
-        e_io = coax_energy_for_join(seq, (k, l), (k + 1, j), costs)
+        e_io = coax_energy_for_join(seq, (k, l), (k + 1, j), costs.coax_pairs)
         if e_io > 0.0: e_io = 0.0
         total += costs.coax_scale_io * e_io
 

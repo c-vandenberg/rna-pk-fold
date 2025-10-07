@@ -1,7 +1,7 @@
 from __future__ import annotations
-from typing import Any, Iterable, Mapping, Tuple, Callable, Optional
+from typing import Any, Iterable, Mapping, Tuple, Dict, Callable, Optional
 
-from rna_pk_fold.energies.types import (
+from rna_pk_fold.energies.energy_types import (
     BasePairMap,
     MultiLoopCoeffs,
     PairEnergies,
@@ -546,3 +546,40 @@ def parse_special_hairpins(data: Mapping[str, Any], temp_k: float) -> PairEnergi
         special_hairpins_energies[str(k)] = (delta_h, delta_s)
 
     return special_hairpins_energies
+
+
+# ---------- Pseudoknots ----------
+
+# typed extractors
+def get_float(node, key: str, default: float) -> float:
+    return float(node.get(key, default))
+
+def get_int(node, key: str, default: int) -> int:
+    return int(node.get(key, default))
+
+def parse_bigram_float_map(node, key: str) -> Dict[Tuple[str,str], float]:
+    out = {}
+    raw = node.get(key, {}) or {}
+    for k, v in raw.items():
+        if isinstance(k, str) and len(k) == 2:
+            out[(k[0], k[1])] = float(v)
+    return out
+
+def parse_coax_pairs_map(node, key: str) -> Dict[Tuple[str,str], float]:
+    out = {}
+    raw = node.get(key, {}) or {}
+    for k, v in raw.items():
+        if isinstance(k, str) and "|" in k:
+            a, b = k.split("|", 1)
+            out[(a.strip(), b.strip())] = float(v)
+    return out
+
+def parse_int_float_map(node, key: str) -> Dict[int, float]:
+    out = {}
+    raw = node.get(key, {}) or {}
+    for k, v in raw.items():
+        try:
+            out[int(k)] = float(v)
+        except Exception:
+            pass
+    return out
