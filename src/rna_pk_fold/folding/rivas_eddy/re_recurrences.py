@@ -7,14 +7,13 @@ from typing import Iterator, Tuple, Dict, Optional, Any, Callable
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.rivas_eddy.re_fold_state import RivasEddyFoldState
 from rna_pk_fold.folding.rivas_eddy.re_back_pointer import RivasEddyBackPointer, RivasEddyBacktrackOp
-
 from rna_pk_fold.folding.rivas_eddy.is2_bridges import IS2_outer, IS2_outer_yhx
-from rna_pk_fold.folding.rivas_eddy.dangles import dangle_hole_L, dangle_hole_R, dangle_outer_L, dangle_outer_R
-from rna_pk_fold.folding.rivas_eddy.coax import coax_pack
+from rna_pk_fold.folding.rivas_eddy.iterators import (iter_spans, iter_holes, iter_complementary_tuples,
+                                                      iter_inner_holes)
 from rna_pk_fold.folding.rivas_eddy.matrix_accessors import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
                                                              whx_collapse_with, zhx_collapse_with)
-from rna_pk_fold.folding.rivas_eddy.penalties import short_hole_penalty
-from rna_pk_fold.folding.rivas_eddy.iterators import iter_spans, iter_holes, iter_complementary_tuples, iter_inner_holes
+from rna_pk_fold.energies.pk_energy_ops import (dangle_hole_L, dangle_hole_R, dangle_outer_L, dangle_outer_R,
+                                                coax_pack, short_hole_penalty)
 
 
 def take_best(
