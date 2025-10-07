@@ -1129,7 +1129,7 @@ def costs_from_vienna_like(tbl: Dict[str, Any]) -> PseudoknotEnergies:
         "mismatch_coax_scale","mismatch_coax_bonus",
         "coax_min_helix_len","coax_scale_oo","coax_scale_oi","coax_scale_io",
         "P_tilde_out","P_tilde_hole","Q_tilde_out","Q_tilde_hole",
-        "M_tilde_yhx","M_tilde_vhx","M_tilde_whx"
+        "L_tilde", "R_tilde", "M_tilde_yhx","M_tilde_vhx","M_tilde_whx"
     ]:
         if k in tbl: d[k] = tbl[k]
 
