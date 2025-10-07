@@ -8,7 +8,7 @@ from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
-from rna_pk_fold.folding.eddy_rivas.is2_bridges import IS2_outer, IS2_outer_yhx
+from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
 from rna_pk_fold.utils.iter_utils import iter_spans, iter_holes, iter_complementary_tuples, iter_inner_holes
 from rna_pk_fold.utils.matrix_utils import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
                                                              whx_collapse_with, zhx_collapse_with)

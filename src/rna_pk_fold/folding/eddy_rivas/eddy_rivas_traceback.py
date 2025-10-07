@@ -1,4 +1,3 @@
-# rna_pk_fold/folding/eddy_rivas/eddy_rivas_traceback.py
 from __future__ import annotations
 from typing import List, Tuple, Dict, Set, Callable, Any
 
