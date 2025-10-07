@@ -2,8 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from rna_pk_fold.folding import ZuckerFoldState, BackPointer, BacktrackOp
-from rna_pk_fold.energies import SecondaryStructureEnergyModelProtocol
+from rna_pk_fold.folding.zucker import ZuckerFoldState, ZuckerBacktrackOp, ZuckerBackPointer
+from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModelProtocol
 from rna_pk_fold.rules import can_pair, MIN_HAIRPIN_UNPAIRED
 from rna_pk_fold.energies.energy_ops import best_multiloop_end_bonus
 
@@ -59,17 +59,17 @@ class ZuckerFoldingEngine:
 
         # Base case already initialized in make_fold_state: WM[i][i] = 0.0
         if i == j:
-            wm_back_ptr.set(i, j, BackPointer(operation=BacktrackOp.NONE))
+            wm_back_ptr.set(i, j, ZuckerBackPointer(operation=ZuckerBacktrackOp.NONE))
             return
 
         best_energy = math.inf
         best_rank = math.inf
-        best_back_ptr = BackPointer()
+        best_back_ptr = ZuckerBackPointer()
 
         # Option 1: Leave Left Base Unpaired. (Rank 1).
         cand_energy = wm_matrix.get(i + 1, j) + unpaired_cost_c
         cand_rank = 1
-        cand_back_ptr = BackPointer(operation=BacktrackOp.UNPAIRED_LEFT)
+        cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_LEFT)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
@@ -77,7 +77,7 @@ class ZuckerFoldingEngine:
         # Option 2: Leave Right Base Unpaired. (Rank 1).
         cand_energy = wm_matrix.get(i, j - 1) + unpaired_cost_c
         cand_rank = 1
-        cand_back_ptr = BackPointer(operation=BacktrackOp.UNPAIRED_RIGHT)
+        cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_RIGHT)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
@@ -97,8 +97,8 @@ class ZuckerFoldingEngine:
             tail = 0.0 if k + 1 > j else wm_matrix.get(k + 1, j)
             cand_energy = branch_cost_b + v_ik + end_bonus + tail
             cand_rank = 0
-            cand_back_ptr = BackPointer(
-                operation=BacktrackOp.MULTI_ATTACH, inner=(i, k), split_k=k, note="attach-helix"
+            cand_back_ptr = ZuckerBackPointer(
+                operation=ZuckerBacktrackOp.MULTI_ATTACH, inner=(i, k), split_k=k, note="attach-helix"
             )
             best_energy, best_rank, best_back_ptr = self._compare_candidates(
                 cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
@@ -114,18 +114,18 @@ class ZuckerFoldingEngine:
         # If endpoints can't pair, V is +inf
         if not can_pair(seq[i], seq[j]):
             v_matrix.set(i, j, math.inf)
-            v_back_ptr.set(i, j, BackPointer())
+            v_back_ptr.set(i, j, ZuckerBackPointer())
             return
 
         best_energy = math.inf
         best_rank = math.inf
-        best_back_ptr = BackPointer()
+        best_back_ptr = ZuckerBackPointer()
 
         # Case 1: Hairpin. (Rank 3)
         delta_g_hp = self.energy_model.hairpin(base_i=i, base_j=j, seq=seq, temp_k=self.config.temp_k)
         cand_energy = delta_g_hp
         cand_rank = 3
-        cand_back_ptr = BackPointer(operation=BacktrackOp.HAIRPIN)
+        cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.HAIRPIN)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
@@ -139,7 +139,7 @@ class ZuckerFoldingEngine:
                 inner = v_matrix.get(i + 1, j - 1)
                 cand_energy = delta_g_stk + inner
                 cand_rank = 0
-                cand_back_ptr = BackPointer(operation=BacktrackOp.STACK, inner=(i + 1, j - 1))
+                cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.STACK, inner=(i + 1, j - 1))
                 best_energy, best_rank, best_back_ptr = self._compare_candidates(
                     cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
                 )
@@ -156,7 +156,7 @@ class ZuckerFoldingEngine:
                     continue
                 cand_energy = delta_g_intl + v_matrix.get(k, l)
                 cand_rank = 1
-                cand_back_ptr = BackPointer(operation=BacktrackOp.INTERNAL, inner=(k, l))
+                cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.INTERNAL, inner=(k, l))
                 best_energy, best_rank, best_back_ptr = self._compare_candidates(
                     cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
                 )
@@ -166,8 +166,8 @@ class ZuckerFoldingEngine:
             wm_inside = state.wm_matrix.get(i + 1, j - 1)
             cand_energy = multi_close_a + wm_inside
             cand_rank = 2
-            cand_back_ptr = BackPointer(
-                operation=BacktrackOp.MULTI_ATTACH, inner=(i + 1, j - 1), note="close-multiloop"
+            cand_back_ptr = ZuckerBackPointer(
+                operation=ZuckerBacktrackOp.MULTI_ATTACH, inner=(i + 1, j - 1), note="close-multiloop"
             )
             best_energy, best_rank, best_back_ptr = self._compare_candidates(
                 cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
@@ -192,17 +192,17 @@ class ZuckerFoldingEngine:
         # Base case: single cell (i==j) -> nothing to pair; cost 0 by convention
         if i == j:
             w_matrix.set(i, j, 0.0)
-            w_back_ptr.set(i, j, BackPointer(operation=BacktrackOp.NONE))
+            w_back_ptr.set(i, j, ZuckerBackPointer(operation=ZuckerBacktrackOp.NONE))
             return
 
         best_energy = math.inf
         best_rank = math.inf
-        best_back_ptr = BackPointer()
+        best_back_ptr = ZuckerBackPointer()
 
         # Case 1: Leave `i` Unpaired. (Rank 2).
         cand_energy = w_matrix.get(i + 1, j)
         cand_rank = 2
-        cand_back_ptr = BackPointer(operation=BacktrackOp.UNPAIRED_LEFT)
+        cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_LEFT)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
@@ -210,7 +210,7 @@ class ZuckerFoldingEngine:
         # Case 2: Leave `j` Unpaired. (Rank 2).
         cand_energy = w_matrix.get(i, j - 1)
         cand_rank = 2
-        cand_back_ptr = BackPointer(operation=BacktrackOp.UNPAIRED_RIGHT)
+        cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_RIGHT)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
@@ -218,7 +218,7 @@ class ZuckerFoldingEngine:
         # Case 3: Take V[i][j]. (Rank 0).
         cand_energy = v_matrix.get(i, j)
         cand_rank = 0
-        cand_back_ptr = BackPointer(operation=BacktrackOp.PAIR)
+        cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.PAIR)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
@@ -227,65 +227,10 @@ class ZuckerFoldingEngine:
         for k in range(i, j):
             cand_energy = w_matrix.get(i, k) + w_matrix.get(k + 1, j)
             cand_rank = 1
-            cand_back_ptr = BackPointer(operation=BacktrackOp.BIFURCATION, split_k=k)
+            cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.BIFURCATION, split_k=k)
             best_energy, best_rank, best_back_ptr = self._compare_candidates(
                 cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
             )
-
-        # ---- Case 5: Minimal H-Type Pseudoknot ----
-        # Pattern: i < a < b < c < d < j with stems (i,c) and (b,j).
-        # Energy:  V[i,c] + V[b,j] + W[i+1, a-1] + W[a, b-1]
-        #          + W[c+1, d-1] + W[d, j-1] + Gw  (pseudoknot penalty)
-        if self.config.enable_pk_h:
-            Gw = getattr(self.energy_model.params, "PK_H_PENALTY", 0.0)
-            v_matrix = state.v_matrix
-            w_matrix = state.w_matrix
-
-            # Light pruning: enumerate c such that V[i,c] is finite; enumerate b such that V[b,j] is finite.
-            # This avoids many hopeless tuples.
-            for c in range(i + 1, j):
-                v_ic = v_matrix.get(i, c)
-                if not math.isfinite(v_ic):
-                    continue
-
-                for b in range(i + 1, j):
-                    if not (i < b < c < j):
-                        continue
-                    v_bj = v_matrix.get(b, j)
-                    if not math.isfinite(v_bj):
-                        continue
-
-                    # Now place 'a' and 'd' to carve the four W-segments:
-                    # [i+1, a-1], [a, b-1], [c+1, d-1], [d, j-1]
-                    # We need i < a <= b (so i+1 <= a <= b), and c < d <= j-1 (so c+1 <= d <= j-1).
-                    for a in range(i + 1, b + 1):
-                        left_outer = 0.0 if a <= i + 1 else w_matrix.get(i + 1, a - 1)
-                        left_inner = 0.0 if a > b - 1 else w_matrix.get(a, b - 1)
-
-                        # Early partial sum pruning (optional):
-                        partial_left = v_ic + v_bj + left_outer + left_inner + Gw
-                        if partial_left >= best_energy:
-                            # no need to try d’s if already worse than best
-                            continue
-
-                        for d in range(c + 1, j):
-                            right_inner = 0.0 if c + 1 > d - 1 else w_matrix.get(c + 1, d - 1)
-                            right_outer = 0.0 if d > j - 1 else w_matrix.get(d, j - 1)
-
-                            cand_energy = partial_left + right_inner + right_outer
-                            cand_rank = 0  # prefer structured solution on ties
-                            cand_back_ptr = BackPointer(
-                                operation=BacktrackOp.PSEUDOKNOT_H,
-                                # the two crossing stems:
-                                inner=(i, c),
-                                inner_2=(b, j),
-                                # the four W sub-intervals to recurse on:
-                                segs=((i + 1, a - 1), (a, b - 1), (c + 1, d - 1), (d, j - 1)),
-                                note="H-type"
-                            )
-                            best_energy, best_rank, best_back_ptr = self._compare_candidates(
-                                cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
-                            )
 
         w_matrix.set(i, j, best_energy)
         w_back_ptr.set(i, j, best_back_ptr)
@@ -294,14 +239,14 @@ class ZuckerFoldingEngine:
     def _compare_candidates(
         cand_energy: float,
         cand_rank: float,
-        cand_back_ptr: BackPointer,
+        cand_back_ptr: ZuckerBackPointer,
         best_energy: float,
         best_rank: float,
-        best_back_ptr: BackPointer,
-    )-> tuple[float, float, BackPointer]:
+        best_back_ptr: ZuckerBackPointer,
+    )-> tuple[float, float, ZuckerBackPointer]:
         """
         Pick the candidate if it has lower energy, or same energy but lower rank.
-        Returns the (energy, rank, backpointer) triple to keep as 'best'.
+        Returns the (energy, rank, ZuckerBackPointer) triple to keep as 'best'.
         """
         if (cand_energy < best_energy) or (cand_energy == best_energy and cand_rank < best_rank):
             return cand_energy, cand_rank, cand_back_ptr

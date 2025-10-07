@@ -34,7 +34,6 @@ class ZuckerBacktrackOp(Enum):
     MULTI_ATTACH = auto()
     UNPAIRED_LEFT = auto()
     UNPAIRED_RIGHT = auto()
-    PSEUDOKNOT_H = auto()
 
 
 @dataclass(frozen=True, slots=True)

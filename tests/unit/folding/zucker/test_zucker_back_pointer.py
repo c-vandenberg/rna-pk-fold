@@ -1,7 +1,7 @@
 import pytest
 from dataclasses import FrozenInstanceError
 
-from rna_pk_fold.folding.back_pointer import BackPointer, BacktrackOp
+from rna_pk_fold.folding.zucker.zucker_back_pointer import ZuckerBackPointer, ZuckerBacktrackOp
 
 
 def test_backtrackop_members_exist():
@@ -13,11 +13,10 @@ def test_backtrackop_members_exist():
     - Members include NONE, HAIRPIN, BIFURCATION, UNPAIRED_LEFT, PSEUDOKNOT.
     """
     # Spot-check a few members
-    assert BacktrackOp.NONE.name == "NONE"
-    assert BacktrackOp.HAIRPIN.name == "HAIRPIN"
-    assert BacktrackOp.BIFURCATION.name == "BIFURCATION"
-    assert BacktrackOp.UNPAIRED_LEFT.name == "UNPAIRED_LEFT"
-    assert BacktrackOp.PSEUDOKNOT.name == "PSEUDOKNOT"
+    assert ZuckerBacktrackOp.NONE.name == "NONE"
+    assert ZuckerBacktrackOp.HAIRPIN.name == "HAIRPIN"
+    assert ZuckerBacktrackOp.BIFURCATION.name == "BIFURCATION"
+    assert ZuckerBacktrackOp.UNPAIRED_LEFT.name == "UNPAIRED_LEFT"
 
 
 def test_backpointer_defaults_and_fields():
@@ -29,8 +28,8 @@ def test_backpointer_defaults_and_fields():
     - `operation` is `BacktrackOp.NONE`.
     - `split_k`, `inner`, and `note` are `None`.
     """
-    back_ptr = BackPointer()
-    assert back_ptr.operation is BacktrackOp.NONE
+    back_ptr = ZuckerBackPointer()
+    assert back_ptr.operation is ZuckerBacktrackOp.NONE
     assert back_ptr.split_k is None
     assert back_ptr.inner is None
     assert back_ptr.note is None
@@ -46,10 +45,10 @@ def test_backpointer_is_frozen_and_slotted():
     - Adding a new attribute raises (AttributeError or TypeError),
       since CPython may raise either for frozen+slots objects.
     """
-    back_ptr = BackPointer()
+    back_ptr = ZuckerBackPointer()
 
     with pytest.raises(FrozenInstanceError):
-        back_ptr.operation = BacktrackOp.HAIRPIN
+        back_ptr.operation = ZuckerBacktrackOp.HAIRPIN
 
     with pytest.raises((AttributeError, TypeError)):
         setattr(back_ptr, "new_attr", 123)
@@ -63,13 +62,13 @@ def test_backpointer_custom_values():
     --------
     - Fields reflect the provided `operation`, `split_k`, `inner`, and `note`.
     """
-    back_ptr = BackPointer(
-        operation=BacktrackOp.BIFURCATION,
+    back_ptr = ZuckerBackPointer(
+        operation=ZuckerBacktrackOp.BIFURCATION,
         split_k=7,
         inner=(3, 9),
         note="split at k=7",
     )
-    assert back_ptr.operation is BacktrackOp.BIFURCATION
+    assert back_ptr.operation is ZuckerBacktrackOp.BIFURCATION
     assert back_ptr.split_k == 7
     assert back_ptr.inner == (3, 9)
     assert back_ptr.note == "split at k=7"
