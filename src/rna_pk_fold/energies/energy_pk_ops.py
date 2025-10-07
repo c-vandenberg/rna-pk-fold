@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Tuple, Dict, Protocol, Mapping
+from typing import Tuple, Mapping
 
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import EddyRivasFoldingConfig

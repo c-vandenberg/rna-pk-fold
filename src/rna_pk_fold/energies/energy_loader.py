@@ -128,10 +128,10 @@ class SecondaryStructureEnergyLoader:
             M_tilde_whx=get_float(node, "M_tilde_whx", 0.0),
 
             # maps
-            dangle_hole_left=(parse_bigram_float_map(node, "dangle_hole_L") or None),
-            dangle_hole_right=(parse_bigram_float_map(node, "dangle_hole_R") or None),
-            dangle_outer_left=(parse_bigram_float_map(node, "dangle_outer_L") or None),
-            dangle_outer_right=(parse_bigram_float_map(node, "dangle_outer_R") or None),
+            dangle_hole_left=(parse_bigram_float_map(node, "dangle_hole_left") or None),
+            dangle_hole_right=(parse_bigram_float_map(node, "dangle_hole_right") or None),
+            dangle_outer_left=(parse_bigram_float_map(node, "dangle_outer_left") or None),
+            dangle_outer_right=(parse_bigram_float_map(node, "dangle_outer_right") or None),
             coax_pairs=(parse_coax_pairs_map(node, "coax_pairs") or None),
 
             # coax controls
