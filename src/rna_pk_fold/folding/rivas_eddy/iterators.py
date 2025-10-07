@@ -1,11 +1,26 @@
 from typing import Iterator, Tuple
 
+
+def iter_spans(n: int) -> Iterator[Tuple[int, int]]:
+    for s in range(n):
+        for i in range(0, n - s):
+            yield i, i + s
+
+
+def iter_holes(i: int, j: int) -> Iterator[Tuple[int, int]]:
+    max_h = max(0, j - i - 1)
+    for h in range(1, max_h + 1):
+        for k in range(i, j - h):
+            yield k, k + h + 1
+
+
 def iter_complementary_tuples(i: int, j: int) -> Iterator[Tuple[int, int, int]]:
     # i < k ≤ r < l ≤ j
     for r in range(i + 1, j):
         for k in range(i + 1, r + 1):
             for l in range(r + 1, j + 1):
                 yield r, k, l
+
 
 def iter_inner_holes(i: int, j: int, min_hole: int = 0):
     if j - i <= 1:
