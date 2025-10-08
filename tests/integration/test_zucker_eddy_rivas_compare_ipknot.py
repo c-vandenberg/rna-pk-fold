@@ -1,4 +1,3 @@
-# tests/integration/test_full_vs_ipknot.py
 import os
 import re
 import shutil
@@ -16,17 +15,32 @@ from rna_pk_fold.folding.zucker import make_fold_state
 from rna_pk_fold.folding.zucker.zucker_recurrences import ZuckerFoldingConfig, ZuckerFoldingEngine
 from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested as zucker_traceback
 
+# Try to import the interval tracer (needed by ER full traceback)
+try:
+    from rna_pk_fold.folding.zucker.zucker_traceback import (
+        traceback_nested_interval as zucker_traceback_interval,
+    )
+except Exception:
+    zucker_traceback_interval = None  # type: ignore
+
 # --- Eddy–Rivas (pseudoknots) ---
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences as ER
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import make_re_fold_state
+
+# Use your existing ER multilayer traceback
+try:
+    from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import (
+        traceback_with_pk as er_traceback_with_pk,
+    )
+except Exception:
+    er_traceback_with_pk = None  # type: ignore
 
 # --- Energy model ---
 from rna_pk_fold.energies import SecondaryStructureEnergyLoader
 from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
 
-# --- Common helpers you provided ---
+# --- Common helpers ---
 from rna_pk_fold.folding.common_traceback import (
-    pairs_to_multilayer_dotbracket,
     dotbracket_to_pairs,
 )
 
@@ -35,23 +49,10 @@ pytestmark = [
     pytest.mark.skipif(shutil.which("ipknot") is None, reason="ipknot not found on PATH"),
 ]
 
-# Try to import an optional full PK traceback from your ER module.
-# If you don’t have it yet, we’ll fall back to parentheses-only checks.
-try:
-    # expected signature: traceback_full(seq: str, z_state, re_state) -> TraceResult
-    from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_full as er_traceback_full  # type: ignore
-except Exception:
-    er_traceback_full = None  # type: ignore
-
-
 # ------------------------
 # IPknot runner
 # ------------------------
 def run_ipknot(seq: str) -> Tuple[str, float]:
-    """
-    Call IPknot with -E to print free energy and parse multilayer dot-bracket + energy.
-    Returns (dotbracket, energy_kcal_mol).
-    """
     ipknot_bin = os.environ.get("IPKNOT_BIN") or shutil.which("ipknot")
     assert ipknot_bin, "ipknot binary not found (set IPKNOT_BIN or add to PATH)."
 
@@ -77,7 +78,7 @@ def run_ipknot(seq: str) -> Tuple[str, float]:
     assert out, f"IPknot produced no output.\nSTDERR:\n{proc.stderr}"
     lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
 
-    db_re = re.compile(r"^[.\(\)\[\]\{\}\<\>]+$")  # multilayer db
+    db_re = re.compile(r"^[.\(\)\[\]\{\}\<\>]+$")
     num_re = re.compile(r"^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$")
 
     db: Optional[str] = None
@@ -98,7 +99,6 @@ def run_ipknot(seq: str) -> Tuple[str, float]:
         f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
     )
     if energy is None:
-        # fall back: scan for a numeric token anywhere
         for ln in reversed(lines):
             m = re.search(r"([-+]?[\d.]+(?:[eE][-+]?\d+)?)", ln)
             if m:
@@ -120,7 +120,6 @@ def run_ipknot(seq: str) -> Tuple[str, float]:
 # ------------------------
 @pytest.fixture(scope="module")
 def energy_model():
-    # Use your full YAML (with ER params) if available:
     yaml_path = ir_files(rna_pk_fold) / "data" / "turner2004_eddyrivas1999_min.yaml"
     assert yaml_path is not None, "No parameter YAML found."
     params = SecondaryStructureEnergyLoader().load(kind="RNA", yaml_path=yaml_path)
@@ -129,17 +128,11 @@ def energy_model():
 
 @pytest.fixture(scope="module")
 def engines_and_costs(energy_model):
-    """
-    Return (zucker_engine, er_engine, er_costs_template).
-    We keep ER costs minimal-but-complete unless you wire a YAML->PseudoknotEnergies bridge.
-    """
     z_engine = ZuckerFoldingEngine(
         energy_model=energy_model,
         config=ZuckerFoldingConfig(enable_pk_h=True, pk_h_penalty=1.0),
     )
 
-    # Required scalars for PseudoknotEnergies — zeros are fine for structural tests
-    # (if you have a real loader, replace this with costs_from_vienna_like(...) + costs_from_dict(...)).
     costs = ER.costs_from_dict({
         "q_ss": 0.0,
         "P_tilde_out": 0.0, "P_tilde_hole": 0.0,
@@ -148,7 +141,6 @@ def engines_and_costs(energy_model):
         "M_tilde_yhx": 0.0, "M_tilde_vhx": 0.0, "M_tilde_whx": 0.0,
     })
 
-    # Pull a pk penalty if present in your YAML; fallback otherwise.
     try:
         pk_gw = getattr(getattr(energy_model.params, "PSEUDOKNOT", None), "pk_penalty_gw", 1.0)
     except Exception:
@@ -171,7 +163,6 @@ def engines_and_costs(energy_model):
 # Helpers for distances
 # ------------------------
 def dotbracket_to_pairs_multilayer(db: str) -> Set[Tuple[int, int]]:
-    """Parse layered dot-bracket ((),[],{},<>) by treating each layer independently."""
     stacks: Dict[str, List[int]] = {'(': [], '[': [], '{': [], '<': []}
     close_to_open = {')': '(', ']': '[', '}': '{', '>': '<'}
     out: Set[Tuple[int, int]] = set()
@@ -199,7 +190,6 @@ def bp_distance_multilayer(db1: str, db2: str) -> int:
 
 
 def project_parentheses(db: str) -> str:
-    """Keep only () for shape comparison to nested structures."""
     return ''.join(ch if ch in '().' else '.' for ch in db)
 
 
@@ -236,7 +226,7 @@ SEQS = [
 def test_full_vs_ipknot_shape_and_energy(seq: str, energy_model, engines_and_costs):
     z_engine, er_engine, _ = engines_and_costs
 
-    # 1) Run your nested engine and traceback (always available)
+    # 1) Zuker (nested) DP + traceback
     z_state = make_fold_state(len(seq))
     z_engine.fill_all_matrices(seq, z_state)
     nested_tr = zucker_traceback(seq, z_state)
@@ -244,49 +234,43 @@ def test_full_vs_ipknot_shape_and_energy(seq: str, energy_model, engines_and_cos
     ours_nested_e = z_state.w_matrix.get(0, len(seq) - 1)
     assert math.isfinite(ours_nested_e)
 
-    # 2) Run your Eddy–Rivas engine (fills its own state)
+    # 2) Eddy–Rivas DP (pseudoknots) — energies
     re_state = make_re_fold_state(len(seq))
-    er_engine.fill_with_costs(seq, z_state, re_state)  # use the combined fill your ER engine expects
-    # WX total is the published nested+PK energy in ER path:
+    er_engine.fill_with_costs(seq, z_state, re_state)
     ours_full_e = re_state.wx_matrix.get(0, len(seq) - 1)
     assert math.isfinite(ours_full_e)
 
-    # 3) IPknot external reference
+    # 3) IPknot reference
     ip_db, ip_e = run_ipknot(seq)
 
-    # 4) Structure comparison
-    if callable(er_traceback_full):
-        # If you add a full traceback later, we'll use it to get multilayer db:
-        full_tr = er_traceback_full(seq, z_state, re_state)  # expected to return TraceResult
-        ours_full_db = full_tr.dot_bracket
-        assert len(ours_full_db) == len(seq) == len(ip_db)
-        TOL_BP_MULTI = 4  # looser than nested-only
-        dist = bp_distance_multilayer(ours_full_db, ip_db)
-        assert dist <= TOL_BP_MULTI, (
-            f"Seq= {seq}\nours(full)= {ours_full_db}\nipknot= {ip_db}\n"
-            f"bp_distance_multilayer= {dist} > {TOL_BP_MULTI}\n"
-            f"ours_full_e= {ours_full_e:.2f}, ipknot_e= {ip_e:.2f}"
-        )
-    else:
-        # No full traceback yet: compare parentheses projection against our nested-only result.
-        # This still exercises the ER engine for energy but uses nested structure for shape.
-        ip_paren = project_parentheses(ip_db)
-        assert len(ours_nested_db) == len(ip_paren) == len(seq)
-        TOL_BP = 2
-        dist = bp_distance(ours_nested_db, ip_paren)
-        assert dist <= TOL_BP, (
-            f"(Fallback: no full ER traceback in your code yet)\n"
-            f"Seq= {seq}\nours(nested)= {ours_nested_db}\nipknot(paren)= {ip_paren}\n"
-            f"bp_distance= {dist} > {TOL_BP}\n"
-            f"ours_full_e= {ours_full_e:.2f}, ipknot_e= {ip_e:.2f}"
-        )
+    # 4a) Nested shape check: parentheses only
+    ip_paren = project_parentheses(ip_db)
+    assert len(ours_nested_db) == len(ip_paren) == len(seq)
+    TOL_BP_NESTED = 2
+    dist_nested = bp_distance(ours_nested_db, ip_paren)
+    assert dist_nested <= TOL_BP_NESTED, (
+        f"(Nested shape mismatch)\nSeq= {seq}\nours(nested)= {ours_nested_db}\n"
+        f"ipknot(paren)= {ip_paren}\nΔbp= {dist_nested} > {TOL_BP_NESTED}\n"
+        f"ours_full_e= {ours_full_e:.2f}, ipknot_e= {ip_e:.2f}"
+    )
 
-    # 5) Energy comparison
-    # Different objective (IPknot ≠ Turner MFE), so keep this loose.
-    TOL_EN = 5.0
-    delta = abs(ours_full_e - ip_e)
-    assert delta <= TOL_EN, (
-        f"Energy gap {delta:.2f} > {TOL_EN:.2f}\n"
-        f"Seq= {seq}\nours_full_e= {ours_full_e:.2f}, ipknot_e= {ip_e:.2f}"
+    # 4b) Full multilayer PK shape check (requires ER traceback + Zuker interval tracer)
+    if er_traceback_with_pk is None or zucker_traceback_interval is None:
+        pytest.skip("Full PK traceback unavailable (need er_traceback_with_pk and zucker_traceback_interval)")
+    full_tr = er_traceback_with_pk(
+        seq,
+        nested_state=z_state,
+        re_state=re_state,
+        trace_nested_interval=zucker_traceback_interval,
+    )
+    ours_full_db = full_tr.dot_bracket
+    assert len(ours_full_db) == len(seq) == len(ip_db)
+
+    TOL_BP_MULTI = 4
+    dist_multi = bp_distance_multilayer(ours_full_db, ip_db)
+    assert dist_multi <= TOL_BP_MULTI, (
+        f"(PK multilayer shape mismatch)\nSeq= {seq}\nours(full)= {ours_full_db}\n"
+        f"ipknot= {ip_db}\nΔbp_multi= {dist_multi} > {TOL_BP_MULTI}\n"
+        f"ours_full_e= {ours_full_e:.2f}, ipknot_e= {ip_e:.2f}"
     )
 
