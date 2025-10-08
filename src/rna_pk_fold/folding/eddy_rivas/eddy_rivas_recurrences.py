@@ -105,7 +105,7 @@ class EddyRivasFoldingEngine:
         self._seed_from_nested(nested, re)
         can_pair_mask = self._build_can_pair_mask(seq)
 
-        self._dp_whx(seq, re, q, Gwh_whx)
+        self._dp_whx(seq, re, q, Gwh_whx, can_pair_mask)
         self._dp_vhx(seq, re, q, Gwi, P_hole, L_, R_, Q_hole, M_vhx, M_whx, can_pair_mask)
         self._dp_zhx(seq, re, q, Gwi, P_hole, Q_hole, can_pair_mask)
         self._dp_yhx(seq, re, q, Gwi, P_out, Q_out, M_yhx, M_whx, can_pair_mask)
@@ -138,9 +138,9 @@ class EddyRivasFoldingEngine:
                 re.wxi_matrix.set(i, j, base_w)
 
     # --------- WHX ---------
-    def _dp_whx(self, seq: str, re: EddyRivasFoldState, q: float, Gwh_whx: float) -> None:
+    def _dp_whx(self, seq: str, re: EddyRivasFoldState, q: float, Gwh_whx: float, can_pair_mask) -> None:
         for i, j in iter_spans(re.n):
-            for k, l in iter_holes(i, j):
+            for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 best = math.inf
                 best_bp: Optional[EddyRivasBackPointer] = None
                 BP = make_bp(i, j, k, l)
@@ -823,9 +823,6 @@ class EddyRivasFoldingEngine:
 
                 L_u = whx_collapse_with(re, i, r, k, r, charged=False)
                 R_u = whx_collapse_with(re, k + 1, j, r + 1, l, charged=False)
-
-                if not math.isfinite(L_u) or not math.isfinite(R_u):
-                    print(f"  WARNING: Infinite gap matrix value at (r={r},k={k},l={l}): L_u={L_u}, R_u={R_u}")
 
                 if not math.isfinite(L_u) or not math.isfinite(R_u):
                     continue
