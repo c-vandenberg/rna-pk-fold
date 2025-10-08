@@ -28,3 +28,22 @@ def iter_inner_holes(i: int, j: int, min_hole: int = 0):
     for k in range(i, j):
         for l in range(k + 1 + min_hole, j + 1):
             yield k, l
+
+
+def iter_holes_pairable(i: int, j: int, can_pair_mask) -> Iterator[Tuple[int, int]]:
+    """Yield (k,l) with i <= k < l <= j and can_pair_mask[k][l] is True."""
+    max_h = max(0, j - i - 1)
+    for h in range(1, max_h + 1):
+        for k in range(i, j - h):
+            l = k + h + 1
+            if can_pair_mask[k][l]:
+                yield k, l
+
+
+def iter_complementary_tuples_pairable(i: int, j: int, can_pair_mask) -> Iterator[Tuple[int, int, int]]:
+    """Yield (r,k,l) with i < k <= r < l <= j and can_pair_mask[k][l] is True."""
+    for r in range(i + 1, j):
+        for k in range(i + 1, r + 1):
+            for l in range(r + 1, j + 1):
+                if can_pair_mask[k][l]:
+                    yield r, k, l

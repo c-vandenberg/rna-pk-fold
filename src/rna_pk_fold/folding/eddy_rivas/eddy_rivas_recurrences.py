@@ -9,7 +9,8 @@ from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
-from rna_pk_fold.utils.iter_utils import iter_spans, iter_holes, iter_complementary_tuples, iter_inner_holes
+from rna_pk_fold.utils.iter_utils import (iter_spans, iter_holes, iter_complementary_tuples, iter_inner_holes,
+                                          iter_holes_pairable, iter_complementary_tuples_pairable)
 from rna_pk_fold.utils.matrix_utils import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
                                                              whx_collapse_with, zhx_collapse_with)
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
@@ -46,7 +47,9 @@ class EddyRivasFoldingConfig:
     enable_coax_mismatch: bool = False  # allow |k-r|==1 seam as "mismatch coax"
     enable_join_drift: bool = False  # enable slight hole drift at join
     drift_radius: int = 0  # how far to drift (0 = off)
+    enable_is2: bool = True
     pk_penalty_gw: float = 1.0 # Gw: pseudoknot introduction penalty (kcal/mol)
+    max_hole_width: int = 0
     min_hole_width: int = 0  # 0 = identical behavior; 1+ prunes zero/narrow holes
     min_outer_left: int = 0  # minimal length of [i..r]
     min_outer_right: int = 0  # minimal length of [r+1..j]
@@ -61,6 +64,17 @@ class EddyRivasFoldingConfig:
 class EddyRivasFoldingEngine:
     def __init__(self, config: EddyRivasFoldingConfig):
         self.cfg = config
+
+    @staticmethod
+    def _build_can_pair_mask(seq: str) -> list[list[bool]]:
+        from rna_pk_fold.rules.constraints import can_pair
+        n = len(seq)
+        mask = [[False] * n for _ in range(n)]
+        for k in range(n):
+            bk = seq[k]
+            for l in range(k + 1, n):
+                mask[k][l] = can_pair(bk, seq[l])
+        return mask
 
     def fill_with_costs(self, seq: str, nested: ZuckerFoldState, re: EddyRivasFoldState) -> None:
         n = re.n
@@ -85,16 +99,17 @@ class EddyRivasFoldingEngine:
         M_whx = getattr(tables, "M_tilde_whx", getattr(self.cfg.costs, "M_tilde_whx", 0.0))
 
         self._seed_from_nested(nested, re)
+        can_pair_mask = self._build_can_pair_mask(seq)
 
         self._dp_whx(seq, re, q, Gwh_whx)
-        self._dp_vhx(seq, re, q, Gwi, P_hole, L_, R_, Q_hole, M_vhx, M_whx)
-        self._dp_zhx(seq, re, q, Gwi, P_hole, Q_hole)
-        self._dp_yhx(seq, re, q, Gwi, P_out, Q_out, M_yhx, M_whx)
+        self._dp_vhx(seq, re, q, Gwi, P_hole, L_, R_, Q_hole, M_vhx, M_whx, can_pair_mask)
+        self._dp_zhx(seq, re, q, Gwi, P_hole, Q_hole, can_pair_mask)
+        self._dp_yhx(seq, re, q, Gwi, P_out, Q_out, M_yhx, M_whx, can_pair_mask)
 
-        self._compose_wx(seq, re, Gw, Gwh_wx)
+        self._compose_wx(seq, re, Gw, Gwh_wx, can_pair_mask)
         self._publish_wx(re)
 
-        self._compose_vx(seq, re, Gw, g)
+        self._compose_vx(seq, re, Gw, g, can_pair_mask)
         self._publish_vx(re)
 
     # --------- Seeding ---------
@@ -269,105 +284,105 @@ class EddyRivasFoldingEngine:
 
     # --------- VHX ---------
     def _dp_vhx(
-        self,
-        seq: str,
-        re: EddyRivasFoldState,
-        q: float,
-        Gwi: float,
-        P_hole: float,
-        L_: float,
-        R_: float,
-        Q_hole: float,
-        M_vhx: float,
-        M_whx: float,
+            self,
+            seq: str,
+            re: EddyRivasFoldState,
+            q: float,
+            Gwi: float,
+            P_hole: float,
+            L_: float,
+            R_: float,
+            Q_hole: float,
+            M_vhx: float,
+            M_whx: float,
+            can_pair_mask: list[list[bool]],
     ) -> None:
+        """
+        VHX: inner-helix context (k,l) inside outer (i,j).
+        Pairability filter on (k,l) + hole width guards.
+        """
         for i, j in iter_spans(re.n):
-            max_h = max(0, j - i - 1)
-            for h in range(1, max_h + 1):
-                for k in range(i, j - h):
-                    l = k + h + 1
-                    best = re.vhx_matrix.get(i, j, k, l)
-                    best_bp: Optional[EddyRivasBackPointer] = None
+            for k, l in iter_holes_pairable(i, j, can_pair_mask):
+                hole_w = (l - k - 1)
+                if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
+                    continue
+                if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
+                    continue
 
-                    # DANGLES
-                    v = re.vhx_matrix.get(i, j, k + 1, l)
-                    cand = P_hole + L_ + v
+                best = re.vhx_matrix.get(i, j, k, l)
+                best_bp: Optional[EddyRivasBackPointer] = None
+
+                # DANGLES
+                v = re.vhx_matrix.get(i, j, k + 1, l)
+                cand = P_hole + L_ + v
+                if cand < best:
+                    best = cand
+                    best_bp = EddyRivasBackPointer(
+                        op=EddyRivasBacktrackOp.RE_VHX_DANGLE_L,
+                        outer=(i, j), hole=(k, l)
+                    )
+
+                v = re.vhx_matrix.get(i, j, k, l - 1)
+                cand = P_hole + R_ + v
+                if cand < best:
+                    best = cand
+                    best_bp = EddyRivasBackPointer(
+                        op=EddyRivasBacktrackOp.RE_VHX_DANGLE_R,
+                        outer=(i, j), hole=(k, l)
+                    )
+
+                v = re.vhx_matrix.get(i, j, k + 1, l - 1)
+                cand = P_hole + L_ + R_ + v
+                if cand < best:
+                    best = cand
+                    best_bp = EddyRivasBackPointer(
+                        op=EddyRivasBacktrackOp.RE_VHX_DANGLE_LR,
+                        outer=(i, j), hole=(k, l)
+                    )
+
+                # SS from ZHX
+                v_zhx = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, l)
+                cand = Q_hole + v_zhx
+                if cand < best:
+                    best = cand
+                    best_bp = EddyRivasBackPointer(
+                        op=EddyRivasBacktrackOp.RE_VHX_SS_LEFT,
+                        outer=(i, j), hole=(k, l)
+                    )
+                elif (cand == best and isinstance(best_bp, EddyRivasBackPointer) and
+                      best_bp.op in (EddyRivasBacktrackOp.RE_VHX_SS_LEFT,
+                                     EddyRivasBacktrackOp.RE_VHX_SS_RIGHT)):
+                    best_bp = EddyRivasBackPointer(
+                        op=EddyRivasBacktrackOp.RE_VHX_SS_RIGHT,
+                        outer=(i, j), hole=(k, l)
+                    )
+
+                # SPLIT LEFT
+                for r in range(i, k):
+                    left = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, r, l)
+                    right = wxI(re, r + 1, k)
+                    cand = left + right
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(
-                            op=EddyRivasBacktrackOp.RE_VHX_DANGLE_L,
-                            outer=(i, j),
-                            hole=(k, l)
+                            op=EddyRivasBacktrackOp.RE_VHX_SPLIT_LEFT_ZHX_WX,
+                            outer=(i, j), hole=(k, l), split=r
                         )
 
-                    v = re.vhx_matrix.get(i, j, k, l - 1)
-                    cand = P_hole + R_ + v
+                # SPLIT RIGHT
+                for s2 in range(l + 1, j + 1):
+                    left = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, s2)
+                    right = wxI(re, l, s2 - 1)
+                    cand = left + right
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(
-                            op=EddyRivasBacktrackOp.RE_VHX_DANGLE_R,
-                            outer=(i, j),
-                            hole=(k, l)
+                            op=EddyRivasBacktrackOp.RE_VHX_SPLIT_RIGHT_ZHX_WX,
+                            outer=(i, j), hole=(k, l), split=s2
                         )
 
-                    v = re.vhx_matrix.get(i, j, k + 1, l - 1)
-                    cand = P_hole + L_ + R_ + v
-                    if cand < best:
-                        best = cand
-                        best_bp = EddyRivasBackPointer(
-                            op=EddyRivasBacktrackOp.RE_VHX_DANGLE_LR,
-                            outer=(i, j),
-                            hole=(k, l)
-                        )
-
-                    # SS from ZHX
-                    v_zhx = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, l)
-                    cand = Q_hole + v_zhx
-                    if cand < best:
-                        best = cand
-                        best_bp = EddyRivasBackPointer(
-                            op=EddyRivasBacktrackOp.RE_VHX_SS_LEFT,
-                            outer=(i, j),
-                            hole=(k, l)
-                        )
-                    elif (cand == best and isinstance(best_bp, EddyRivasBackPointer) and
-                          best_bp.op in (EddyRivasBacktrackOp.RE_VHX_SS_LEFT,
-                                         EddyRivasBacktrackOp.RE_VHX_SS_RIGHT)):
-                        best_bp = EddyRivasBackPointer(
-                            op=EddyRivasBacktrackOp.RE_VHX_SS_RIGHT,
-                            outer=(i, j),
-                            hole=(k, l)
-                        )
-
-                    # SPLIT LEFT
-                    for r in range(i, k):
-                        left = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, r, l)
-                        right = wxI(re, r + 1, k)
-                        cand = left + right
-                        if cand < best:
-                            best = cand
-                            best_bp = EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_VHX_SPLIT_LEFT_ZHX_WX,
-                                outer=(i, j),
-                                hole=(k, l),
-                                split=r
-                            )
-
-                    # SPLIT RIGHT
-                    for s2 in range(l + 1, j + 1):
-                        left = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, s2)
-                        right = wxI(re, l, s2 - 1)
-                        cand = left + right
-                        if cand < best:
-                            best = cand
-                            best_bp = EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_VHX_SPLIT_RIGHT_ZHX_WX,
-                                outer=(i, j),
-                                hole=(k, l),
-                                split=s2
-                            )
-
-                    # IS2 + zhx(r,s2:k,l)
+                # IS2 + zhx(r,s2:k,l)  (optional, expensive)
+                if getattr(self.cfg, "enable_is2", True):
                     for r in range(i, k + 1):
                         for s2 in range(l, j + 1):
                             if r <= k and l <= s2 and r <= s2:
@@ -377,49 +392,56 @@ class EddyRivasFoldingEngine:
                                     best = cand
                                     best_bp = EddyRivasBackPointer(
                                         op=EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX,
-                                        outer=(i, j),
-                                        hole=(k, l),
-                                        bridge=(r, s2)
+                                        outer=(i, j), hole=(k, l), bridge=(r, s2)
                                     )
 
-                    # CLOSE_BOTH
-                    close = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k - 1, l + 1)
-                    if math.isfinite(close):
-                        cand = 2.0 * P_hole + M_vhx + close + Gwi + M_whx
-                        if cand < best:
-                            best = cand
-                            best_bp = EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_VHX_CLOSE_BOTH,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-
-                    # WRAP via WHX
-                    wrap = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k, l)
-                    cand = P_hole + M_vhx + wrap + Gwi + M_whx
+                # CLOSE_BOTH
+                close = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k - 1, l + 1)
+                if math.isfinite(close):
+                    cand = 2.0 * P_hole + M_vhx + close + Gwi + M_whx
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(
-                            op=EddyRivasBacktrackOp.RE_VHX_WRAP_WHX,
-                            outer=(i, j),
-                            hole=(k, l)
+                            op=EddyRivasBacktrackOp.RE_VHX_CLOSE_BOTH,
+                            outer=(i, j), hole=(k, l)
                         )
 
-                    re.vhx_matrix.set(i, j, k, l, best)
-                    re.vhx_back_ptr.set(i, j, k, l, best_bp)
+                # WRAP via WHX
+                wrap = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i + 1, j - 1, k, l)
+                cand = P_hole + M_vhx + wrap + Gwi + M_whx
+                if cand < best:
+                    best = cand
+                    best_bp = EddyRivasBackPointer(
+                        op=EddyRivasBacktrackOp.RE_VHX_WRAP_WHX,
+                        outer=(i, j), hole=(k, l)
+                    )
+
+                re.vhx_matrix.set(i, j, k, l, best)
+                re.vhx_back_ptr.set(i, j, k, l, best_bp)
 
     # --------- ZHX ---------
     def _dp_zhx(
-        self,
-        seq: str,
-        re: EddyRivasFoldState,
-        q: float,
-        Gwi: float,
-        P_hole: float,
-        Q_hole: float,
+            self,
+            seq: str,
+            re: EddyRivasFoldState,
+            q: float,
+            Gwi: float,
+            P_hole: float,
+            Q_hole: float,
+            can_pair_mask: list[list[bool]],
     ) -> None:
+        """
+        ZHX: inner-helix-anchored context for the outer stem (i,j) around hole (k,l).
+        Pairability filter on (k,l) + hole width guards.
+        """
         for i, j in iter_spans(re.n):
-            for k, l in iter_holes(i, j):
+            for k, l in iter_holes_pairable(i, j, can_pair_mask):
+                hole_w = (l - k - 1)
+                if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
+                    continue
+                if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
+                    continue
+
                 best = math.inf
                 best_bp: Optional[EddyRivasBackPointer] = None
 
@@ -431,8 +453,7 @@ class EddyRivasFoldingEngine:
                         best, best_bp, cand,
                         lambda: EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_ZHX_FROM_VHX,
-                            outer=(i, j),
-                            hole=(k, l)
+                            outer=(i, j), hole=(k, l)
                         )
                     )
 
@@ -446,8 +467,7 @@ class EddyRivasFoldingEngine:
                         best, best_bp, cand,
                         lambda: EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_ZHX_DANGLE_LR,
-                            outer=(i, j),
-                            hole=(k, l)
+                            outer=(i, j), hole=(k, l)
                         )
                     )
 
@@ -460,8 +480,7 @@ class EddyRivasFoldingEngine:
                         best, best_bp, cand,
                         lambda: EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_ZHX_DANGLE_R,
-                            outer=(i, j),
-                            hole=(k, l)
+                            outer=(i, j), hole=(k, l)
                         )
                     )
 
@@ -474,8 +493,7 @@ class EddyRivasFoldingEngine:
                         best, best_bp, cand,
                         lambda: EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_ZHX_DANGLE_L,
-                            outer=(i, j),
-                            hole=(k, l)
+                            outer=(i, j), hole=(k, l)
                         )
                     )
 
@@ -487,8 +505,7 @@ class EddyRivasFoldingEngine:
                         best, best_bp, cand,
                         lambda: EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_ZHX_SS_LEFT,
-                            outer=(i, j),
-                            hole=(k, l)
+                            outer=(i, j), hole=(k, l)
                         )
                     )
 
@@ -500,16 +517,14 @@ class EddyRivasFoldingEngine:
                         best = cand
                         best_bp = EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_ZHX_SS_RIGHT,
-                            outer=(i, j),
-                            hole=(k, l)
+                            outer=(i, j), hole=(k, l)
                         )
                     elif (cand == best and isinstance(best_bp, EddyRivasBackPointer) and
                           best_bp.op in (EddyRivasBacktrackOp.RE_ZHX_SS_LEFT,
                                          EddyRivasBacktrackOp.RE_ZHX_SS_RIGHT)):
                         best_bp = EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_ZHX_SS_RIGHT,
-                            outer=(i, j),
-                            hole=(k, l)
+                            outer=(i, j), hole=(k, l)
                         )
 
                 # SPLITS
@@ -522,9 +537,7 @@ class EddyRivasFoldingEngine:
                             best, best_bp, cand,
                             lambda: EddyRivasBackPointer(
                                 op=EddyRivasBacktrackOp.RE_ZHX_SPLIT_LEFT_ZHX_WX,
-                                outer=(i, j),
-                                hole=(k, l),
-                                split=r
+                                outer=(i, j), hole=(k, l), split=r
                             )
                         )
 
@@ -537,228 +550,219 @@ class EddyRivasFoldingEngine:
                             best, best_bp, cand,
                             lambda: EddyRivasBackPointer(
                                 op=EddyRivasBacktrackOp.RE_ZHX_SPLIT_RIGHT_ZHX_WX,
-                                outer=(i, j),
-                                hole=(k, l),
-                                split=s2
+                                outer=(i, j), hole=(k, l), split=s2
                             )
                         )
 
-                # IS2 + vhx(r,s2:k,l)
-                for r in range(i, k + 1):
-                    for s2 in range(l, j + 1):
-                        if r <= s2:
-                            inner = re.vhx_matrix.get(r, s2, k, l)
-                            if math.isfinite(inner):
-                                bridge = IS2_outer(seq, self.cfg.tables, i, j, r, s2)
-                                cand = bridge + inner
-                                best, best_bp = take_best(
-                                    best, best_bp, cand,
-                                    lambda: EddyRivasBackPointer(
-                                        op=EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX,
-                                        outer=(i, j),
-                                        hole=(k, l),
-                                        bridge=(r, s2)
+                # IS2 + vhx(r,s2:k,l)  (optional, expensive)
+                if getattr(self.cfg, "enable_is2", True):
+                    for r in range(i, k + 1):
+                        for s2 in range(l, j + 1):
+                            if r <= s2:
+                                inner = re.vhx_matrix.get(r, s2, k, l)
+                                if math.isfinite(inner):
+                                    bridge = IS2_outer(seq, self.cfg.tables, i, j, r, s2)
+                                    cand = bridge + inner
+                                    best, best_bp = take_best(
+                                        best, best_bp, cand,
+                                        lambda: EddyRivasBackPointer(
+                                            op=EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX,
+                                            outer=(i, j), hole=(k, l), bridge=(r, s2)
+                                        )
                                     )
-                                )
 
                 re.zhx_matrix.set(i, j, k, l, best)
                 re.zhx_back_ptr.set(i, j, k, l, best_bp)
 
     # --------- YHX ---------
     def _dp_yhx(
-        self,
-        seq: str,
-        re: EddyRivasFoldState,
-        q: float,
-        Gwi: float,
-        P_out: float,
-        Q_out: float,
-        M_yhx: float,
-        M_whx: float,
+            self,
+            seq: str,
+            re: EddyRivasFoldState,
+            q: float,
+            Gwi: float,
+            P_out: float,
+            Q_out: float,
+            M_yhx: float,
+            M_whx: float,
+            can_pair_mask: list[list[bool]],
     ) -> None:
+        """
+        YHX: outer helix context around an inner (k,l) helix.
+        Now iterates only pairable (k,l) and respects min/max hole width.
+        """
         for i, j in iter_spans(re.n):
-            max_h = max(0, j - i - 1)
-            for h in range(1, max_h + 1):
-                for k in range(i, j - h):
-                    l = k + h + 1
-                    best = math.inf
-                    best_bp: Optional[EddyRivasBackPointer] = None
+            for k, l in iter_holes_pairable(i, j, can_pair_mask):
+                hole_w = (l - k - 1)
+                if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
+                    continue
+                if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
+                    continue
 
-                    # Outer dangle L
-                    v = re.vhx_matrix.get(i + 1, j, k, l)
-                    if math.isfinite(v):
-                        Lo = dangle_outer_left(seq, i, self.cfg.costs)
-                        cand = Lo + P_out + v + Gwi
+                best = math.inf
+                best_bp: Optional[EddyRivasBackPointer] = None
+
+                # Outer dangle L
+                v = re.vhx_matrix.get(i + 1, j, k, l)
+                if math.isfinite(v):
+                    Lo = dangle_outer_left(seq, i, self.cfg.costs)
+                    cand = Lo + P_out + v + Gwi
+                    best, best_bp = take_best(
+                        best, best_bp, cand,
+                        lambda: EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_DANGLE_L,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    )
+
+                # Outer dangle R
+                v = re.vhx_matrix.get(i, j - 1, k, l)
+                if math.isfinite(v):
+                    Ro = dangle_outer_right(seq, j, self.cfg.costs)
+                    cand = Ro + P_out + v + Gwi
+                    best, best_bp = take_best(
+                        best, best_bp, cand,
+                        lambda: EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_DANGLE_R,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    )
+
+                # Outer dangle LR
+                v = re.vhx_matrix.get(i + 1, j - 1, k, l)
+                if math.isfinite(v):
+                    Lo = dangle_outer_left(seq, i, self.cfg.costs)
+                    Ro = dangle_outer_right(seq, j, self.cfg.costs)
+                    cand = Lo + Ro + P_out + v + Gwi
+                    best, best_bp = take_best(
+                        best, best_bp, cand,
+                        lambda: EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_DANGLE_LR,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    )
+
+                # SS trims: Left
+                v = re.yhx_matrix.get(i + 1, j, k, l)
+                if math.isfinite(v):
+                    cand = Q_out + v
+                    best, best_bp = take_best(
+                        best, best_bp, cand,
+                        lambda: EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_SS_LEFT,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    )
+
+                # SS trims: Right (flip on tie)
+                v = re.yhx_matrix.get(i, j - 1, k, l)
+                if math.isfinite(v):
+                    cand = Q_out + v
+                    if cand < best:
+                        best = cand
+                        best_bp = EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_SS_RIGHT,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    elif (cand == best and isinstance(best_bp, EddyRivasBackPointer) and
+                          best_bp.op in (EddyRivasBacktrackOp.RE_YHX_SS_LEFT,
+                                         EddyRivasBacktrackOp.RE_YHX_SS_RIGHT)):
+                        best_bp = EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_SS_RIGHT,
+                            outer=(i, j), hole=(k, l)
+                        )
+
+                # SS both sides
+                v = re.yhx_matrix.get(i + 1, j - 1, k, l)
+                if math.isfinite(v):
+                    cand = 2.0 * Q_out + v
+                    best, best_bp = take_best(
+                        best, best_bp, cand,
+                        lambda: EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_SS_BOTH,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    )
+
+                # Wrap via WHX(i,j:k-1,l+1)
+                v = re.whx_matrix.get(i, j, k - 1, l + 1)
+                if math.isfinite(v):
+                    cand = P_out + M_yhx + M_whx + v + Gwi
+                    best, best_bp = take_best(
+                        best, best_bp, cand,
+                        lambda: EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    )
+
+                # Wrap + outer dangles
+                v = re.whx_matrix.get(i + 1, j, k - 1, l + 1)
+                if math.isfinite(v):
+                    Lo = dangle_outer_left(seq, i, self.cfg.costs)
+                    cand = Lo + P_out + M_yhx + M_whx + v + Gwi
+                    best, best_bp = take_best(
+                        best, best_bp, cand,
+                        lambda: EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    )
+
+                v = re.whx_matrix.get(i, j - 1, k - 1, l + 1)
+                if math.isfinite(v):
+                    Ro = dangle_outer_right(seq, j, self.cfg.costs)
+                    cand = Ro + P_out + M_yhx + M_whx + v + Gwi
+                    best, best_bp = take_best(
+                        best, best_bp, cand,
+                        lambda: EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    )
+
+                v = re.whx_matrix.get(i + 1, j - 1, k - 1, l + 1)
+                if math.isfinite(v):
+                    Lo = dangle_outer_left(seq, i, self.cfg.costs)
+                    Ro = dangle_outer_right(seq, j, self.cfg.costs)
+                    cand = Lo + Ro + P_out + M_yhx + M_whx + v + Gwi
+                    best, best_bp = take_best(
+                        best, best_bp, cand,
+                        lambda: EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR,
+                            outer=(i, j), hole=(k, l)
+                        )
+                    )
+
+                # Outer splits with WX
+                for r in range(i, j):
+                    left = re.yhx_matrix.get(i, r, k, l)
+                    right = wxI(re, r + 1, j)
+                    if math.isfinite(left) and math.isfinite(right):
+                        cand = left + right
                         best, best_bp = take_best(
                             best, best_bp, cand,
                             lambda: EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_DANGLE_L,
-                                outer=(i, j),
-                                hole=(k, l)
+                                op=EddyRivasBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX,
+                                outer=(i, j), hole=(k, l), split=r
                             )
                         )
 
-                    # Outer dangle R
-                    v = re.vhx_matrix.get(i, j - 1, k, l)
-                    if math.isfinite(v):
-                        Ro = dangle_outer_right(seq, j, self.cfg.costs)
-                        cand = Ro + P_out + v + Gwi
+                for s2 in range(i, j):
+                    left = wxI(re, i, s2)
+                    right = re.yhx_matrix.get(s2 + 1, j, k, l)
+                    if math.isfinite(left) and math.isfinite(right):
+                        cand = left + right
                         best, best_bp = take_best(
                             best, best_bp, cand,
                             lambda: EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_DANGLE_R,
-                                outer=(i, j),
-                                hole=(k, l)
+                                op=EddyRivasBacktrackOp.RE_YHX_SPLIT_RIGHT_WX_YHX,
+                                outer=(i, j), hole=(k, l), split=s2
                             )
                         )
 
-                    # Outer dangle LR
-                    v = re.vhx_matrix.get(i + 1, j - 1, k, l)
-                    if math.isfinite(v):
-                        Lo = dangle_outer_left(seq, i, self.cfg.costs)
-                        Ro = dangle_outer_right(seq, j, self.cfg.costs)
-                        cand = Lo + Ro + P_out + v + Gwi
-                        best, best_bp = take_best(
-                            best, best_bp, cand,
-                            lambda: EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_DANGLE_LR,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-                        )
-
-                    # SS trims: Left
-                    v = re.yhx_matrix.get(i + 1, j, k, l)
-                    if math.isfinite(v):
-                        cand = Q_out + v
-                        best, best_bp = take_best(
-                            best, best_bp, cand,
-                            lambda: EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_SS_LEFT,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-                        )
-
-                    # SS trims: Right (flip on tie)
-                    v = re.yhx_matrix.get(i, j - 1, k, l)
-                    if math.isfinite(v):
-                        cand = Q_out + v
-                        if cand < best:
-                            best = cand
-                            best_bp = EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_SS_RIGHT,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-                        elif (cand == best and isinstance(best_bp, EddyRivasBackPointer) and
-                              best_bp.op in (EddyRivasBacktrackOp.RE_YHX_SS_LEFT,
-                                             EddyRivasBacktrackOp.RE_YHX_SS_RIGHT)):
-                            best_bp = EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_SS_RIGHT,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-
-                    # SS both sides
-                    v = re.yhx_matrix.get(i + 1, j - 1, k, l)
-                    if math.isfinite(v):
-                        cand = 2.0 * Q_out + v
-                        best, best_bp = take_best(
-                            best, best_bp, cand,
-                            lambda: EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_SS_BOTH,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-                        )
-
-                    # Wrap via WHX(i,j:k-1,l+1)
-                    v = re.whx_matrix.get(i, j, k - 1, l + 1)
-                    if math.isfinite(v):
-                        cand = P_out + M_yhx + M_whx + v + Gwi
-                        best, best_bp = take_best(
-                            best, best_bp, cand,
-                            lambda: EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-                        )
-
-                    # Wrap + outer dangles
-                    v = re.whx_matrix.get(i + 1, j, k - 1, l + 1)
-                    if math.isfinite(v):
-                        Lo = dangle_outer_left(seq, i, self.cfg.costs)
-                        cand = Lo + P_out + M_yhx + M_whx + v + Gwi
-                        best, best_bp = take_best(
-                            best, best_bp, cand,
-                            lambda: EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-                        )
-
-                    v = re.whx_matrix.get(i, j - 1, k - 1, l + 1)
-                    if math.isfinite(v):
-                        Ro = dangle_outer_right(seq, j, self.cfg.costs)
-                        cand = Ro + P_out + M_yhx + M_whx + v + Gwi
-                        best, best_bp = take_best(
-                            best, best_bp, cand,
-                            lambda: EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-                        )
-
-                    v = re.whx_matrix.get(i + 1, j - 1, k - 1, l + 1)
-                    if math.isfinite(v):
-                        Lo = dangle_outer_left(seq, i, self.cfg.costs)
-                        Ro = dangle_outer_right(seq, j, self.cfg.costs)
-                        cand = Lo + Ro + P_out + M_yhx + M_whx + v + Gwi
-                        best, best_bp = take_best(
-                            best, best_bp, cand,
-                            lambda: EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR,
-                                outer=(i, j),
-                                hole=(k, l)
-                            )
-                        )
-
-                    # Outer splits with WX
-                    for r in range(i, j):
-                        left = re.yhx_matrix.get(i, r, k, l)
-                        right = wxI(re, r + 1, j)
-                        if math.isfinite(left) and math.isfinite(right):
-                            cand = left + right
-                            best, best_bp = take_best(
-                                best, best_bp, cand,
-                                lambda: EddyRivasBackPointer(
-                                    op=EddyRivasBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX,
-                                    outer=(i, j),
-                                    hole=(k, l),
-                                    split=r
-                                )
-                            )
-
-                    for s2 in range(i, j):
-                        left = wxI(re, i, s2)
-                        right = re.yhx_matrix.get(s2 + 1, j, k, l)
-                        if math.isfinite(left) and math.isfinite(right):
-                            cand = left + right
-                            best, best_bp = take_best(
-                                best, best_bp, cand,
-                                lambda: EddyRivasBackPointer(
-                                    op=EddyRivasBacktrackOp.RE_YHX_SPLIT_RIGHT_WX_YHX,
-                                    outer=(i, j),
-                                    hole=(k, l),
-                                    split=s2
-                                )
-                            )
-
-                    # IS2 for YHX + WHX(r2,s2:k,l)
+                # IS2 (optional, expensive)
+                if getattr(self.cfg, "enable_is2", True):
                     for r2 in range(i, k + 1):
                         for s2 in range(l, j + 1):
                             if r2 <= s2:
@@ -770,17 +774,16 @@ class EddyRivasFoldingEngine:
                                         best, best_bp, cand,
                                         lambda: EddyRivasBackPointer(
                                             op=EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX,
-                                            outer=(i, j),
-                                            hole=(k, l),
-                                            bridge=(r2, s2)
+                                            outer=(i, j), hole=(k, l), bridge=(r2, s2)
                                         )
                                     )
 
-                    re.yhx_matrix.set(i, j, k, l, best)
-                    re.yhx_back_ptr.set(i, j, k, l, best_bp)
+                re.yhx_matrix.set(i, j, k, l, best)
+                re.yhx_back_ptr.set(i, j, k, l, best_bp)
 
     # --------- WX Composition & Publish ---------
-    def _compose_wx(self, seq: str, re: EddyRivasFoldState, Gw: float, Gwh_wx: float) -> None:
+    def _compose_wx(self, seq: str, re: EddyRivasFoldState, Gw: float, Gwh_wx: float,
+                    can_pair_mask: list[list[bool]]) -> None:
         """
         Compose WX using anchored holes at the join:
           - Left outer [i, r] uses hole (k, r)
@@ -969,7 +972,8 @@ class EddyRivasFoldingEngine:
 
     # --------- VX Composition & Publish ---------
 
-    def _compose_vx(self, seq: str, re: EddyRivasFoldState, Gw: float, g: float) -> None:
+    def _compose_vx(self, seq: str, re: EddyRivasFoldState, Gw: float, g: float,
+                    can_pair_mask: list[list[bool]]) -> None:
         """
         Compose VX using anchored holes at the join (ZHX side):
           - Left outer [i, r] uses hole (k, r)
