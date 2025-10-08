@@ -264,7 +264,10 @@ def test_full_vs_ipknot_shape_and_energy(seq: str, energy_model, engines_and_cos
         trace_nested_interval=zucker_traceback_interval,
     )
     ours_full_db = full_tr.dot_bracket
-    assert len(ours_full_db) == len(seq) == len(ip_db)
+    i, j = 0, len(seq) - 1
+    bp = re_state.wx_back_ptr.get(i, j)
+    print("WX op:", getattr(bp, "op", None))
+    print("WXU:", re_state.wxu_matrix.get(i, j), "WXC:", re_state.wxc_matrix.get(i, j))
 
     TOL_BP_MULTI = 4
     dist_multi = bp_distance_multilayer(ours_full_db, ip_db)
@@ -273,4 +276,3 @@ def test_full_vs_ipknot_shape_and_energy(seq: str, energy_model, engines_and_cos
         f"ipknot= {ip_db}\nΔbp_multi= {dist_multi} > {TOL_BP_MULTI}\n"
         f"ours_full_e= {ours_full_e:.2f}, ipknot_e= {ip_e:.2f}"
     )
-

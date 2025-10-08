@@ -781,6 +781,12 @@ class EddyRivasFoldingEngine:
 
     # --------- WX Composition & Publish ---------
     def _compose_wx(self, seq: str, re: EddyRivasFoldState, Gw: float, Gwh_wx: float) -> None:
+        """
+        Compose WX using anchored holes at the join:
+          - Left outer [i, r] uses hole (k, r)
+          - Right outer [r+1, j] uses hole (r+1, l)
+        This ensures each gap state's (k,l) lies within its own outer interval.
+        """
         for i, j in iter_spans(re.n):
             best_c = re.wxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
@@ -793,10 +799,11 @@ class EddyRivasFoldingEngine:
                 if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
                     continue
 
-                L_u = whx_collapse_with(re, i, r, k, l, charged=False)
-                R_u = whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
-                L_c = whx_collapse_with(re, i, r, k, l, charged=True)
-                R_c = whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
+                # Anchored holes at the join
+                L_u = whx_collapse_with(re, i, r, k, r, charged=False)
+                R_u = whx_collapse_with(re, r + 1, j, r + 1, l, charged=False)
+                L_c = whx_collapse_with(re, i, r, k, r, charged=True)
+                R_c = whx_collapse_with(re, r + 1, j, r + 1, l, charged=True)
 
                 cap_pen = short_hole_penalty(self.cfg.costs, k, l)
 
@@ -816,9 +823,9 @@ class EddyRivasFoldingEngine:
                         charged=True
                     )
 
-                # yhx + yhx
-                left_y = re.yhx_matrix.get(i, r, k, l)
-                right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
+                # yhx + yhx (anchored)
+                left_y = re.yhx_matrix.get(i, r, k, r)
+                right_y = re.yhx_matrix.get(r + 1, j, r + 1, l)
                 if math.isfinite(left_y) and math.isfinite(right_y):
                     cand_y = Gw + left_y + right_y + cap_pen
                     if cand_y < best_c:
@@ -831,11 +838,11 @@ class EddyRivasFoldingEngine:
                             charged=True
                         )
 
-                # mix: yhx + whx
-                left_y = re.yhx_matrix.get(i, r, k, l)
+                # mix: yhx + whx (anchored)
+                left_y = re.yhx_matrix.get(i, r, k, r)
                 if math.isfinite(left_y):
-                    R_u2 = whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
-                    R_c2 = whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
+                    R_u2 = whx_collapse_with(re, r + 1, j, r + 1, l, charged=False)
+                    R_c2 = whx_collapse_with(re, r + 1, j, r + 1, l, charged=True)
                     if math.isfinite(R_u2):
                         cand2 = Gw + left_y + R_u2 + cap_pen
                         if cand2 < best_c:
@@ -859,11 +866,11 @@ class EddyRivasFoldingEngine:
                                 charged=True
                             )
 
-                # mix: whx + yhx
-                right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
+                # mix: whx + yhx (anchored)
+                right_y = re.yhx_matrix.get(r + 1, j, r + 1, l)
                 if math.isfinite(right_y):
-                    L_u2 = whx_collapse_with(re, i, r, k, l, charged=False)
-                    L_c2 = whx_collapse_with(re, i, r, k, l, charged=True)
+                    L_u2 = whx_collapse_with(re, i, r, k, r, charged=False)
+                    L_c2 = whx_collapse_with(re, i, r, k, r, charged=True)
                     if math.isfinite(L_u2):
                         cand2 = Gw + right_y + L_u2 + cap_pen
                         if cand2 < best_c:
@@ -887,12 +894,12 @@ class EddyRivasFoldingEngine:
                                 charged=True
                             )
 
-                # optional overlap via YHX+YHX
+                # optional overlap via YHX+YHX (anchored on both sides)
                 if self.cfg.enable_wx_overlap and Gwh_wx != 0.0:
                     for (k2, l2) in iter_inner_holes(i, j, min_hole=self.cfg.min_hole_width):
                         for r2 in range(i, j):
-                            left_y = re.yhx_matrix.get(i, r2, k2, l2)
-                            right_y = re.yhx_matrix.get(r2 + 1, j, k2, l2)
+                            left_y = re.yhx_matrix.get(i, r2, k2, r2)
+                            right_y = re.yhx_matrix.get(r2 + 1, j, r2 + 1, l2)
                             if math.isfinite(left_y) and math.isfinite(right_y):
                                 cand_overlap = (
                                     Gwh_wx + left_y + right_y +
@@ -908,7 +915,7 @@ class EddyRivasFoldingEngine:
                                         charged=True
                                     )
 
-                # optional drift at the join
+                # optional drift at the join (right hole drifts; left stays anchored at r)
                 if self.cfg.enable_join_drift and self.cfg.drift_radius > 0:
                     for d in range(1, self.cfg.drift_radius + 1):
                         kR = (l - 1) - d
@@ -918,30 +925,30 @@ class EddyRivasFoldingEngine:
                         if (lR - kR - 1) < self.cfg.min_hole_width:
                             continue
 
-                        R_u_d = whx_collapse_with(re, k + 1, j, kR, lR, charged=False)
-                        R_c_d = whx_collapse_with(re, k + 1, j, kR, lR, charged=True)
+                        R_u_d = whx_collapse_with(re, r + 1, j, r + 1, lR, charged=False)
+                        R_c_d = whx_collapse_with(re, r + 1, j, r + 1, lR, charged=True)
                         drift_pen = d * (self.cfg.costs.join_drift_penalty or self.cfg.costs.q_ss)
-                        if math.isfinite(R_u_d) or math.isfinite(R_c_d):
-                            cand_first_d = Gw + whx_collapse_with(re, i, r, k, l, False) + (
-                                R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen + drift_pen
-                            cand_Lc_d = whx_collapse_with(re, i, r, k, l, True) + (
-                                R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen + drift_pen
-                            cand_Rc_d = whx_collapse_with(re, i, r, k, l, False) + (
-                                R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen + drift_pen
-                            cand_both_d = whx_collapse_with(re, i, r, k, l, True) + (
-                                R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen + drift_pen
 
-                            cand_d = min(cand_first_d, cand_Lc_d, cand_Rc_d, cand_both_d)
-                            if cand_d < best_c:
-                                best_c = cand_d
-                                best_bp = EddyRivasBackPointer(
-                                    op=EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_DRIFT,
-                                    outer=(i, j),
-                                    hole=(k, l),
-                                    split=r,
-                                    drift=d,
-                                    charged=True
-                                )
+                        cand_first_d = Gw + whx_collapse_with(re, i, r, k, r, False) + (
+                            R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen + drift_pen
+                        cand_Lc_d = whx_collapse_with(re, i, r, k, r, True) + (
+                            R_u_d if math.isfinite(R_u_d) else math.inf) + cap_pen + drift_pen
+                        cand_Rc_d = whx_collapse_with(re, i, r, k, r, False) + (
+                            R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen + drift_pen
+                        cand_both_d = whx_collapse_with(re, i, r, k, r, True) + (
+                            R_c_d if math.isfinite(R_c_d) else math.inf) + cap_pen + drift_pen
+
+                        cand_d = min(cand_first_d, cand_Lc_d, cand_Rc_d, cand_both_d)
+                        if cand_d < best_c:
+                            best_c = cand_d
+                            best_bp = EddyRivasBackPointer(
+                                op=EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_DRIFT,
+                                outer=(i, j),
+                                hole=(k, l),
+                                split=r,
+                                drift=d,
+                                charged=True
+                            )
 
             re.wxc_matrix.set(i, j, best_c)
             if best_bp is not None:
@@ -963,6 +970,11 @@ class EddyRivasFoldingEngine:
     # --------- VX Composition & Publish ---------
 
     def _compose_vx(self, seq: str, re: EddyRivasFoldState, Gw: float, g: float) -> None:
+        """
+        Compose VX using anchored holes at the join (ZHX side):
+          - Left outer [i, r] uses hole (k, r)
+          - Right outer [r+1, j] uses hole (r+1, l)
+        """
         for i, j in iter_spans(re.n):
             best_c = re.vxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
@@ -975,10 +987,11 @@ class EddyRivasFoldingEngine:
                 if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
                     continue
 
-                L_u = zhx_collapse_with(re, i, r, k, l, charged=False)
-                R_u = zhx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
-                L_c = zhx_collapse_with(re, i, r, k, l, charged=True)
-                R_c = zhx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
+                # Anchored holes
+                L_u = zhx_collapse_with(re, i, r, k, r, charged=False)
+                R_u = zhx_collapse_with(re, r + 1, j, r + 1, l, charged=False)
+                L_c = zhx_collapse_with(re, i, r, k, r, charged=True)
+                R_c = zhx_collapse_with(re, r + 1, j, r + 1, l, charged=True)
 
                 adjacent = (r == k)
                 cap_pen = short_hole_penalty(self.cfg.costs, k, l)
@@ -1003,25 +1016,25 @@ class EddyRivasFoldingEngine:
                         charged=True
                     )
 
-                # Optional drift (VX/ZHX)
+                # Optional drift (VX/ZHX): drift the right anchored hole only
                 if self.cfg.enable_join_drift and self.cfg.drift_radius > 0:
                     for d in range(1, self.cfg.drift_radius + 1):
                         kR = (l - 1) - d
                         lR = (r + 1) + d
-                        iR = k + 1
+                        iR = r + 1  # right outer starts at r+1
 
                         if not (iR <= kR < lR <= j):
                             continue
                         if (lR - kR - 1) < self.cfg.min_hole_width:
                             continue
 
-                        R_u_d = zhx_collapse_with(re, iR, j, kR, lR, charged=False)
-                        R_c_d = zhx_collapse_with(re, iR, j, kR, lR, charged=True)
+                        R_u_d = zhx_collapse_with(re, iR, j, iR, lR, charged=False)
+                        R_c_d = zhx_collapse_with(re, iR, j, iR, lR, charged=True)
                         if not (math.isfinite(R_u_d) or math.isfinite(R_c_d)):
                             continue
 
-                        L_u_base = zhx_collapse_with(re, i, r, k, l, charged=False)
-                        L_c_base = zhx_collapse_with(re, i, r, k, l, charged=True)
+                        L_u_base = zhx_collapse_with(re, i, r, k, r, charged=False)
+                        L_c_base = zhx_collapse_with(re, i, r, k, r, charged=True)
 
                         drift_pen = d * (self.cfg.costs.join_drift_penalty or self.cfg.costs.q_ss)
 
@@ -1046,7 +1059,7 @@ class EddyRivasFoldingEngine:
                                 charged=True
                             )
 
-            # drift-only fallback
+            # drift-only fallback (kept as-is; mostly a no-op)
             if self.cfg.enable_join_drift and self.cfg.drift_radius > 0:
                 vxu_ij = re.vxu_matrix.get(i, j)
                 improved_bp: Optional[EddyRivasBackPointer] = None
@@ -1168,3 +1181,4 @@ def quick_energy_harness(seq: str, cfg: EddyRivasFoldingConfig, nested: ZuckerFo
     }
     # Add any other coordinates you want to track here.
     return out
+

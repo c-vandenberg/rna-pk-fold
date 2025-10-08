@@ -68,16 +68,23 @@ def traceback_with_pk(
 
             op = bp.op
 
+            # NEW: explicit uncharged selection → treat as nested
+            if op is EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED:
+                merge_nested_interval(seq, nested_state, i, j, layer,
+                                      trace_nested_interval, pairs, pair_layer)
+                continue
+
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX:
-                # hole indices are on bp.hole (k,l), split r on bp.split
+                # hole indices on bp.hole (k,l), split r on bp.split
                 r = bp.split
                 k, l = bp.hole if bp.hole else (None, None)
                 if r is None or k is None or l is None:
                     merge_nested_interval(seq, nested_state, i, j, layer,
                                           trace_nested_interval, pairs, pair_layer)
                     continue
-                stack.append(("WHX", i, r, k, l, layer))
-                stack.append(("WHX", k + 1, j, l - 1, r + 1, layer + 1))
+                # Anchored holes at the join (match DP):
+                stack.append(("WHX", i, r, k, r, layer))
+                stack.append(("WHX", r + 1, j, r + 1, l, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX:
@@ -87,30 +94,30 @@ def traceback_with_pk(
                     merge_nested_interval(seq, nested_state, i, j, layer,
                                           trace_nested_interval, pairs, pair_layer)
                     continue
-                stack.append(("YHX", i, r, k, l, layer))
-                stack.append(("YHX", k + 1, j, l - 1, r + 1, layer + 1))
+                stack.append(("YHX", i, r, k, r, layer))
+                stack.append(("YHX", r + 1, j, r + 1, l, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX:
                 r = bp.split
                 k, l = bp.hole if bp.hole else (None, None)
-                stack.append(("YHX", i, r, k, l, layer))
-                stack.append(("WHX", k + 1, j, l - 1, r + 1, layer + 1))
+                stack.append(("YHX", i, r, k, r, layer))
+                stack.append(("WHX", r + 1, j, r + 1, l, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX:
                 r = bp.split
                 k, l = bp.hole if bp.hole else (None, None)
-                stack.append(("WHX", i, r, k, l, layer))
-                stack.append(("YHX", k + 1, j, l - 1, r + 1, layer + 1))
+                stack.append(("WHX", i, r, k, r, layer))
+                stack.append(("YHX", r + 1, j, r + 1, l, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP:
                 r = bp.split
                 k, l = bp.hole if bp.hole else (None, None)
-                # left branch on current layer, right on next
-                stack.append(("YHX", i, r, k, l, layer))
-                stack.append(("YHX", r + 1, j, k, l, layer + 1))
+                # anchored holes on both sides
+                stack.append(("YHX", i, r, k, r, layer))
+                stack.append(("YHX", r + 1, j, r + 1, l, layer + 1))
                 continue
 
             # Fallback: treat as nested
@@ -314,4 +321,5 @@ def traceback_with_pk(
     dot = pairs_to_multilayer_dotbracket(n, ordered, pair_layer)
 
     return TraceResult(pairs=ordered, dot_bracket=dot)
+
 
