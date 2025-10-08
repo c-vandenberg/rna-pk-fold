@@ -15,12 +15,12 @@ from rna_pk_fold.energies.data.thermo_math import resolve_dh_ds
 
 def get_temperature_kelvin(data: Mapping[str, Any]) -> float:
     """
-    Return the thermodynamic temperature (Kelvin) to use for conversions.
+    Get the thermodynamic temperature in Kelvin.
 
     Parameters
     ----------
     data : Mapping[str, Any]
-        Parsed YAML tree (top-level dict).
+        Parsed YAML tree (top-level dict). May contain a ``metadata`` section.
 
     Returns
     -------
@@ -29,12 +29,17 @@ def get_temperature_kelvin(data: Mapping[str, Any]) -> float:
 
     Notes
     -----
-    Prefer metadata.temperature_kelvin, else top-level temperature_kelvin,
-    else default 310.15 K.
+    Priority:
+    1. ``metadata.temperature_kelvin``
+    2. top-level ``temperature_kelvin``
+    3. default ``310.15`` K
     """
-    metadata = data.get("metadata") or {}
-    temp_k = metadata.get("temperature_kelvin") or data.get("temperature_kelvin") or 310.15
-
+    metadata: Mapping[str, Any] = data.get("metadata") or {}
+    temp_k: float | int = (
+        metadata.get("temperature_kelvin")
+        or data.get("temperature_kelvin")
+        or 310.15
+    )
     return float(temp_k)
 
 
@@ -59,10 +64,9 @@ def parse_complements(data: Mapping[str, Any]) -> BasePairMap:
     ValueError
         If the complements mapping is missing or empty.
     """
-    complements_data = data.get("complements")
+    complements_data: Any = data.get("complements")
     if not isinstance(complements_data, dict) or not complements_data:
         raise ValueError("YAML must contain a non-empty 'complements' mapping.")
-
     return {str(k).upper(): str(v).upper() for k, v in complements_data.items()}
 
 
@@ -73,7 +77,7 @@ def validate_rna_complements(complements: BasePairMap) -> None:
     Parameters
     ----------
     complements : BasePairMap
-        Complement mapping as returned by :func: `parse_complements()`.
+        Complement mapping as returned by :func:`parse_complements`.
 
     Raises
     ------
@@ -96,7 +100,7 @@ def _cell(matrix: Any, idx_i: int, idx_j: int) -> float | None:
     Parameters
     ----------
     matrix : Any
-        2D indexable object (e.g., list of lists) or `None`.
+        2D indexable object (e.g., list of lists) or ``None``.
     idx_i : int
         Row index.
     idx_j : int
@@ -104,38 +108,43 @@ def _cell(matrix: Any, idx_i: int, idx_j: int) -> float | None:
 
     Returns
     -------
-    float | None
-        Cell value coerced to `float`, or `None` if out of bounds,
-        matrix is `None`, or the cell itself is `None`.
+    float or None
+        Cell value coerced to ``float``, or ``None`` if out of bounds,
+        matrix is ``None``, or the cell itself is ``None``.
     """
     if matrix is None:
         return None
     try:
-        cell_value = matrix[idx_i][idx_j]
+        cell_value: Any = matrix[idx_i][idx_j]
     except Exception:
         return None
-
     return None if cell_value is None else float(cell_value)
 
+
 def _resolve_cell_thermo(
-    dh_matrix: Any, ds_matrix: Any, dg_matrix: Any, idx_i: int, idx_j: int, temp_k: float
+    dh_matrix: Any,
+    ds_matrix: Any,
+    dg_matrix: Any,
+    idx_i: int,
+    idx_j: int,
+    temp_k: float,
 ) -> Optional[Tuple[float, float]]:
     """
-    Resolve a single cell's thermodynamic tuple (ΔH, ΔS) from up to three grids.
+    Resolve a single cell's thermodynamic tuple ``(ΔH, ΔS)`` from up to three grids.
 
     The three inputs are parallel 2D matrices for ΔH, ΔS, and ΔG(T). Any two
-    of the three quantities suffice; the missing one is derived using the
-    temperature via:
-        ΔG = ΔH − T * (ΔS / 1000)
+    of the three quantities suffice; the missing one is derived at temperature ``T``:
+
+    ``ΔG = ΔH − T * (ΔS / 1000)``
 
     Parameters
     ----------
     dh_matrix : Any
-        2D matrix for ΔH [kcal/mol], or `None`.
+        2D matrix for ΔH [kcal/mol], or ``None``.
     ds_matrix : Any
-        2D matrix for ΔS [cal/(K·mol)], or `None`.
+        2D matrix for ΔS [cal/(K·mol)], or ``None``.
     dg_matrix : Any
-        2D matrix for ΔG(T) [kcal/mol] (may be named `dg` or `dg_37` upstream), or `None`.
+        2D matrix for ΔG(T) [kcal/mol] (may be named ``dg`` or ``dg_37`` upstream), or ``None``.
     idx_i : int
         Row index.
     idx_j : int
@@ -146,22 +155,21 @@ def _resolve_cell_thermo(
     Returns
     -------
     tuple of float, float or None
-        `(ΔH, ΔS)` if at least two values were present for the cell;
-        `None` if the cell is entirely empty (all three are missing).
+        ``(ΔH, ΔS)`` if at least two values were present for the cell;
+        ``None`` if the cell is entirely empty (all three are missing).
 
     Raises
     ------
     ValueError
-        If one or zero of ΔH/ΔS/ΔG is provided (insufficient to resolve).
+        If exactly one of ΔH/ΔS/ΔG is provided (insufficient to resolve).
     """
-    dh = _cell(dh_matrix, idx_i, idx_j)
-    ds = _cell(ds_matrix, idx_i, idx_j)
-    dg = _cell(dg_matrix, idx_i, idx_j)
+    dh: float | None = _cell(dh_matrix, idx_i, idx_j)
+    ds: float | None = _cell(ds_matrix, idx_i, idx_j)
+    dg: float | None = _cell(dg_matrix, idx_i, idx_j)
     if dh is None and ds is None and dg is None:
         return None
 
     delta_h, delta_s = resolve_dh_ds(dh=dh, ds=ds, dg=dg, temp_k=temp_k)
-
     return delta_h, delta_s
 
 
@@ -169,37 +177,36 @@ def _resolve_cell_thermo(
 
 def parse_multiloop(data: Mapping[str, Any]) -> MultiLoopCoeffs:
     """
-    Parse multiloop coefficients `(a, b, c, d)` from the YAML tree.
+    Parse multiloop coefficients ``(a, b, c, d)`` from the YAML tree.
 
     Parameters
     ----------
     data : Mapping[str, Any]
-        Parsed YAML tree containing a `multiloop` mapping with numeric fields.
+        Parsed YAML tree containing a ``multiloop`` mapping with numeric fields.
 
     Returns
     -------
     MultiLoopCoeffs
-        Tuple `(a, b, c, d)` used in the affine multibranch model.
+        Tuple ``(a, b, c, d)`` used in the affine multibranch model.
 
     Raises
     ------
     ValueError
-        If the `multiloop` section is missing or not a mapping.
+        If the ``multiloop`` section is missing or not a mapping.
 
     Notes
     -----
     Typical usage in scoring is ``a + b * branches + c * unpaired``,
     with ``d`` optionally applied when zero unpaired nucleotides are enclosed.
     """
-    multiloop_data = data.get("multiloop")
+    multiloop_data: Any = data.get("multiloop")
     if not isinstance(multiloop_data, dict):
         raise ValueError("Missing 'multiloop' section.")
 
-    coeff_a = float(multiloop_data.get("a", 0.0))
-    coeff_b = float(multiloop_data.get("b", 0.0))
-    coeff_c = float(multiloop_data.get("c", 0.0))
-    coeff_d = float(multiloop_data.get("d", 0.0))
-
+    coeff_a: float = float(multiloop_data.get("a", 0.0))
+    coeff_b: float = float(multiloop_data.get("b", 0.0))
+    coeff_c: float = float(multiloop_data.get("c", 0.0))
+    coeff_d: float = float(multiloop_data.get("d", 0.0))
     return coeff_a, coeff_b, coeff_c, coeff_d
 
 
@@ -213,9 +220,9 @@ def parse_loop_table(
     """
     Parse baseline loop energies indexed by loop length (nt).
 
-    The function searches the first present key among `keys` (e.g.,
-    `("hairpin_loops", "hairpin_loop")`) and expects a mapping of
-    loop length → {dh|ds|dg}. Any two of ``dh``, ``ds``, ``dg`` suffice.
+    The function searches the first present key among ``keys`` (e.g.,
+    ``("hairpin_loops", "hairpin_loop")``) and expects a mapping of
+    loop length → ``{dh|ds|dg}``. Any two of ``dh``, ``ds``, ``dg`` suffice.
 
     Parameters
     ----------
@@ -229,18 +236,18 @@ def parse_loop_table(
     Returns
     -------
     LoopEnergies
-        Mapping `length:int → (ΔH, ΔS)`. Empty if no table is present.
+        Mapping ``length:int → (ΔH, ΔS)``. Empty if no table is present.
 
     Raises
     ------
     ValueError
-        If a loop entry provides only one of ΔH/ΔS/ΔG (insufficient to resolve).
+        If a loop entry provides exactly one of ΔH/ΔS/ΔG (insufficient to resolve).
 
     Notes
     -----
     Entries with all three missing values are skipped.
     """
-    loop = None
+    loop: Any = None
     for loop_type in keys:
         if loop_type in data:
             loop = data[loop_type]
@@ -251,14 +258,14 @@ def parse_loop_table(
 
     loop_energies: LoopEnergies = {}
     for length_str, entry in loop.items():
-        loop_len = int(length_str)
-        dh = entry.get("dh")
-        ds = entry.get("ds")
-        dg = entry.get("dg") if "dg" in entry else entry.get("dg_37")
+        loop_len: int = int(length_str)
+        dh: Any = entry.get("dh")
+        ds: Any = entry.get("ds")
+        dg: Any = entry.get("dg") if "dg" in entry else entry.get("dg_37")
         if dh is None and ds is None and dg is None:
             continue
 
-        delta_h, delta_s = resolve_dh_ds(dh=dh,ds=ds,dg=dg,temp_k=temp_k)
+        delta_h, delta_s = resolve_dh_ds(dh=dh, ds=ds, dg=dg, temp_k=temp_k)
         loop_energies[loop_len] = (delta_h, delta_s)
 
     return loop_energies
@@ -268,40 +275,40 @@ def parse_loop_table(
 
 def parse_stacks_matrix(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
     """
-    Parse the nearest-neighbor stacking matrix into flat "XY/ZW" keys.
+    Parse the nearest-neighbor stacking matrix into flat ``"XY/ZW"`` keys.
 
     The YAML section must have:
-      - `rows` : list of left dimers (5'→3')
-      - `cols` : list of right dimers (3'→5')
-      - any two of `dh`, `ds`, `dg` (or `dg_37`) as 2D lists.
+      - ``rows`` : list of left dimers (5'→3')
+      - ``cols`` : list of right dimers (3'→5')
+      - any two of ``dh``, ``ds``, ``dg`` (or ``dg_37``) as 2D lists.
 
     Parameters
     ----------
     data : Mapping[str, Any]
-        Parsed YAML tree containing a `stacks_matrix` section.
+        Parsed YAML tree containing a ``stacks_matrix`` section.
     temp_k : float
         Temperature in Kelvin for conversions.
 
     Returns
     -------
     PairEnergies
-        Mapping "XY/ZW" → (ΔH, ΔS)" for all non-empty cells.
-        Cells where all of ΔH/ΔS/ΔG are missing are skipped (not included).
+        Mapping ``"XY/ZW" → (ΔH, ΔS)`` for all non-empty cells.
+        Cells where all of ΔH/ΔS/ΔG are missing are skipped.
 
     Notes
     -----
-    This function uses :func:`_resolve_cell_thermo()` per cell to normalize
-    to the common `(ΔH, ΔS)` representation.
+    Uses :func:`_resolve_cell_thermo` per cell to normalize to the common
+    ``(ΔH, ΔS)`` representation.
     """
-    stacks_matrix = data.get("stacks_matrix")
+    stacks_matrix: Any = data.get("stacks_matrix")
     if not isinstance(stacks_matrix, dict):
         return {}
 
-    rows = list(map(str, stacks_matrix.get("rows", [])))
-    cols = list(map(str, stacks_matrix.get("cols", [])))
-    dh_rows = stacks_matrix.get("dh")
-    ds_rows = stacks_matrix.get("ds")
-    dg_rows = stacks_matrix.get("dg") if "dg" in stacks_matrix else stacks_matrix.get("dg_37")
+    rows: list[str] = list(map(str, stacks_matrix.get("rows", [])))
+    cols: list[str] = list(map(str, stacks_matrix.get("cols", [])))
+    dh_rows: Any = stacks_matrix.get("dh")
+    ds_rows: Any = stacks_matrix.get("ds")
+    dg_rows: Any = stacks_matrix.get("dg") if "dg" in stacks_matrix else stacks_matrix.get("dg_37")
 
     stack_pair_energies: PairEnergies = {}
     for i, r in enumerate(rows):
@@ -309,7 +316,6 @@ def parse_stacks_matrix(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
             delta_h_delta_s = _resolve_cell_thermo(dh_rows, ds_rows, dg_rows, i, j, temp_k)
             if delta_h_delta_s is None:
                 continue
-
             stack_pair_energies[f"{r}/{c}"] = delta_h_delta_s
 
     return stack_pair_energies
@@ -323,29 +329,29 @@ def _parse_dangle_matrix(
     key_fmtr: Callable[[str, str], str],
 ) -> PairEnergies:
     """
-    Parse a single dangle matrix (5' or 3') into flat `PairEnergies`.
+    Parse a single dangle matrix (5' or 3') into flat ``PairEnergies``.
 
     The matrix is defined with:
-      - `rows` : list of closing pairs (e.g., `"AU"``)
-      - `cols` : list of flanking nucleotides (e.g., `"A","C","G","U"`)
-      - any two of `dh`, `ds`, `dg` (or `dg_37`) as 2D lists.
+      - ``rows`` : list of closing pairs (e.g., ``"AU"``)
+      - ``cols`` : list of flanking nucleotides (e.g., ``"A","C","G","U"``)
+      - any two of ``dh``, ``ds``, ``dg`` (or ``dg_37``) as 2D lists.
 
-    The final key is produced by `key_fmtr(pair, nuc)`, enabling
-    orientations like `"N./PAIR"` (5' dangle) or `"PAIR/.N"` (3' dangle).
+    The final key is produced by ``key_fmtr(pair, nuc)``, enabling
+    orientations like ``"N./PAIR"`` (5' dangle) or ``"PAIR/.N"`` (3' dangle).
 
     Parameters
     ----------
-    dangle_matrix : Mapping[str, Any] | None
+    dangle_matrix : Mapping[str, Any] or None
         Matrix mapping from pairs × nucleotides to thermodynamic values.
     temp_k : float
         Temperature in Kelvin for conversions.
     key_fmtr : Callable[[str, str], str]
-        Formatter that builds the final flat key from `(pair, nuc)`.
+        Formatter that builds the final flat key from ``(pair, nuc)``.
 
     Returns
     -------
     PairEnergies
-        Mapping of formatted key → `(ΔH, ΔS)` for all non-empty cells.
+        Mapping of formatted key → ``(ΔH, ΔS)`` for all non-empty cells.
 
     Notes
     -----
@@ -354,11 +360,11 @@ def _parse_dangle_matrix(
     if not isinstance(dangle_matrix, dict):
         return {}
 
-    pairs = [str(x) for x in dangle_matrix.get("rows", [])]
-    nucs = [str(x) for x in dangle_matrix.get("cols", [])]
-    dh_rows = dangle_matrix.get("dh")
-    ds_rows = dangle_matrix.get("ds")
-    dg_rows = dangle_matrix.get("dg") if "dg" in dangle_matrix else dangle_matrix.get("dg_37")
+    pairs: list[str] = [str(x) for x in dangle_matrix.get("rows", [])]
+    nucs: list[str] = [str(x) for x in dangle_matrix.get("cols", [])]
+    dh_rows: Any = dangle_matrix.get("dh")
+    ds_rows: Any = dangle_matrix.get("ds")
+    dg_rows: Any = dangle_matrix.get("dg") if "dg" in dangle_matrix else dangle_matrix.get("dg_37")
 
     dangle_energies: PairEnergies = {}
     for i, pair in enumerate(pairs):
@@ -366,7 +372,6 @@ def _parse_dangle_matrix(
             delta_h_delta_s = _resolve_cell_thermo(dh_rows, ds_rows, dg_rows, i, j, temp_k)
             if delta_h_delta_s is None:
                 continue
-
             dangle_energies[key_fmtr(pair, nuc)] = delta_h_delta_s
 
     return dangle_energies
@@ -376,9 +381,10 @@ def parse_dangles(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
     """
     Parse both 5' and 3' dangle matrices into a unified flat map.
 
-    Expected YAML sections:
-      - `dangle5_matrix` : → keys of the form `"N./PAIR"`
-      - `dangle3_matrix` : → keys of the form `"PAIR/.N"`
+    Expected YAML sections
+    ----------------------
+    - ``dangle5_matrix`` → keys of the form ``"N./PAIR"``
+    - ``dangle3_matrix`` → keys of the form ``"PAIR/.N"``
 
     Parameters
     ----------
@@ -393,13 +399,12 @@ def parse_dangles(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
         Combined mapping of dangle contributions for all present cells.
     """
     dangles_energies: PairEnergies = {}
-    dangles_energies.update(_parse_dangle_matrix(
-        data.get("dangle5_matrix"), temp_k, lambda pair, nuc: f"{nuc}./{pair}"
-    ))
-    dangles_energies.update(_parse_dangle_matrix(
-        data.get("dangle3_matrix"), temp_k, lambda pair, nuc: f"{pair}/.{nuc}"
-    ))
-
+    dangles_energies.update(
+        _parse_dangle_matrix(data.get("dangle5_matrix"), temp_k, lambda pair, nuc: f"{nuc}./{pair}")
+    )
+    dangles_energies.update(
+        _parse_dangle_matrix(data.get("dangle3_matrix"), temp_k, lambda pair, nuc: f"{pair}/.{nuc}")
+    )
     return dangles_energies
 
 
@@ -407,58 +412,59 @@ def parse_dangles(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
 
 def parse_mismatch(data: Mapping[str, Any], section: str, temp_k: float) -> PairEnergies:
     """
-    Parse internal/terminal mismatch tables into flat `"XY/ZW"` keys.
+    Parse internal/terminal mismatch tables into flat ``"XY/ZW"`` keys.
 
     Supports two schemas:
 
     1) Sparse dimer/dimer matrix
-       A dict with `rows`, `cols` and any two of `dh`, `ds`, `dg` (or `dg_37`)
+       A dict with ``rows``, ``cols`` and any two of ``dh``, ``ds``, ``dg`` (or ``dg_37``)
        represented as 2D lists. Keys are directly ``"row/col"``.
 
     2) Closing-pair × nucleotide grid (Turner-2004 style)
        A dict with:
-       - `pairs` : list of closing pairs `["CG","GC","GU","UG","AU","UA", ...]`
-       - `nucs`  : list of nucleotides (may include placeholder like `"E"`)
-       - per-pair 2D lists for any two of `dh`, `ds`, `dg` (or `dg_37`)
+         - ``pairs`` : list of closing pairs ``["CG","GC","GU","UG","AU","UA", ...]``
+         - ``nucs``  : list of nucleotides (may include placeholder like ``"E"``)
+         - per-pair 2D lists for any two of ``dh``, ``ds``, ``dg`` (or ``dg_37``)
 
        Each cell is flattened to the legacy dimer/dimer key by:
-       `key = f"{L}{X}/{Y}{R}"` where the closing pair is `X–Y`,
-       left nucleotide is `L` and right nucleotide is `R`.
+       ``key = f"{L}{X}/{Y}{R}"`` where the closing pair is ``X–Y``,
+       left nucleotide is ``L`` and right nucleotide is ``R``.
 
     Parameters
     ----------
     data : Mapping[str, Any]
         Parsed YAML tree containing the section.
     section : str
-        Section name (e.g., `"internal_mismatches"` or `"terminal_mismatches"`).
+        Section name (e.g., ``"internal_mismatches"`` or ``"terminal_mismatches"``).
     temp_k : float
         Temperature in Kelvin for conversions.
 
     Returns
     -------
     PairEnergies
-        Mapping `"XY/ZW" → (ΔH, ΔS)"` for all non-empty cells.
+        Mapping ``"XY/ZW" → (ΔH, ΔS)`` for all non-empty cells.
 
     Raises
     ------
     ValueError
-        If an addressable cell provides only one of ΔH/ΔS/ΔG (insufficient to resolve).
+        If an addressable cell provides exactly one of ΔH/ΔS/ΔG (insufficient to resolve).
 
     Notes
     -----
-    Placeholder nucleotides like `"E"` in the pair×nuc schema are skipped.
+    Placeholder nucleotides like ``"E"`` in the pair×nuc schema are skipped.
     """
-    mm_data = data.get(section)
+    mm_data: Any = data.get(section)
     if not isinstance(mm_data, dict):
         return {}
 
     # Case 1: "XY/ZW" Sparse Matrix
     if "rows" in mm_data and "cols" in mm_data:
-        rows = list(map(str, mm_data.get("rows", [])))
-        cols = list(map(str, mm_data.get("cols", [])))
-        dh_rows = mm_data.get("dh")
-        ds_rows = mm_data.get("ds")
-        dg_rows = mm_data.get("dg") if "dg" in mm_data else mm_data.get("dg_37")
+        rows: list[str] = list(map(str, mm_data.get("rows", [])))
+        cols: list[str] = list(map(str, mm_data.get("cols", [])))
+        dh_rows: Any = mm_data.get("dh")
+        ds_rows: Any = mm_data.get("ds")
+        dg_rows: Any = mm_data.get("dg") if "dg" in mm_data else mm_data.get("dg_37")
+
         mm_energies: PairEnergies = {}
         for i, r in enumerate(rows):
             for j, c in enumerate(cols):
@@ -467,40 +473,37 @@ def parse_mismatch(data: Mapping[str, Any], section: str, temp_k: float) -> Pair
                 dg = _cell(dg_rows, i, j)
                 if dh is None and ds is None and dg is None:
                     continue
-
                 delta_h, delta_s = resolve_dh_ds(dh=dh, ds=ds, dg=dg, temp_k=temp_k)
                 mm_energies[f"{r}/{c}"] = (delta_h, delta_s)
-
         return mm_energies
 
     # Case 2: closing-pair × nucleotide grid
     if "pairs" in mm_data and "nucs" in mm_data:
-        pairs = list(map(str, mm_data["pairs"]))
-        nucs = list(map(str, mm_data["nucs"]))
-        dh_all = mm_data.get("dh") or {}
-        ds_all = mm_data.get("ds") or {}
-        dg_all = mm_data.get("dg") or mm_data.get("dg_37") or {}
+        pairs: list[str] = list(map(str, mm_data["pairs"]))
+        nucs: list[str] = list(map(str, mm_data["nucs"]))
+        dh_all: Mapping[str, Any] = mm_data.get("dh") or {}
+        ds_all: Mapping[str, Any] = mm_data.get("ds") or {}
+        dg_all: Mapping[str, Any] = mm_data.get("dg") or mm_data.get("dg_37") or {}
+
         mm_energies: PairEnergies = {}
         for pair in pairs:
             if len(pair) != 2:
                 continue
             base_x, base_y = pair[0], pair[1]
-            dh_matrix = dh_all.get(pair)
-            ds_matrix = ds_all.get(pair)
-            dg_matrix = dg_all.get(pair)
+            dh_matrix: Any = dh_all.get(pair)
+            ds_matrix: Any = ds_all.get(pair)
+            dg_matrix: Any = dg_all.get(pair)
             for i, base_left in enumerate(nucs):
                 for j, base_right in enumerate(nucs):
-                    if base_left in ("E",) or base_right in ("E",):  # Skip placeholders XY/ZW"
+                    if base_left in ("E",) or base_right in ("E",):
                         continue
-
                     delta_h_delta_s = _resolve_cell_thermo(dh_matrix, ds_matrix, dg_matrix, i, j, temp_k)
                     if delta_h_delta_s is None:
                         continue
-
-                    left_right_dimer = f"{base_left}{base_x}/{base_y}{base_right}"
+                    left_right_dimer: str = f"{base_left}{base_x}/{base_y}{base_right}"
                     mm_energies[left_right_dimer] = delta_h_delta_s
-
         return mm_energies
+
     return {}
 
 
@@ -513,15 +516,15 @@ def parse_special_hairpins(data: Mapping[str, Any], temp_k: float) -> PairEnergi
     Parameters
     ----------
     data : Mapping[str, Any]
-        Parsed YAML tree containing an optional `special_hairpins` mapping
-        of sequence → {dh|ds|dg}.
+        Parsed YAML tree containing an optional ``special_hairpins`` mapping
+        of ``sequence → {dh|ds|dg}``.
     temp_k : float
         Temperature in Kelvin for conversions.
 
     Returns
     -------
     PairEnergies
-        Mapping `sequence → (ΔH, ΔS)` for entries with sufficient data.
+        Mapping ``sequence → (ΔH, ΔS)`` for entries with sufficient data.
         Entries with all three missing are skipped.
 
     Raises
@@ -529,16 +532,17 @@ def parse_special_hairpins(data: Mapping[str, Any], temp_k: float) -> PairEnergi
     ValueError
         If an entry provides exactly one of ΔH/ΔS/ΔG (insufficient to resolve).
     """
-    special_hairpins_data = data.get("special_hairpins")
+    special_hairpins_data: Any = data.get("special_hairpins")
     if not isinstance(special_hairpins_data, dict):
         return {}
+
     special_hairpins_energies: PairEnergies = {}
     for k, entry in special_hairpins_data.items():
         if entry is None:
             continue
-        dh = entry.get("dh")
-        ds = entry.get("ds")
-        dg = entry.get("dg") if "dg" in entry else entry.get("dg_37")
+        dh: Any = entry.get("dh")
+        ds: Any = entry.get("ds")
+        dg: Any = entry.get("dg") if "dg" in entry else entry.get("dg_37")
         if dh is None and ds is None and dg is None:
             continue
 
@@ -550,36 +554,120 @@ def parse_special_hairpins(data: Mapping[str, Any], temp_k: float) -> PairEnergi
 
 # ---------- Pseudoknots ----------
 
-# typed extractors
-def get_float(node, key: str, default: float) -> float:
+def get_float(node: Mapping[str, Any], key: str, default: float) -> float:
+    """
+    Get a float value from a mapping with a default.
+
+    Parameters
+    ----------
+    node : Mapping[str, Any]
+        Source mapping.
+    key : str
+        Key to retrieve.
+    default : float
+        Default value if the key is missing.
+
+    Returns
+    -------
+    float
+        Retrieved value coerced to float.
+    """
     return float(node.get(key, default))
 
-def get_int(node, key: str, default: int) -> int:
+
+def get_int(node: Mapping[str, Any], key: str, default: int) -> int:
+    """
+    Get an int value from a mapping with a default.
+
+    Parameters
+    ----------
+    node : Mapping[str, Any]
+        Source mapping.
+    key : str
+        Key to retrieve.
+    default : int
+        Default value if the key is missing.
+
+    Returns
+    -------
+    int
+        Retrieved value coerced to int.
+    """
     return int(node.get(key, default))
 
-def parse_bigram_float_map(node, key: str) -> Dict[Tuple[str,str], float]:
-    out = {}
-    raw = node.get(key, {}) or {}
+
+def parse_bigram_float_map(node: Mapping[str, Any], key: str) -> Dict[Tuple[str, str], float]:
+    """
+    Parse a 2-character bigram → float mapping.
+
+    Parameters
+    ----------
+    node : Mapping[str, Any]
+        Source mapping.
+    key : str
+        Sub-key within ``node`` holding the bigram map.
+
+    Returns
+    -------
+    dict[tuple[str, str], float]
+        Mapping from ``(char0, char1)`` to float.
+    """
+    out: Dict[Tuple[str, str], float] = {}
+    raw: Mapping[str, Any] = node.get(key, {}) or {}
     for k, v in raw.items():
         if isinstance(k, str) and len(k) == 2:
             out[(k[0], k[1])] = float(v)
     return out
 
-def parse_coax_pairs_map(node, key: str) -> Dict[Tuple[str,str], float]:
-    out = {}
-    raw = node.get(key, {}) or {}
+
+def parse_coax_pairs_map(node: Mapping[str, Any], key: str) -> Dict[Tuple[str, str], float]:
+    """
+    Parse a ``"A|B" → float`` mapping for coaxial pair terms.
+
+    Parameters
+    ----------
+    node : Mapping[str, Any]
+        Source mapping.
+    key : str
+        Sub-key within ``node`` holding the coax pairs map.
+
+    Returns
+    -------
+    dict[tuple[str, str], float]
+        Mapping from ``(left_label, right_label)`` to float.
+    """
+    out: Dict[Tuple[str, str], float] = {}
+    raw: Mapping[str, Any] = node.get(key, {}) or {}
     for k, v in raw.items():
         if isinstance(k, str) and "|" in k:
             a, b = k.split("|", 1)
             out[(a.strip(), b.strip())] = float(v)
     return out
 
-def parse_int_float_map(node, key: str) -> Dict[int, float]:
-    out = {}
-    raw = node.get(key, {}) or {}
+
+def parse_int_float_map(node: Mapping[str, Any], key: str) -> Dict[int, float]:
+    """
+    Parse a ``str(int) → float`` mapping into ``int → float``.
+
+    Parameters
+    ----------
+    node : Mapping[str, Any]
+        Source mapping.
+    key : str
+        Sub-key within ``node`` holding the mapping.
+
+    Returns
+    -------
+    dict[int, float]
+        Mapping from integer keys to float values. Non-integer keys are ignored.
+    """
+    out: Dict[int, float] = {}
+    raw: Mapping[str, Any] = node.get(key, {}) or {}
     for k, v in raw.items():
         try:
             out[int(k)] = float(v)
         except Exception:
+            # Ignore keys that cannot be parsed as integers / floats
             pass
     return out
+
