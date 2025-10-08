@@ -111,10 +111,17 @@ class EddyRivasFoldingEngine:
         M_whx = getattr(tables, "M_tilde_whx", getattr(self.cfg.costs, "M_tilde_whx", 0.0))
 
         self._seed_from_nested(nested, re)
+
         re.wxu_matrix.enable_dense()
         re.wxc_matrix.enable_dense()
         re.vxu_matrix.enable_dense()
         re.vxc_matrix.enable_dense()
+
+        re.whx_matrix.enable_dense()
+        re.vhx_matrix.enable_dense()
+        re.zhx_matrix.enable_dense()
+        re.yhx_matrix.enable_dense()
+
         can_pair_mask = self._build_can_pair_mask(seq)
 
         self._dp_whx(seq, re, q, Gwh_whx, can_pair_mask)

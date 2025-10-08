@@ -148,22 +148,16 @@ def engines_and_costs(energy_model):
 
     er_cfg = ER.EddyRivasFoldingConfig(
         enable_coax=True,
-        enable_coax_variants=False,
+        enable_coax_variants=True,
         enable_coax_mismatch=True,
         enable_wx_overlap=True,
 
-        strict_complement_order=False,
+
         enable_join_drift=False,
         enable_is2=False,  # big speed boost
-        min_hole_width=3,  # Holes must be at least 3nt (not 0)
-        max_hole_width=12,  # Holes can't exceed 12nt
-        min_outer_left=4,  # Left region needs 4+ nt
-        min_outer_right=4,  # Right region needs 4+ nt
 
         pk_penalty_gw=pk_gw,
         costs=costs,
-        beam_k=50,  # Only keep top 100 candidates per (i,j)
-        beam_v_threshold=-0.5,  # Only consider if nested V[k][l] <= -0.5
     )
     er_engine = ER.EddyRivasFoldingEngine(er_cfg)
     return z_engine, er_engine, costs
