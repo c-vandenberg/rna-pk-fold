@@ -10,7 +10,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldSt
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
 from rna_pk_fold.utils.iter_utils import (iter_spans, iter_holes, iter_complementary_tuples, iter_inner_holes,
-                                          iter_holes_pairable, iter_complementary_tuples_pairable)
+                                          iter_holes_pairable, iter_complementary_tuples_pairable_kl)
 from rna_pk_fold.utils.matrix_utils import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
                                                              whx_collapse_with, zhx_collapse_with)
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
@@ -800,7 +800,7 @@ class EddyRivasFoldingEngine:
             best_c = re.wxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
 
-            for (r, k, l) in iter_complementary_tuples_pairable(i, j, can_pair_mask):
+            for (r, k, l) in iter_complementary_tuples_pairable_kl(i, j, can_pair_mask):
                 if self.cfg.strict_complement_order and not (i < k <= r < l <= j):
                     continue
                 hole_w = (l - k - 1)
@@ -812,9 +812,9 @@ class EddyRivasFoldingEngine:
                     continue
 
                 L_u = whx_collapse_with(re, i, r, k, l, charged=False)
-                R_u = whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
+                R_u = whx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=False)
                 L_c = whx_collapse_with(re, i, r, k, l, charged=True)
-                R_c = whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
+                R_c = whx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=True)
 
                 cap_pen = short_hole_penalty(self.cfg.costs, k, l)
 
@@ -833,7 +833,7 @@ class EddyRivasFoldingEngine:
 
                 # yhx + yhx
                 left_y = re.yhx_matrix.get(i, r, k, l)
-                right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
+                right_y = re.yhx_matrix.get(k + 1, j, r + 1, l - 1)
                 if math.isfinite(left_y) and math.isfinite(right_y):
                     cand_y = Gw + left_y + right_y + cap_pen
                     if cand_y < best_c:
@@ -845,8 +845,8 @@ class EddyRivasFoldingEngine:
 
                 # mix: yhx + whx
                 if math.isfinite(left_y):
-                    R_u2 = whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
-                    R_c2 = whx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
+                    R_u2 = whx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=False)
+                    R_c2 = whx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=True)
                     if math.isfinite(R_u2):
                         cand2 = Gw + left_y + R_u2 + cap_pen
                         if cand2 < best_c:
@@ -865,7 +865,7 @@ class EddyRivasFoldingEngine:
                             )
 
                 # mix: whx + yhx
-                right_y = re.yhx_matrix.get(k + 1, j, l - 1, r + 1)
+                right_y = re.yhx_matrix.get(k + 1, j, r + 1, l - 1)
                 if math.isfinite(right_y):
                     L_u2 = whx_collapse_with(re, i, r, k, l, charged=False)
                     L_c2 = whx_collapse_with(re, i, r, k, l, charged=True)
@@ -937,7 +937,7 @@ class EddyRivasFoldingEngine:
             best_c = re.vxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
 
-            for (r, k, l) in iter_complementary_tuples_pairable(i, j, can_pair_mask):
+            for (r, k, l) in iter_complementary_tuples_pairable_kl(i, j, can_pair_mask):
                 if self.cfg.strict_complement_order and not (i < k <= r < l <= j):
                     continue
                 hole_w = (l - k - 1)
@@ -949,9 +949,9 @@ class EddyRivasFoldingEngine:
                     continue
 
                 L_u = zhx_collapse_with(re, i, r, k, l, charged=False)
-                R_u = zhx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=False)
+                R_u = zhx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=False)
                 L_c = zhx_collapse_with(re, i, r, k, l, charged=True)
-                R_c = zhx_collapse_with(re, k + 1, j, l - 1, r + 1, charged=True)
+                R_c = zhx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=True)
 
                 adjacent = (r == k)
                 cap_pen = short_hole_penalty(self.cfg.costs, k, l)

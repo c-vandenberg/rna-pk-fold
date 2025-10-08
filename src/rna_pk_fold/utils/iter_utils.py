@@ -40,10 +40,11 @@ def iter_holes_pairable(i: int, j: int, can_pair_mask) -> Iterator[Tuple[int, in
                 yield k, l
 
 
-def iter_complementary_tuples_pairable(i: int, j: int, can_pair_mask) -> Iterator[Tuple[int, int, int]]:
-    """Yield (r,k,l) with i < k <= r < l <= j and can_pair_mask[k][l] is True."""
-    for r in range(i + 1, j):
-        for k in range(i + 1, r + 1):
-            for l in range(r + 1, j + 1):
-                if can_pair_mask[k][l]:
-                    yield r, k, l
+def iter_complementary_tuples_pairable_kl(i: int, j: int, can_pair_mask) -> Iterator[Tuple[int, int, int]]:
+    """
+    Yield (r,k,l) for i<k<=r<l<=j but only require the inner seam (k,l) to be pairable.
+    This is the right filter for WX/VX composition.
+    """
+    for (r, k, l) in iter_complementary_tuples(i, j):
+        if can_pair_mask[k][l]:
+            yield r, k, l
