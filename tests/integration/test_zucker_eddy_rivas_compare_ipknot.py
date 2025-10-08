@@ -152,12 +152,12 @@ def engines_and_costs(energy_model):
         enable_coax_mismatch=True,
         enable_wx_overlap=True,
 
-
         enable_join_drift=False,
         enable_is2=False,  # big speed boost
 
         pk_penalty_gw=pk_gw,
         costs=costs,
+        beam_v_threshold=10.0
     )
     er_engine = ER.EddyRivasFoldingEngine(er_cfg)
     return z_engine, er_engine, costs

@@ -687,4 +687,4 @@ pseudoknot:
   Gwh_whx: 0.0              # software-specific; not in paper
 
   # Pseudoknot introduction penalty (paper’s G_w)
-  pk_penalty_gw: 0.0
+  pk_penalty_gw: 7.0

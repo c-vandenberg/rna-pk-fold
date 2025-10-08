@@ -2,6 +2,7 @@ from __future__ import annotations
 import math
 import json
 from dataclasses import dataclass, fields
+from math import inf
 from typing import Tuple, Dict, Optional, Any, Callable
 
 import numpy as np
@@ -62,7 +63,7 @@ class EddyRivasFoldingConfig:
     min_outer_left: int = 0  # minimal length of [i..r]
     min_outer_right: int = 0  # minimal length of [r+1..j]
     beam_k: int = 0                 # 0 = disabled, else keep at most K (k,l) per (i,j)
-    beam_v_threshold: float = 0.0  # keep (k,l) only if nested V[k][l] <= this (e.g. -0.1)
+    beam_v_threshold: float = inf  # keep (k,l) only if nested V[k][l] <= this (e.g. -0.1)
     strict_complement_order: bool = True  # enforce i<k<=r<l<=j
     costs: Optional[PseudoknotEnergies] = None
     tables: object = None
@@ -74,6 +75,7 @@ class EddyRivasFoldingConfig:
 class EddyRivasFoldingEngine:
     def __init__(self, config: EddyRivasFoldingConfig):
         self.cfg = config
+        self._pool = _VecPool()
 
     @staticmethod
     def _build_can_pair_mask(seq: str) -> list[list[bool]]:
@@ -166,10 +168,6 @@ class EddyRivasFoldingEngine:
                 if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
                     continue
 
-                if self.cfg.beam_v_threshold != 0.0:
-                    if re.vxu_matrix.get(k, l) > self.cfg.beam_v_threshold:
-                        continue
-
                 best = math.inf
                 best_bp: Optional[EddyRivasBackPointer] = None
                 BP = make_bp(i, j, k, l)
@@ -220,8 +218,7 @@ class EddyRivasFoldingEngine:
                 # non-nested outer splits with WX
                 Lr = max(0, j - i)
                 if Lr > 0:
-                    left_vec = np.full(Lr, np.inf, dtype=np.float64)
-                    right_vec = np.full(Lr, np.inf, dtype=np.float64)
+                    left_vec, right_vec = self._pool.take(Lr, 2)
                     for t in range(Lr):
                         r = i + t
                         lv = re.whx_matrix.get(i, r, k, l)
@@ -240,8 +237,7 @@ class EddyRivasFoldingEngine:
 
                 Ls = max(0, j - i)
                 if Ls > 0:
-                    left_vec = np.full(Ls, np.inf, dtype=np.float64)
-                    right_vec = np.full(Ls, np.inf, dtype=np.float64)
+                    left_vec, right_vec = self._pool.take(Ls, 2)
                     for t in range(Ls):
                         s2 = i + t
                         lv = wxI(re, i, s2)
@@ -261,8 +257,7 @@ class EddyRivasFoldingEngine:
                 if Gwh_whx != 0.0:
                     Lr = max(0, j - i)
                     if Lr > 0:
-                        left_vec = np.full(Lr, np.inf, dtype=np.float64)
-                        right_vec = np.full(Lr, np.inf, dtype=np.float64)
+                        left_vec, right_vec = self._pool.take(Lr, 2)
                         for t in range(Lr):
                             r = i + t
                             lv = re.whx_matrix.get(i, r, k, l)
@@ -323,10 +318,6 @@ class EddyRivasFoldingEngine:
                 if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
                     continue
 
-                if self.cfg.beam_v_threshold != 0.0:
-                    if re.vxu_matrix.get(k, l) > self.cfg.beam_v_threshold:
-                        continue
-
                 best = re.vhx_matrix.get(i, j, k, l)
                 best_bp: Optional[EddyRivasBackPointer] = None
 
@@ -378,8 +369,7 @@ class EddyRivasFoldingEngine:
                 # SPLIT LEFT
                 Lr = max(0, k - i)
                 if Lr > 0:
-                    left_vec = np.full(Lr, np.inf, dtype=np.float64)
-                    right_vec = np.full(Lr, np.inf, dtype=np.float64)
+                    left_vec, right_vec = self._pool.take(Lr, 2)
                     for t in range(Lr):
                         r = i + t
                         lv = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, r, l)
@@ -399,8 +389,7 @@ class EddyRivasFoldingEngine:
                 # SPLIT RIGHT
                 Ls = max(0, j - (l + 1) + 1)  # = j - l
                 if Ls > 0:
-                    left_vec = np.full(Ls, np.inf, dtype=np.float64)
-                    right_vec = np.full(Ls, np.inf, dtype=np.float64)
+                    left_vec, right_vec = self._pool.take(Ls, 2)
                     for t in range(Ls):
                         s2 = (l + 1) + t
                         lv = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, s2)
@@ -478,10 +467,6 @@ class EddyRivasFoldingEngine:
                 if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
                     continue
 
-                if self.cfg.beam_v_threshold != 0.0:
-                    if re.vxu_matrix.get(k, l) > self.cfg.beam_v_threshold:
-                        continue
-
                 best = math.inf
                 best_bp: Optional[EddyRivasBackPointer] = None
 
@@ -554,8 +539,9 @@ class EddyRivasFoldingEngine:
                 # SPLITS
                 Lr = max(0, k - i)
                 if Lr > 0:
-                    left_vec = np.full(Lr, np.inf, dtype=np.float64)
-                    right_vec = np.full(Lr, np.inf, dtype=np.float64)
+                    left_vec, right_vec = self._pool.take(Lr, 2)
+                    # left split: ZHX(i,j, r,l) + WX(r+1, k)
+                    # r runs i..(k-1)
                     for t in range(Lr):
                         r = i + t
                         lv = re.zhx_matrix.get(i, j, r, l)
@@ -573,8 +559,9 @@ class EddyRivasFoldingEngine:
 
                 Ls = max(0, j - l)
                 if Ls > 0:
-                    left_vec = np.full(Ls, np.inf, dtype=np.float64)
-                    right_vec = np.full(Ls, np.inf, dtype=np.float64)
+                    left_vec, right_vec = self._pool.take(Ls, 2)
+                    # right split: ZHX(i,j, k,s2) + WX(l, s2-1)
+                    # s2 runs (l+1)..j
                     for t in range(Ls):
                         s2 = (l + 1) + t
                         lv = re.zhx_matrix.get(i, j, k, s2)
@@ -631,10 +618,6 @@ class EddyRivasFoldingEngine:
                     continue
                 if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
                     continue
-
-                if self.cfg.beam_v_threshold != 0.0:
-                    if re.vxu_matrix.get(k, l) > self.cfg.beam_v_threshold:
-                        continue
 
                 best = math.inf
                 best_bp: Optional[EddyRivasBackPointer] = None
@@ -741,11 +724,12 @@ class EddyRivasFoldingEngine:
                         best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR, outer=(i, j), hole=(k, l))
 
                 # Outer splits with WX
-                Lr = max(0, j - i)
-                if Lr > 0:
-                    left_vec = np.full(Lr, np.inf, dtype=np.float64)
-                    right_vec = np.full(Lr, np.inf, dtype=np.float64)
-                    for t in range(Lr):
+                # Outer splits with WX
+                L = max(0, j - i)
+                if L > 0:
+                    # left split: YHX(i,r; k,l) + WX(r+1,j)
+                    left_vec, right_vec = self._pool.take(L, 2)
+                    for t in range(L):
                         r = i + t
                         lv = re.yhx_matrix.get(i, r, k, l)
                         rv = wxI(re, r + 1, j)
@@ -760,11 +744,9 @@ class EddyRivasFoldingEngine:
                             outer=(i, j), hole=(k, l), split=r_star
                         )
 
-                Ls = max(0, j - i)
-                if Ls > 0:
-                    left_vec = np.full(Ls, np.inf, dtype=np.float64)
-                    right_vec = np.full(Ls, np.inf, dtype=np.float64)
-                    for t in range(Ls):
+                    # right split: WX(i,s2) + YHX(s2+1,j; k,l)
+                    left_vec, right_vec = self._pool.take(L, 2)
+                    for t in range(L):
                         s2 = i + t
                         lv = wxI(re, i, s2)
                         rv = re.yhx_matrix.get(s2 + 1, j, k, l)
@@ -799,12 +781,12 @@ class EddyRivasFoldingEngine:
 
     # --------- WX Composition & Publish ---------
     def _compose_wx(
-            self,
-            seq: str,
-            re: EddyRivasFoldState,
-            Gw: float,
-            Gwh_wx: float,
-            can_pair_mask: list[list[bool]],
+        self,
+        seq: str,
+        re: EddyRivasFoldState,
+        Gw: float,
+        Gwh_wx: float,
+        can_pair_mask: list[list[bool]],
     ) -> None:
         """
         Compose WX from uncharged (WXU) + charged candidates built around pairable (k,l).
@@ -816,8 +798,20 @@ class EddyRivasFoldingEngine:
             best_bp: Optional[EddyRivasBackPointer] = None
             wxu_baseline = re.wxu_matrix.get(i, j)
 
+            candidates = self._select_holes_for_ij(re, i, j, can_pair_mask)
+
             # iterate pairable holes only
-            for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
+            for (k, l) in candidates:
+                if i == 0 and j == re.n - 1:
+                    print(f"\n=== Final WX Composition Summary [0,{j}] ===")
+                    print(f"WXU (nested baseline): {wxu_baseline:.3f}")
+                    print(f"Best WXC found: {best_c:.3f}")
+                    if best_bp:
+                        print(f"Winning op: {best_bp.op}")
+                        print(f"Winning (r,k,l): ({best_bp.split}, {best_bp.hole})")
+                    else:
+                        print("No winning PK candidate found")
+                    print(f"Improvement: {wxu_baseline - best_c:.3f} kcal/mol")
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
                     continue
@@ -825,19 +819,13 @@ class EddyRivasFoldingEngine:
                     continue
 
                 # Beam pruning on inner helix
-                if self.cfg.beam_v_threshold != 0.0:
-                    v_inner = re.vxu_matrix.get(k, l)
-                    if v_inner > self.cfg.beam_v_threshold:
-                        continue
+                v_inner = re.vxu_matrix.get(k, l)
+                if v_inner > self.cfg.beam_v_threshold:
+                    continue
 
                 # Precompute r-range vectors: r ∈ [k, l-1]
                 L = l - k
-                Lu = np.full(L, np.inf, dtype=np.float64)
-                Ru = np.full(L, np.inf, dtype=np.float64)
-                Lc = np.full(L, np.inf, dtype=np.float64)
-                Rc = np.full(L, np.inf, dtype=np.float64)
-                left_y = np.full(L, np.inf, dtype=np.float64)
-                right_y = np.full(L, np.inf, dtype=np.float64)
+                Lu, Ru, Lc, Rc, left_y, right_y = self._pool.take(L, 6)
 
                 for t in range(L):
                     r = k + t
@@ -883,6 +871,18 @@ class EddyRivasFoldingEngine:
                     best_bp = EddyRivasBackPointer(
                         op=op, outer=(i, j), hole=(k, l), split=r_star, charged=True
                     )
+
+                    if not math.isfinite(best_c):
+                        if i == 0 and j == re.n - 1:
+                            print("[DEBUG] No finite WXC found at top; candidates tried:", len(candidates))
+                            # probe a few candidates to see WHY they failed (lh/rh/yhx/whx inf?)
+                            for idx, (k, l) in enumerate(candidates[:8]):
+                                Lu, Ru, Lc, Rc, left_y, right_y = self._pool.take(l - k, 6)
+                                # Fill as usual but only for inspection (or print individual pieces you care about)
+                                print(f"  (k,l)=({k},{l}) Vxu={re.vxu_matrix.get(k, l)} "
+                                      f"YHX(i,r,k,r) first={re.yhx_matrix.get(i, k, k, k)} "
+                                      f"YHX(k+1,j,r+1,l-1) first={re.yhx_matrix.get(k + 1, j, k + 1, l - 1)}")
+                                # you can add more specifics if you suspect a particular term is inf
 
             # optional overlap path (unchanged)
             if self.cfg.enable_wx_overlap and Gwh_wx != 0.0:
@@ -933,12 +933,12 @@ class EddyRivasFoldingEngine:
 
     # --------- VX Composition & Publish ---------
     def _compose_vx(
-            self,
-            seq: str,
-            re: EddyRivasFoldState,
-            Gw: float,
-            g: float,
-            can_pair_mask: list[list[bool]],
+        self,
+        seq: str,
+        re: EddyRivasFoldState,
+        Gw: float,
+        g: float,
+        can_pair_mask: list[list[bool]],
     ) -> None:
         """
         Compose VX from uncharged (VXU) + charged candidates around pairable (k,l).
@@ -948,7 +948,9 @@ class EddyRivasFoldingEngine:
             best_c = re.vxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
 
-            for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
+            candidates = self._select_holes_for_ij(re, i, j, can_pair_mask)
+
+            for (k, l) in candidates:
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
                     continue
@@ -956,12 +958,9 @@ class EddyRivasFoldingEngine:
                     continue
 
                 L = l - k
-                Lu = np.full(L, np.inf, dtype=np.float64)
-                Ru = np.full(L, np.inf, dtype=np.float64)
-                Lc = np.full(L, np.inf, dtype=np.float64)
-                Rc = np.full(L, np.inf, dtype=np.float64)
-                coax_total = np.zeros(L, dtype=np.float64)
-                coax_bonus = np.zeros(L, dtype=np.float64)
+                Lu, Ru, Lc, Rc, coax_total, coax_bonus = self._pool.take(L, 6)
+                coax_total.fill(0.0)
+                coax_bonus.fill(0.0)
 
                 for t in range(L):
                     r = k + t
@@ -1014,6 +1013,53 @@ class EddyRivasFoldingEngine:
                 re.vx_back_ptr.set(i, j, EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED))
             else:
                 re.vx_matrix.set(i, j, vxc)
+
+    def _select_holes_for_ij(
+            self,
+            re,
+            i: int, j: int,
+            can_pair_mask: list[list[bool]],
+    ) -> list[tuple[int, int]]:
+        holes = []
+        for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
+            v = re.vxu_matrix.get(k, l)
+            # sort key: finite first, then by value
+            holes.append((k, l, v))
+        holes.sort(key=lambda t: (not math.isfinite(t[2]), t[2]))
+
+        selected: list[tuple[int, int]] = []
+
+        # Optional absolute threshold (keeps finite v <= T)
+        T = self.cfg.beam_v_threshold
+        if math.isfinite(T):
+            selected.extend((k, l) for (k, l, v) in holes if math.isfinite(v) and v <= T)
+
+        # Rank-K safety net (add best remaining finite ones)
+        K = self.cfg.beam_k
+        if K and K > 0:
+            for (k, l, v) in holes:
+                if not math.isfinite(v):  # skip +inf/NaN for rank K
+                    continue
+                if (k, l) not in selected:
+                    selected.append((k, l))
+                    if len(selected) >= K:
+                        break
+
+        # Fallback: if everything got filtered, keep a tiny set to ensure *some* PK tries
+        if not selected:
+            # keep up to K (or 8) pairable holes with smallest (l-k) (cheapest joins)
+            cap = K or 8
+            skinny = sorted(((k, l) for (k, l, _) in holes), key=lambda p: (p[1] - p[0]))[:cap]
+            selected.extend(skinny)
+
+        # Dedup (in case threshold+rank overlaps)
+        seen = set()
+        uniq = []
+        for kl in selected:
+            if kl not in seen:
+                seen.add(kl)
+                uniq.append(kl)
+        return uniq
 
 
 def load_costs_json(path: str) -> PseudoknotEnergies:
@@ -1096,3 +1142,16 @@ def quick_energy_harness(seq: str, cfg: EddyRivasFoldingConfig, nested: ZuckerFo
     # Add any other coordinates you want to track here.
     return out
 
+
+class _VecPool:
+    def __init__(self):
+        self.bank: dict[tuple[int,int], list[np.ndarray]] = {}
+    def take(self, L: int, n: int) -> list[np.ndarray]:
+        key = (L, n)
+        arrs = self.bank.get(key)
+        if arrs is None:
+            arrs = [np.empty(L, dtype=np.float64) for _ in range(n)]
+            self.bank[key] = arrs
+        for a in arrs:
+            a.fill(np.inf)
+        return arrs
