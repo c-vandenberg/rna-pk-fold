@@ -148,16 +148,22 @@ def engines_and_costs(energy_model):
 
     er_cfg = ER.EddyRivasFoldingConfig(
         enable_coax=True,
-        enable_coax_variants=True,
+        enable_coax_variants=False,
         enable_coax_mismatch=True,
         enable_wx_overlap=True,
 
+        strict_complement_order=False,
         enable_join_drift=False,
         enable_is2=False,  # big speed boost
-        min_hole_width=0,  # or 1 if you want to prune tiny holes
+        min_hole_width=3,  # Holes must be at least 3nt (not 0)
+        max_hole_width=12,  # Holes can't exceed 12nt
+        min_outer_left=4,  # Left region needs 4+ nt
+        min_outer_right=4,  # Right region needs 4+ nt
 
         pk_penalty_gw=pk_gw,
         costs=costs,
+        beam_k=50,  # Only keep top 100 candidates per (i,j)
+        beam_v_threshold=-0.5,  # Only consider if nested V[k][l] <= -0.5
     )
     er_engine = ER.EddyRivasFoldingEngine(er_cfg)
     return z_engine, er_engine, costs
@@ -201,7 +207,7 @@ def project_parentheses(db: str) -> str:
 # Sequences
 # ------------------------
 SEQS = [
-    "UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC"
+    "AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU"
 ]
 
 
@@ -257,8 +263,8 @@ def test_full_vs_ipknot_shape_and_energy(seq: str, energy_model, engines_and_cos
 
     TOL_BP_MULTI = 4
     dist_multi = bp_distance_multilayer(ours_full_db, ip_db)
-    #assert dist_multi <= TOL_BP_MULTI, (
-    #    f"(PK multilayer shape mismatch)\nSeq= {seq}\nours(full)= {ours_full_db}\n"
-    #    f"ipknot= {ip_db}\nΔbp_multi= {dist_multi} > {TOL_BP_MULTI}\n"
-    #    f"ours_full_e= {ours_full_e:.2f}, ipknot_e= {ip_e:.2f}"
-    #)
+    assert dist_multi <= TOL_BP_MULTI, (
+        f"(PK multilayer shape mismatch)\nSeq= {seq}\nours(full)= {ours_full_db}\n"
+        f"ipknot= {ip_db}\nΔbp_multi= {dist_multi} > {TOL_BP_MULTI}\n"
+        f"ours_full_e= {ours_full_e:.2f}, ipknot_e= {ip_e:.2f}"
+    )

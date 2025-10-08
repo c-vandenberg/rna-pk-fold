@@ -1,8 +1,20 @@
 import math
+from typing import Dict, Tuple
 
 from rna_pk_fold.structures.gap_matrix import SparseGapMatrix
 from rna_pk_fold.structures.tri_matrix import RivasEddyTriMatrix
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
+
+# Caches for expensive lookups
+_whx_cache: Dict[Tuple[int, int, int, int, bool], float] = {}
+_zhx_cache: Dict[Tuple[int, int, int, int, bool], float] = {}
+
+
+def clear_matrix_caches():
+    """Clear all matrix lookup caches. Call at the start of each fold."""
+    global _whx_cache, _zhx_cache
+    _whx_cache = {}
+    _zhx_cache = {}
 
 
 def get_whx_with_collapse(whx: SparseGapMatrix, wx: RivasEddyTriMatrix,
@@ -18,6 +30,7 @@ def get_whx_with_collapse(whx: SparseGapMatrix, wx: RivasEddyTriMatrix,
         return wx.get(i, j)
 
     return whx.get(i, j, k, l)
+
 
 def get_zhx_with_collapse(
     zhx: SparseGapMatrix, vx: RivasEddyTriMatrix,
@@ -43,7 +56,7 @@ def get_yhx_with_collapse(
 ) -> float:
     """
     No valid collapse: yhx requires the inner (k,l) to be paired; with l==k+1
-    the hole has zero width, so the inner “paired” object doesn’t exist.
+    the hole has zero width, so the inner "paired" object doesn't exist.
     Return +inf for the collapse case; otherwise return yhx(i,j:k,l).
     """
     if k + 1 == l:
@@ -81,12 +94,58 @@ def zhx_collapse_first(re: EddyRivasFoldState, i: int, j: int, k: int, l: int) -
 
 
 def whx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool) -> float:
-    wx = re.wxc_matrix if charged else re.wxu_matrix
-    v = get_whx_with_collapse(re.whx_matrix, wx, i, j, k, l)
-    return v if math.isfinite(v) else re.whx_matrix.get(i, j, k, l)
+    """
+    Get WHX value with collapse optimization and caching.
+    Always collapses to WXU (uncharged baseline) regardless of charged flag.
+    """
+    # Check cache first
+    cache_key = (i, j, k, l, charged)
+    if cache_key in _whx_cache:
+        return _whx_cache[cache_key]
+
+    # For the common collapse case (k == l-1), use direct lookup
+    if k + 1 == l:
+        result = re.wxu_matrix.get(i, j)  # Always use uncharged for collapse
+        _whx_cache[cache_key] = result
+        return result
+
+    # Check sparse matrix first (it's already computed)
+    v = re.whx_matrix.get(i, j, k, l)
+    if math.isfinite(v):
+        _whx_cache[cache_key] = v
+        return v
+
+    # Only fall back to collapse if needed
+    v_collapse = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l)
+    result = v_collapse if math.isfinite(v_collapse) else math.inf
+    _whx_cache[cache_key] = result
+    return result
 
 
 def zhx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool) -> float:
-    vx = re.vxc_matrix if charged else re.vxu_matrix
-    v = get_zhx_with_collapse(re.zhx_matrix, vx, i, j, k, l)
-    return v if math.isfinite(v) else re.zhx_matrix.get(i, j, k, l)
+    """
+    Get ZHX value with collapse optimization and caching.
+    Always collapses to VXU (uncharged baseline) regardless of charged flag.
+    """
+    # Check cache first
+    cache_key = (i, j, k, l, charged)
+    if cache_key in _zhx_cache:
+        return _zhx_cache[cache_key]
+
+    # For the common collapse case (k == l-1), use direct lookup
+    if k + 1 == l:
+        result = re.vxu_matrix.get(i, j)  # Always use uncharged for collapse
+        _zhx_cache[cache_key] = result
+        return result
+
+    # Check sparse matrix first (it's already computed)
+    v = re.zhx_matrix.get(i, j, k, l)
+    if math.isfinite(v):
+        _zhx_cache[cache_key] = v
+        return v
+
+    # Only fall back to collapse if needed
+    v_collapse = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, l)
+    result = v_collapse if math.isfinite(v_collapse) else math.inf
+    _zhx_cache[cache_key] = result
+    return result

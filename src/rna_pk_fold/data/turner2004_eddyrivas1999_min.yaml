@@ -660,7 +660,13 @@ pseudoknot:
 
   # Coax seam energies
   # Paper: C~ = C * g, with g = 0.83; pair-specific C values come from Walter et al. 1994 (not listed here)
-  coax_pairs: {}            # leave empty unless you load a table
+  coax_pairs:
+    "GC|CG": -0.5
+    "CG|GC": -0.5
+    "AU|UA": -0.3
+    "UA|AU": -0.3
+    "GU|UG": -0.2
+    "UG|GU": -0.2
   coax_scale: 0.83          # g from the paper
   coax_scale_oo: 1.0        # software knob (not in paper)
   coax_scale_oi: 1.0        # software knob (not in paper)
@@ -679,4 +685,4 @@ pseudoknot:
   Gwh_whx: 0.0              # software-specific; not in paper
 
   # Pseudoknot introduction penalty (paper’s G_w)
-  pk_penalty_gw: 7.0
+  pk_penalty_gw: 0.0

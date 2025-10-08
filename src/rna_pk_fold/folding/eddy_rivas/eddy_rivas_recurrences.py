@@ -11,7 +11,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBack
 from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
 from rna_pk_fold.utils.iter_utils import (iter_spans, iter_holes, iter_complementary_tuples, iter_inner_holes,
                                           iter_holes_pairable, iter_complementary_tuples_pairable_kl)
-from rna_pk_fold.utils.matrix_utils import (get_whx_with_collapse, get_zhx_with_collapse, wxI,
+from rna_pk_fold.utils.matrix_utils import (clear_matrix_caches, get_whx_with_collapse, get_zhx_with_collapse, wxI,
                                                              whx_collapse_with, zhx_collapse_with)
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
                                                 dangle_outer_right, coax_pack, short_hole_penalty)
@@ -79,6 +79,8 @@ class EddyRivasFoldingEngine:
         return mask
 
     def fill_with_costs(self, seq: str, nested: ZuckerFoldState, re: EddyRivasFoldState) -> None:
+        clear_matrix_caches()
+
         n = re.n
         q = self.cfg.costs.q_ss
         Gw = self.cfg.pk_penalty_gw
@@ -799,10 +801,12 @@ class EddyRivasFoldingEngine:
         for i, j in iter_spans(re.n):
             best_c = re.wxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
+            wxu_baseline = re.wxu_matrix.get(i, j)
 
             for (r, k, l) in iter_complementary_tuples_pairable_kl(i, j, can_pair_mask):
                 if self.cfg.strict_complement_order and not (i < k <= r < l <= j):
                     continue
+
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
                     continue
@@ -811,14 +815,27 @@ class EddyRivasFoldingEngine:
                 if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
                     continue
 
-                L_u = whx_collapse_with(re, i, r, k, l, charged=False)
-                R_u = whx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=False)
-                L_c = whx_collapse_with(re, i, r, k, l, charged=True)
-                R_c = whx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=True)
+                # Beam pruning: only consider if inner pair is reasonable
+                if self.cfg.beam_v_threshold != 0.0:
+                    v_inner = re.vxu_matrix.get(k, l)
+                    if v_inner > self.cfg.beam_v_threshold:
+                        continue  # Skip weak inner helices
+
+                L_u = whx_collapse_with(re, i, r, k, r, charged=False)
+                R_u = whx_collapse_with(re, k + 1, j, r + 1, l, charged=False)
+
+                if not math.isfinite(L_u) or not math.isfinite(R_u):
+                    print(f"  WARNING: Infinite gap matrix value at (r={r},k={k},l={l}): L_u={L_u}, R_u={R_u}")
+
+                if not math.isfinite(L_u) or not math.isfinite(R_u):
+                    continue
 
                 cap_pen = short_hole_penalty(self.cfg.costs, k, l)
-
                 cand_first = Gw + L_u + R_u + cap_pen
+
+                L_c = whx_collapse_with(re, i, r, k, r, charged=True)
+                R_c = whx_collapse_with(re, k + 1, j, r + 1, l, charged=True)
+
                 cand_Lc = L_c + R_u + cap_pen
                 cand_Rc = L_u + R_c + cap_pen
                 cand_both = L_c + R_c + cap_pen
@@ -832,8 +849,8 @@ class EddyRivasFoldingEngine:
                     )
 
                 # yhx + yhx
-                left_y = re.yhx_matrix.get(i, r, k, l)
-                right_y = re.yhx_matrix.get(k + 1, j, r + 1, l - 1)
+                left_y = re.yhx_matrix.get(i, r, k, r)
+                right_y = re.yhx_matrix.get(k + 1, j, r + 1, l)
                 if math.isfinite(left_y) and math.isfinite(right_y):
                     cand_y = Gw + left_y + right_y + cap_pen
                     if cand_y < best_c:
@@ -845,8 +862,8 @@ class EddyRivasFoldingEngine:
 
                 # mix: yhx + whx
                 if math.isfinite(left_y):
-                    R_u2 = whx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=False)
-                    R_c2 = whx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=True)
+                    R_u2 = whx_collapse_with(re, k + 1, j, r + 1, l, charged=False)
+                    R_c2 = whx_collapse_with(re, k + 1, j, r + 1, l, charged=True)
                     if math.isfinite(R_u2):
                         cand2 = Gw + left_y + R_u2 + cap_pen
                         if cand2 < best_c:
@@ -867,8 +884,8 @@ class EddyRivasFoldingEngine:
                 # mix: whx + yhx
                 right_y = re.yhx_matrix.get(k + 1, j, r + 1, l - 1)
                 if math.isfinite(right_y):
-                    L_u2 = whx_collapse_with(re, i, r, k, l, charged=False)
-                    L_c2 = whx_collapse_with(re, i, r, k, l, charged=True)
+                    L_u2 = whx_collapse_with(re, i, r, k, r, charged=False)
+                    L_c2 = whx_collapse_with(re, i, r, k, r, charged=True)
                     if math.isfinite(L_u2):
                         cand2 = Gw + right_y + L_u2 + cap_pen
                         if cand2 < best_c:
@@ -903,6 +920,17 @@ class EddyRivasFoldingEngine:
                                     op=EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP,
                                     outer=(i, j), hole=(k2, l2), split=r2, charged=True
                                 )
+
+            if i == 0 and j == re.n - 1:
+                print(f"\n=== Final WX Composition Summary [0,{j}] ===")
+                print(f"WXU (nested baseline): {wxu_baseline:.3f}")
+                print(f"Best WXC found: {best_c:.3f}")
+                if best_bp:
+                    print(f"Winning op: {best_bp.op}")
+                    print(f"Winning (r,k,l): ({best_bp.split}, {best_bp.hole})")
+                else:
+                    print("No winning PK candidate found")
+                print(f"Improvement: {wxu_baseline - best_c:.3f} kcal/mol")
 
             re.wxc_matrix.set(i, j, best_c)
             if best_bp is not None:
@@ -948,10 +976,10 @@ class EddyRivasFoldingEngine:
                 if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
                     continue
 
-                L_u = zhx_collapse_with(re, i, r, k, l, charged=False)
-                R_u = zhx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=False)
-                L_c = zhx_collapse_with(re, i, r, k, l, charged=True)
-                R_c = zhx_collapse_with(re, k + 1, j, r + 1, l - 1, charged=True)
+                L_u = zhx_collapse_with(re, i, r, k, r, charged=False)
+                R_u = zhx_collapse_with(re, k + 1, j, r + 1, l, charged=False)
+                L_c = zhx_collapse_with(re, i, r, k, r, charged=True)
+                R_c = zhx_collapse_with(re, k + 1, j, r + 1, l, charged=True)
 
                 adjacent = (r == k)
                 cap_pen = short_hole_penalty(self.cfg.costs, k, l)
