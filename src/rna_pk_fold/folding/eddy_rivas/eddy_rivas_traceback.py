@@ -1,12 +1,35 @@
+# eddy_rivas_traceback.py
 from __future__ import annotations
 from typing import List, Tuple, Dict, Set, Callable, Any
 
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import pairs_to_multilayer_dotbracket, TraceResult
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import EddyRivasBacktrackOp
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBacktrackOp
 from rna_pk_fold.utils.traceback_ops_utils import add_pair_once, merge_nested_interval
 from rna_pk_fold.utils.back_pointer_utils import wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
+
+
+def _record_pk_join_pairs(
+    pairs: Set[Pair],
+    pair_layer: Dict[Tuple[int, int], int],
+    k: int,
+    r: int,
+    l: int,
+    base_layer: int,
+) -> None:
+    """
+    Ensure both helix pairs created at the PK join are recorded:
+
+      left  arm: (k, r)      at layer = base_layer
+      right arm: (r+1, l)    at layer = base_layer + 1
+
+    We record these at the WX level because WHX frames do not
+    intrinsically add any pairs; YHX does, but not every branch
+    descends into YHX immediately.
+    """
+    add_pair_once(pairs, pair_layer, k, r, base_layer)
+    add_pair_once(pairs, pair_layer, r + 1, l, base_layer + 1)
 
 
 def traceback_with_pk(
@@ -68,56 +91,52 @@ def traceback_with_pk(
 
             op = bp.op
 
-            # NEW: explicit uncharged selection → treat as nested
+            # Uncharged selection → treat as nested
             if op is EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED:
                 merge_nested_interval(seq, nested_state, i, j, layer,
                                       trace_nested_interval, pairs, pair_layer)
                 continue
 
+            # Common extraction; if anything is missing, fall back to nested.
+            r = bp.split
+            k, l = bp.hole if bp.hole else (None, None)
+            if r is None or k is None or l is None:
+                merge_nested_interval(seq, nested_state, i, j, layer,
+                                      trace_nested_interval, pairs, pair_layer)
+                continue
+
+            # --- FIX: Ensure PK-join helix pairs are recorded at WX level ---
+            # This prevents losing (k,r) or (r+1,l) when a branch descends via WHX.
+            _record_pk_join_pairs(pairs, pair_layer, k, r, l, layer)
+
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX:
-                # hole indices on bp.hole (k,l), split r on bp.split
-                r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
-                if r is None or k is None or l is None:
-                    merge_nested_interval(seq, nested_state, i, j, layer,
-                                          trace_nested_interval, pairs, pair_layer)
-                    continue
-                # Anchored holes at the join (match DP):
+                # WHX on both arms
                 stack.append(("WHX", i, r, k, r, layer))
                 stack.append(("WHX", r + 1, j, r + 1, l, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX:
-                r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
-                if r is None or k is None or l is None:
-                    merge_nested_interval(seq, nested_state, i, j, layer,
-                                          trace_nested_interval, pairs, pair_layer)
-                    continue
+                # YHX on both arms
                 stack.append(("YHX", i, r, k, r, layer))
                 stack.append(("YHX", r + 1, j, r + 1, l, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX:
-                r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
+                # Left YHX, right WHX
                 stack.append(("YHX", i, r, k, r, layer))
                 stack.append(("WHX", r + 1, j, r + 1, l, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX:
-                r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
+                # Left WHX, right YHX
                 stack.append(("WHX", i, r, k, r, layer))
                 stack.append(("YHX", r + 1, j, r + 1, l, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP:
-                r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
-                # anchored holes on both sides
-                stack.append(("YHX", i, r, k, r, layer))
-                stack.append(("YHX", r + 1, j, r + 1, l, layer + 1))
+                # Both sides YHX; same hole (k,l) used on both arms
+                stack.append(("YHX", i, r, k, l, layer))
+                stack.append(("YHX", r + 1, j, k, l, layer + 1))
                 continue
 
             # Fallback: treat as nested
@@ -174,7 +193,8 @@ def traceback_with_pk(
         # ---------------- YHX ----------------
         if tag == "YHX":
             _, i, j, k, l, layer = frame
-            add_pair_once(pairs, pair_layer, k, l, layer)  # ensure inner helix recorded
+            # Record inner helix explicitly for outer context
+            add_pair_once(pairs, pair_layer, k, l, layer)
 
             bp = yhx_bp(re_state, i, j, k, l)
             if not bp:
@@ -212,7 +232,6 @@ def traceback_with_pk(
                 stack.append(("YHX", s2 + 1, j, k, l, layer))
 
             elif op is EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX:
-                # IS2 outer context then delegate to WHX
                 (wi, wj) = bp.outer if bp.outer else (i, j)
                 (wk, wl) = bp.hole if bp.hole else (k, l)
                 stack.append(("WHX", wi, wj, wk, wl, layer))
@@ -222,7 +241,8 @@ def traceback_with_pk(
         # ---------------- ZHX ----------------
         if tag == "ZHX":
             _, i, j, k, l, layer = frame
-            add_pair_once(pairs, pair_layer, i, j, layer)  # ensure outer helix recorded
+            # Record outer helix explicitly for inner-anchored context
+            add_pair_once(pairs, pair_layer, i, j, layer)
 
             bp = zhx_bp(re_state, i, j, k, l)
             if not bp:
@@ -255,7 +275,6 @@ def traceback_with_pk(
                                       trace_nested_interval, pairs, pair_layer)
 
             elif op is EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX:
-                # bridge=(r,s2)
                 (r, s2) = bp.bridge if bp.bridge else (k, l)
                 stack.append(("VHX", r, s2, k, l, layer))
 
@@ -264,7 +283,8 @@ def traceback_with_pk(
         # ---------------- VHX ----------------
         if tag == "VHX":
             _, i, j, k, l, layer = frame
-            add_pair_once(pairs, pair_layer, k, l, layer)  # ensure inner helix recorded
+            # Record inner helix explicitly for outer-anchored (VHX) context
+            add_pair_once(pairs, pair_layer, k, l, layer)
 
             bp = vhx_bp(re_state, i, j, k, l)
             if not bp:
@@ -305,9 +325,9 @@ def traceback_with_pk(
                 stack.append(("WHX", wi, wj, k, l, layer))
 
             elif op is EddyRivasBacktrackOp.RE_VHX_CLOSE_BOTH:
+                # Both outer and inner helix are closed here
                 add_pair_once(pairs, pair_layer, i, j, layer)
                 add_pair_once(pairs, pair_layer, k, l, layer)
-                # optional inner WHX to descend into:
                 if bp.outer and bp.hole:
                     wi, wj = bp.outer
                     wk, wl = bp.hole
@@ -321,5 +341,3 @@ def traceback_with_pk(
     dot = pairs_to_multilayer_dotbracket(n, ordered, pair_layer)
 
     return TraceResult(pairs=ordered, dot_bracket=dot)
-
-

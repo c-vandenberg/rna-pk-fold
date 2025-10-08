@@ -635,6 +635,7 @@ special_hairpins: {}
 # PSEUDOKNOT PARAMETERS (Rivas–Eddy, paper values where specified)
 # ------------------------------------------------------
 pseudoknot:
+
   # Per-step/tilde scalars (paper: \tilde Q = 0.2, \tilde P = 0.1)
   q_ss: 0.2                 # maps to Q~
   P_tilde_out: 0.1          # maps to P~
@@ -652,7 +653,7 @@ pseudoknot:
   M_tilde_vhx: 8.43
   M_tilde_whx: 8.43
 
-  # Optional dangle bigram maps (paper doesn’t list numbers; keep empty or provide your own)
+  # Optional dangle bigram maps (paper doesn’t list values)
   dangle_hole_left: {}
   dangle_hole_right: {}
   dangle_outer_left: {}
@@ -667,6 +668,7 @@ pseudoknot:
     "UA|AU": -0.3
     "GU|UG": -0.2
     "UG|GU": -0.2
+
   coax_scale: 0.83          # g from the paper
   coax_scale_oo: 1.0        # software knob (not in paper)
   coax_scale_oi: 1.0        # software knob (not in paper)

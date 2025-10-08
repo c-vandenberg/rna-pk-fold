@@ -39,16 +39,17 @@ class _DenseRowProxy(MutableMapping[Hole, float]):
     def __iter__(self) -> Iterator[Hole]:
         plane = self._p._planes.get((self._i, self._j))
         if plane is None:
-            yield  # pragma: no cover
+            return
+
         L = plane.shape[0]
         base = self._i
         for dk in range(L):
             for dl in range(dk + 1, L):
                 if math.isfinite(plane[dk, dl]):
-                    yield (base + dk, base + dl)
+                    yield base + dk, base + dl
 
     def __len__(self) -> int:
-        plane = self._p._planes.get((self._i, self._j))
+        plane = self._p.planes.get((self._i, self._j))
         if plane is None:
             return 0
         L = plane.shape[0]
@@ -145,6 +146,10 @@ class SparseGapMatrix:
             return self.data.setdefault((i, j), {})
 
         return _DenseRowProxy(self, i, j)
+
+    @property
+    def planes(self):
+        return self._planes
 
 
 @dataclass(slots=True)

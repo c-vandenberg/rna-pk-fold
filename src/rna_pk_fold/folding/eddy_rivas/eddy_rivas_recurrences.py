@@ -204,6 +204,7 @@ class EddyRivasFoldingEngine:
 
                 # 5) direct collapse
                 v = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l)
+                cand = v
                 if cand < best:
                     best = cand
                     best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE, outer=(i, j), hole=(k, l))
@@ -645,7 +646,8 @@ class EddyRivasFoldingEngine:
                     cand = Lo + P_out + v + Gwi
                     if cand < best:
                         best = cand
-                        best_bp = EddyRivasBackPointer(op=..., outer=(i, j), hole=(k, l))
+                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_DANGLE_L, outer=(i, j),
+                                                       hole=(k, l))
 
                 # Outer dangle R
                 v = re.vhx_matrix.get(i, j - 1, k, l)
