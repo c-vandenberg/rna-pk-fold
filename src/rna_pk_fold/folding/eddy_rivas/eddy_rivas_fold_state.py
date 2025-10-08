@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import math
 from typing import Dict, Tuple
 
-from rna_pk_fold.structures.tri_matrix import RivasEddyTriMatrix, RivasEddyTriBackPointer
+from rna_pk_fold.structures.tri_matrix import EddyRivasTriMatrix, EddyRivasTriBackPointer
 from rna_pk_fold.structures.gap_matrix import SparseGapMatrix, SparseGapBackptr
 
 wx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
@@ -19,17 +19,17 @@ class EddyRivasFoldState:
     n: int
 
     # Non-gap (Energies, 2D)
-    wx_matrix: RivasEddyTriMatrix
-    vx_matrix: RivasEddyTriMatrix
-    wxi_matrix: RivasEddyTriMatrix
-    wxu_matrix: RivasEddyTriMatrix  # uncharged (baseline, nested-only)
-    wxc_matrix: RivasEddyTriMatrix  # charged   (has paid Gw at least once)
-    vxu_matrix: RivasEddyTriMatrix
-    vxc_matrix: RivasEddyTriMatrix
+    wx_matrix: EddyRivasTriMatrix
+    vx_matrix: EddyRivasTriMatrix
+    wxi_matrix: EddyRivasTriMatrix
+    wxu_matrix: EddyRivasTriMatrix  # uncharged (baseline, nested-only)
+    wxc_matrix: EddyRivasTriMatrix  # charged   (has paid Gw at least once)
+    vxu_matrix: EddyRivasTriMatrix
+    vxc_matrix: EddyRivasTriMatrix
 
     # Non-gap (Back-pointers, 2D)
-    wx_back_ptr: RivasEddyTriBackPointer
-    vx_back_ptr: RivasEddyTriBackPointer
+    wx_back_ptr: EddyRivasTriBackPointer
+    vx_back_ptr: EddyRivasTriBackPointer
 
     # Gap (Energies, 4D)
     whx_matrix: SparseGapMatrix
@@ -49,17 +49,17 @@ def make_re_fold_state(n: int) -> EddyRivasFoldState:
         n=n,
 
         # Non-gap (Energies, 2D)
-        wx_matrix=RivasEddyTriMatrix(n),
-        vx_matrix=RivasEddyTriMatrix(n),
-        wxi_matrix=RivasEddyTriMatrix(n),
-        wxu_matrix=RivasEddyTriMatrix(n),
-        wxc_matrix=RivasEddyTriMatrix(n),
-        vxu_matrix=RivasEddyTriMatrix(n),
-        vxc_matrix=RivasEddyTriMatrix(n),
+        wx_matrix=EddyRivasTriMatrix(n),
+        vx_matrix=EddyRivasTriMatrix(n),
+        wxi_matrix=EddyRivasTriMatrix(n),
+        wxu_matrix=EddyRivasTriMatrix(n),
+        wxc_matrix=EddyRivasTriMatrix(n),
+        vxu_matrix=EddyRivasTriMatrix(n),
+        vxc_matrix=EddyRivasTriMatrix(n),
 
         # Non-gap (Back-pointers, 2D)
-        wx_back_ptr=RivasEddyTriBackPointer(n),
-        vx_back_ptr=RivasEddyTriBackPointer(n),
+        wx_back_ptr=EddyRivasTriBackPointer(n),
+        vx_back_ptr=EddyRivasTriBackPointer(n),
 
         # Gap (Energies, 4D)
         whx_matrix=SparseGapMatrix(n),

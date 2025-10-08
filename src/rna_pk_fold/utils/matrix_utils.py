@@ -2,7 +2,7 @@ import math
 from typing import Dict, Tuple
 
 from rna_pk_fold.structures.gap_matrix import SparseGapMatrix
-from rna_pk_fold.structures.tri_matrix import RivasEddyTriMatrix
+from rna_pk_fold.structures.tri_matrix import EddyRivasTriMatrix
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 
 # Caches for expensive lookups
@@ -17,7 +17,7 @@ def clear_matrix_caches():
     _zhx_cache = {}
 
 
-def get_whx_with_collapse(whx: SparseGapMatrix, wx: RivasEddyTriMatrix,
+def get_whx_with_collapse(whx: SparseGapMatrix, wx: EddyRivasTriMatrix,
                           i: int, j: int, k: int, l: int) -> float:
     """
     Collapse identity: whx(i,j : k,k+1) == wx(i,j)
@@ -33,7 +33,7 @@ def get_whx_with_collapse(whx: SparseGapMatrix, wx: RivasEddyTriMatrix,
 
 
 def get_zhx_with_collapse(
-    zhx: SparseGapMatrix, vx: RivasEddyTriMatrix,
+    zhx: SparseGapMatrix, vx: EddyRivasTriMatrix,
     i: int, j: int, k: int, l: int
 ) -> float:
     """

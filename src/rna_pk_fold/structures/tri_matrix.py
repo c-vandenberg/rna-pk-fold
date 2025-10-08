@@ -79,7 +79,7 @@ class ZuckerTriMatrix(Generic[T]):
 
 
 @dataclass(slots=True)
-class RivasEddyTriMatrix:
+class EddyRivasTriMatrix:
     """
     Triangular N x N float matrix with +inf default.
     Only (i <= j) are meaningful. Use get/set.
@@ -99,7 +99,7 @@ class RivasEddyTriMatrix:
 
 
 @dataclass(slots=True)
-class RivasEddyTriBackPointer:
+class EddyRivasTriBackPointer:
     """
     Triangular N x N back-pointer matrix for WX/VX.
     Only (i <= j) are meaningful. Missing entries return None.

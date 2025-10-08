@@ -3,8 +3,8 @@ import pytest
 
 from rna_pk_fold.structures import ZuckerTriMatrix
 from rna_pk_fold.structures.tri_matrix import (
-    RivasEddyTriMatrix,
-    RivasEddyTriBackPointer,
+    EddyRivasTriMatrix,
+    EddyRivasTriBackPointer,
 )
 
 
@@ -102,7 +102,7 @@ def test_re_trimatrix_defaults_and_roundtrip():
     RivasEddyTriMatrix defaults to +inf; set/get roundtrip stores floats.
     """
     n = 5
-    re_tri = RivasEddyTriMatrix(n=n)
+    re_tri = EddyRivasTriMatrix(n=n)
 
     # Defaults: +inf for unset valid cells
     assert math.isinf(re_tri.get(0, 0))
@@ -122,7 +122,7 @@ def test_re_trimatrix_empty_segment_convenience():
     Any other i > j returns +inf.
     """
     n = 4
-    re_tri = RivasEddyTriMatrix(n=n)
+    re_tri = EddyRivasTriMatrix(n=n)
 
     # Exact empty segment just after diagonal → 0.0
     assert re_tri.get(1, 0) == 0.0
@@ -142,7 +142,7 @@ def test_re_trimatrix_out_of_bounds_are_inf_for_normal_cells():
     Out-of-bounds indices (except the empty-segment convenience) return +inf.
     """
     n = 3
-    re_tri = RivasEddyTriMatrix(n=n)
+    re_tri = EddyRivasTriMatrix(n=n)
 
     assert math.isinf(re_tri.get(-1, 0))
     assert math.isinf(re_tri.get(0, n))
@@ -156,7 +156,7 @@ def test_re_trimatrix_overwrite_values():
     Setting a value twice overwrites previous value.
     """
     n = 5
-    re_tri = RivasEddyTriMatrix(n=n)
+    re_tri = EddyRivasTriMatrix(n=n)
     re_tri.set(0, 4, -1.0)
     assert re_tri.get(0, 4) == -1.0
     re_tri.set(0, 4, -3.5)
@@ -180,7 +180,7 @@ def test_re_tribackpointer_defaults_and_roundtrip():
     Unset returns None; set/get roundtrip preserves object identity.
     """
     n = 4
-    bp = RivasEddyTriBackPointer(n=n)
+    bp = EddyRivasTriBackPointer(n=n)
 
     # Defaults
     assert bp.get(0, 0) is None
@@ -200,7 +200,7 @@ def test_re_tribackpointer_invalid_indices_return_none():
     i > j or out-of-bounds → None.
     """
     n = 3
-    bp = RivasEddyTriBackPointer(n=n)
+    bp = EddyRivasTriBackPointer(n=n)
 
     assert bp.get(-1, 0) is None
     assert bp.get(0, n) is None

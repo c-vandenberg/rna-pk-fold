@@ -4,7 +4,7 @@ import pytest
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBacktrackOp
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState, make_re_fold_state
-from rna_pk_fold.structures.tri_matrix import ZuckerTriMatrix, RivasEddyTriMatrix, RivasEddyTriBackPointer
+from rna_pk_fold.structures.tri_matrix import ZuckerTriMatrix, EddyRivasTriMatrix, EddyRivasTriBackPointer
 from rna_pk_fold.structures.gap_matrix import SparseGapMatrix, SparseGapBackptr
 
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState, make_fold_state
@@ -139,13 +139,13 @@ def _try_build_states(n):
         )
 
         # --- Rivas & Eddy state ---
-        wx_matrix = RivasEddyTriMatrix(n)
-        vx_matrix = RivasEddyTriMatrix(n)
-        wxi_matrix = RivasEddyTriMatrix(n)
-        wxu_matrix = RivasEddyTriMatrix(n)
-        wxc_matrix = RivasEddyTriMatrix(n)
-        vxu_matrix = RivasEddyTriMatrix(n)
-        vxc_matrix = RivasEddyTriMatrix(n)
+        wx_matrix = EddyRivasTriMatrix(n)
+        vx_matrix = EddyRivasTriMatrix(n)
+        wxi_matrix = EddyRivasTriMatrix(n)
+        wxu_matrix = EddyRivasTriMatrix(n)
+        wxc_matrix = EddyRivasTriMatrix(n)
+        vxu_matrix = EddyRivasTriMatrix(n)
+        vxc_matrix = EddyRivasTriMatrix(n)
 
         whx_matrix = SparseGapMatrix(n)
         vhx_matrix = SparseGapMatrix(n)
@@ -162,7 +162,7 @@ def _try_build_states(n):
             wx_matrix=wx_matrix, vx_matrix=vx_matrix,
             wxi_matrix=wxi_matrix, wxu_matrix=wxu_matrix, wxc_matrix=wxc_matrix,
             vxu_matrix=vxu_matrix, vxc_matrix=vxc_matrix,
-            wx_back_ptr=RivasEddyTriBackPointer(n), vx_back_ptr=RivasEddyTriBackPointer(n),
+            wx_back_ptr=EddyRivasTriBackPointer(n), vx_back_ptr=EddyRivasTriBackPointer(n),
             whx_matrix=whx_matrix, vhx_matrix=vhx_matrix,
             yhx_matrix=yhx_matrix, zhx_matrix=zhx_matrix,
             whx_back_ptr=whx_back_ptr, vhx_back_ptr=vhx_back_ptr,

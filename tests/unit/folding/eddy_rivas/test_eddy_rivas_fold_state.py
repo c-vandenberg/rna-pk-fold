@@ -2,8 +2,8 @@ import math
 
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import make_re_fold_state
 from rna_pk_fold.structures.tri_matrix import (
-    RivasEddyTriMatrix,
-    RivasEddyTriBackPointer,
+    EddyRivasTriMatrix,
+    EddyRivasTriBackPointer,
 )
 from rna_pk_fold.structures.gap_matrix import (
     SparseGapMatrix,
@@ -20,16 +20,16 @@ def test_make_state_constructs_all_matrices_and_slots():
     assert not hasattr(st, "__dict__")
 
     # Types (2D matrices and back-pointers)
-    assert isinstance(st.wx_matrix, RivasEddyTriMatrix)
-    assert isinstance(st.vx_matrix, RivasEddyTriMatrix)
-    assert isinstance(st.wxi_matrix, RivasEddyTriMatrix)
-    assert isinstance(st.wxu_matrix, RivasEddyTriMatrix)
-    assert isinstance(st.wxc_matrix, RivasEddyTriMatrix)
-    assert isinstance(st.vxu_matrix, RivasEddyTriMatrix)
-    assert isinstance(st.vxc_matrix, RivasEddyTriMatrix)
+    assert isinstance(st.wx_matrix, EddyRivasTriMatrix)
+    assert isinstance(st.vx_matrix, EddyRivasTriMatrix)
+    assert isinstance(st.wxi_matrix, EddyRivasTriMatrix)
+    assert isinstance(st.wxu_matrix, EddyRivasTriMatrix)
+    assert isinstance(st.wxc_matrix, EddyRivasTriMatrix)
+    assert isinstance(st.vxu_matrix, EddyRivasTriMatrix)
+    assert isinstance(st.vxc_matrix, EddyRivasTriMatrix)
 
-    assert isinstance(st.wx_back_ptr, RivasEddyTriBackPointer)
-    assert isinstance(st.vx_back_ptr, RivasEddyTriBackPointer)
+    assert isinstance(st.wx_back_ptr, EddyRivasTriBackPointer)
+    assert isinstance(st.vx_back_ptr, EddyRivasTriBackPointer)
 
     # Types (4D gap matrices and back-pointers)
     assert isinstance(st.whx_matrix, SparseGapMatrix)
