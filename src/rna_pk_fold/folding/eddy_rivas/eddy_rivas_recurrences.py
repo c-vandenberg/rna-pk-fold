@@ -53,6 +53,8 @@ class EddyRivasFoldingConfig:
     min_hole_width: int = 0  # 0 = identical behavior; 1+ prunes zero/narrow holes
     min_outer_left: int = 0  # minimal length of [i..r]
     min_outer_right: int = 0  # minimal length of [r+1..j]
+    beam_k: int = 0                 # 0 = disabled, else keep at most K (k,l) per (i,j)
+    beam_v_threshold: float = 0.0  # keep (k,l) only if nested V[k][l] <= this (e.g. -0.1)
     strict_complement_order: bool = True  # enforce i<k<=r<l<=j
     costs: Optional[PseudoknotEnergies] = None
     tables: object = None

@@ -147,11 +147,14 @@ def engines_and_costs(energy_model):
         pk_gw = 1.0
 
     er_cfg = ER.EddyRivasFoldingConfig(
-        enable_coax=True,
-        enable_coax_variants=True,
-        enable_coax_mismatch=True,
-        enable_wx_overlap=True,
+        enable_coax=False,
+        enable_coax_variants=False,
+        enable_coax_mismatch=False,
+        enable_wx_overlap=False,  # keep off
+        enable_is2=False,  # big speed boost
         enable_join_drift=False,
+        min_hole_width=0,  # or 1 if you want to prune tiny holes
+        max_hole_width=30,  # cap holes; tune as needed
         pk_penalty_gw=pk_gw,
         costs=costs,
     )
