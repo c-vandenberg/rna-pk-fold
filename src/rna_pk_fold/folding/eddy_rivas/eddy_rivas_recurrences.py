@@ -262,22 +262,23 @@ class EddyRivasFoldingEngine:
                             )
 
                 # IS2 (outer_yhx) + yhx(r2,s2:k,l)
-                for r2 in range(i, k + 1):
-                    for s2 in range(l, j + 1):
-                        if r2 <= k and l <= s2 and r2 <= s2:
-                            inner_y = re.yhx_matrix.get(r2, s2, k, l)
-                            if math.isfinite(inner_y):
-                                bridge = IS2_outer_yhx(self.cfg, seq, i, j, r2, s2)
-                                cand = bridge + inner_y
-                                best, best_bp = take_best(
-                                    best, best_bp, cand,
-                                    lambda: EddyRivasBackPointer(
-                                        op=EddyRivasBacktrackOp.RE_WHX_IS2_INNER_YHX,
-                                        outer=(i, j),
-                                        hole=(k, l),
-                                        bridge=(r2, s2)
+                if self.cfg.enable_is2:
+                    for r2 in range(i, k + 1):
+                        for s2 in range(l, j + 1):
+                            if r2 <= k and l <= s2 and r2 <= s2:
+                                inner_y = re.yhx_matrix.get(r2, s2, k, l)
+                                if math.isfinite(inner_y):
+                                    bridge = IS2_outer_yhx(self.cfg, seq, i, j, r2, s2)
+                                    cand = bridge + inner_y
+                                    best, best_bp = take_best(
+                                        best, best_bp, cand,
+                                        lambda: EddyRivasBackPointer(
+                                            op=EddyRivasBacktrackOp.RE_WHX_IS2_INNER_YHX,
+                                            outer=(i, j),
+                                            hole=(k, l),
+                                            bridge=(r2, s2)
+                                        )
                                     )
-                                )
 
                 re.whx_matrix.set(i, j, k, l, best)
                 re.whx_back_ptr.set(i, j, k, l, best_bp)
@@ -382,7 +383,7 @@ class EddyRivasFoldingEngine:
                         )
 
                 # IS2 + zhx(r,s2:k,l)  (optional, expensive)
-                if getattr(self.cfg, "enable_is2", True):
+                if self.cfg.enable_is2:
                     for r in range(i, k + 1):
                         for s2 in range(l, j + 1):
                             if r <= k and l <= s2 and r <= s2:
@@ -555,7 +556,7 @@ class EddyRivasFoldingEngine:
                         )
 
                 # IS2 + vhx(r,s2:k,l)  (optional, expensive)
-                if getattr(self.cfg, "enable_is2", True):
+                if self.cfg.enable_is2:
                     for r in range(i, k + 1):
                         for s2 in range(l, j + 1):
                             if r <= s2:
@@ -762,7 +763,7 @@ class EddyRivasFoldingEngine:
                         )
 
                 # IS2 (optional, expensive)
-                if getattr(self.cfg, "enable_is2", True):
+                if self.cfg.enable_is2:
                     for r2 in range(i, k + 1):
                         for s2 in range(l, j + 1):
                             if r2 <= s2:
