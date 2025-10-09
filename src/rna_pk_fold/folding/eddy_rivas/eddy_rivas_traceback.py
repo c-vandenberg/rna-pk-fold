@@ -1,5 +1,7 @@
 from __future__ import annotations
 from typing import List, Tuple, Dict, Set, Callable, Any
+import time
+import logging
 
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import pairs_to_multilayer_dotbracket, TraceResult
@@ -7,6 +9,8 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldSt
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import EddyRivasBacktrackOp
 from rna_pk_fold.utils.traceback_ops_utils import add_pair_once, merge_nested_interval
 from rna_pk_fold.utils.back_pointer_utils import wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
+
+logger = logging.getLogger(__name__)
 
 
 def traceback_with_pk(
@@ -36,9 +40,13 @@ def traceback_with_pk(
     TraceResult
         pairs + multilayer dot-bracket.
     """
+    start_time = time.perf_counter()
+
     n = re_state.n
     if n == 0:
         return TraceResult(pairs=[], dot_bracket="")
+
+    logger.info(f"Starting traceback for sequence length N={n}")
 
     # Work frames (tagged)
     #   ("WX", i, j, layer)
@@ -158,7 +166,6 @@ def traceback_with_pk(
                 merge_nested_interval(seq, nested_state, i, j, layer,
                                       trace_nested_interval, pairs, pair_layer)
                 continue
-            print(f"  → BP found: op={bp.op}")
             op = bp.op
 
             if op in (
@@ -206,7 +213,6 @@ def traceback_with_pk(
             if not bp:
                 print(f"  → NO BACKPOINTER! Skipping...")
                 continue
-            print(f"  → BP found: op={bp.op}")
             op = bp.op
 
             if op in (
@@ -347,6 +353,12 @@ def traceback_with_pk(
 
     ordered = sorted(pairs, key=lambda pr: (pr.base_i, pr.base_j))
     dot = pairs_to_multilayer_dotbracket(n, ordered, pair_layer)
+
+    elapsed = time.perf_counter() - start_time
+    print(f"Traceback completed in {elapsed:.3f}s")
+    print(f"Found {len(ordered)} base pairs")
+    logger.info(f"Traceback completed in {elapsed:.3f}s")
+    logger.info(f"Found {len(ordered)} base pairs")
 
     return TraceResult(pairs=ordered, dot_bracket=dot)
 

@@ -1,10 +1,13 @@
 from __future__ import annotations
 import math
 import json
+import time
+import logging
 from dataclasses import dataclass, fields
 from typing import Tuple, Dict, Optional, Any, Callable
 
 import numpy as np
+from tqdm import tqdm
 
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
@@ -23,6 +26,8 @@ from rna_pk_fold.folding.eddy_rivas.numba_kernels import (
     best_sum,
     best_sum_with_penalty,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def take_best(
@@ -66,7 +71,7 @@ class EddyRivasFoldingConfig:
     strict_complement_order: bool = True  # enforce i<k<=r<l<=j
     costs: Optional[PseudoknotEnergies] = None
     tables: object = None
-
+    verbose: bool = False
 
 # -----------------------
 # Engine
@@ -74,6 +79,7 @@ class EddyRivasFoldingConfig:
 class EddyRivasFoldingEngine:
     def __init__(self, config: EddyRivasFoldingConfig):
         self.cfg = config
+        self.timings = {}
 
     @staticmethod
     def _build_can_pair_mask(seq: str) -> list[list[bool]]:
@@ -87,9 +93,19 @@ class EddyRivasFoldingEngine:
         return mask
 
     def fill_with_costs(self, seq: str, nested: ZuckerFoldState, re: EddyRivasFoldState) -> None:
-        clear_matrix_caches()
+        total_start = time.perf_counter()
 
         n = re.n
+        # Log algorithm start
+        logger.info("=" * 60)
+        logger.info(f"Eddy-Rivas DP for sequence length N={n}")
+        logger.info(f"Expected complexity:")
+        logger.info(f"  Gap matrices: O(N⁴) ≈ {n ** 4:,} operations")
+        logger.info(f"  Compositions: O(N⁶) ≈ {n ** 6:,} operations")
+        logger.info("=" * 60)
+
+        clear_matrix_caches()
+
         q = self.cfg.costs.q_ss
         Gw = self.cfg.pk_penalty_gw
         Gwh = getattr(self.cfg.costs, "Gwh", 0.0)
@@ -110,23 +126,89 @@ class EddyRivasFoldingEngine:
         M_vhx = getattr(tables, "M_tilde_vhx", getattr(self.cfg.costs, "M_tilde_vhx", 0.0))
         M_whx = getattr(tables, "M_tilde_whx", getattr(self.cfg.costs, "M_tilde_whx", 0.0))
 
+        # Seeding
+        seed_start = time.perf_counter()
         self._seed_from_nested(nested, re)
         re.wxu_matrix.enable_dense()
         re.wxc_matrix.enable_dense()
         re.vxu_matrix.enable_dense()
         re.vxc_matrix.enable_dense()
         can_pair_mask = self._build_can_pair_mask(seq)
+        self.timings['seed'] = time.perf_counter() - seed_start
+        logger.info(f"Seeding completed in {self.timings['seed']:.2f}s")
 
+        # WHX
+        logger.info("Filling WHX matrix...")
+        whx_start = time.perf_counter()
         self._dp_whx(seq, re, q, Gwh_whx, can_pair_mask)
-        self._dp_vhx(seq, re, q, Gwi, P_hole, L_, R_, Q_hole, M_vhx, M_whx, can_pair_mask)
-        self._dp_zhx(seq, re, q, Gwi, P_hole, Q_hole, can_pair_mask)
-        self._dp_yhx(seq, re, q, Gwi, P_out, Q_out, M_yhx, M_whx, can_pair_mask)
+        self.timings['whx'] = time.perf_counter() - whx_start
+        logger.info(f"WHX filled in {self.timings['whx']:.2f}s")
 
+        # VHX
+        logger.info("Filling VHX matrix...")
+        vhx_start = time.perf_counter()
+        self._dp_vhx(seq, re, q, Gwi, P_hole, L_, R_, Q_hole, M_vhx, M_whx, can_pair_mask)
+        self.timings['vhx'] = time.perf_counter() - vhx_start
+        logger.info(f"VHX filled in {self.timings['vhx']:.2f}s")
+
+        # ZHX
+        logger.info("Filling ZHX matrix...")
+        zhx_start = time.perf_counter()
+        self._dp_zhx(seq, re, q, Gwi, P_hole, Q_hole, can_pair_mask)
+        self.timings['zhx'] = time.perf_counter() - zhx_start
+        logger.info(f"ZHX filled in {self.timings['zhx']:.2f}s")
+
+        # YHX
+        logger.info("Filling YHX matrix...")
+        yhx_start = time.perf_counter()
+        self._dp_yhx(seq, re, q, Gwi, P_out, Q_out, M_yhx, M_whx, can_pair_mask)
+        self.timings['yhx'] = time.perf_counter() - yhx_start
+        logger.info(f"YHX filled in {self.timings['yhx']:.2f}s")
+
+        # WX Composition
+        logger.info("Composing WX matrix...")
+        wx_start = time.perf_counter()
         self._compose_wx(seq, re, Gw, Gwh_wx, can_pair_mask)
         self._publish_wx(re)
+        self.timings['wx_compose'] = time.perf_counter() - wx_start
+        logger.info(f"WX composed in {self.timings['wx_compose']:.2f}s")
 
+        # VX Composition
+        logger.info("Composing VX matrix...")
+        vx_start = time.perf_counter()
         self._compose_vx(seq, re, Gw, g, can_pair_mask)
         self._publish_vx(re)
+        self.timings['vx_compose'] = time.perf_counter() - vx_start
+        logger.info(f"VX composed in {self.timings['vx_compose']:.2f}s")
+
+        # Total timing
+        self.timings['total'] = time.perf_counter() - total_start
+
+        final_energy = re.wx_matrix.get(0, n - 1)
+        logger.info("=" * 60)
+        logger.info(f"Eddy-Rivas DP completed in {self.timings['total']:.2f}s")
+        logger.info(f"Final WX[0,{n - 1}] = {final_energy:.3f} kcal/mol")
+        logger.info("")
+        logger.info("Timing breakdown:")
+        logger.info(
+            f"  Seeding:        {self.timings['seed']:7.2f}s ({self.timings['seed'] / self.timings['total'] * 100:5.1f}%)")
+        logger.info(
+            f"  WHX fill:       {self.timings['whx']:7.2f}s ({self.timings['whx'] / self.timings['total'] * 100:5.1f}%)")
+        logger.info(
+            f"  VHX fill:       {self.timings['vhx']:7.2f}s ({self.timings['vhx'] / self.timings['total'] * 100:5.1f}%)")
+        logger.info(
+            f"  ZHX fill:       {self.timings['zhx']:7.2f}s ({self.timings['zhx'] / self.timings['total'] * 100:5.1f}%)")
+        logger.info(
+            f"  YHX fill:       {self.timings['yhx']:7.2f}s ({self.timings['yhx'] / self.timings['total'] * 100:5.1f}%)")
+        logger.info(
+            f"  WX composition: {self.timings['wx_compose']:7.2f}s ({self.timings['wx_compose'] / self.timings['total'] * 100:5.1f}%)")
+        logger.info(
+            f"  VX composition: {self.timings['vx_compose']:7.2f}s ({self.timings['vx_compose'] / self.timings['total'] * 100:5.1f}%)")
+        gap_total = self.timings['whx'] + self.timings['vhx'] + self.timings['zhx'] + self.timings['yhx']
+        comp_total = self.timings['wx_compose'] + self.timings['vx_compose']
+        logger.info(f"  Gap matrices:   {gap_total:7.2f}s ({gap_total / self.timings['total'] * 100:5.1f}%)")
+        logger.info(f"  Compositions:   {comp_total:7.2f}s ({comp_total / self.timings['total'] * 100:5.1f}%)")
+        logger.info("=" * 60)
 
     # --------- Seeding ---------
     @staticmethod
@@ -151,7 +233,8 @@ class EddyRivasFoldingEngine:
 
     # --------- WHX ---------
     def _dp_whx(self, seq: str, re: EddyRivasFoldState, q: float, Gwh_whx: float, can_pair_mask) -> None:
-        for i, j in iter_spans(re.n):
+        spans = list(iter_spans(re.n))
+        for i, j in tqdm(spans, desc="WHX", leave=False):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
@@ -290,24 +373,25 @@ class EddyRivasFoldingEngine:
 
     # --------- VHX ---------
     def _dp_vhx(
-            self,
-            seq: str,
-            re: EddyRivasFoldState,
-            q: float,
-            Gwi: float,
-            P_hole: float,
-            L_: float,
-            R_: float,
-            Q_hole: float,
-            M_vhx: float,
-            M_whx: float,
-            can_pair_mask: list[list[bool]],
+        self,
+        seq: str,
+        re: EddyRivasFoldState,
+        q: float,
+        Gwi: float,
+        P_hole: float,
+        L_: float,
+        R_: float,
+        Q_hole: float,
+        M_vhx: float,
+        M_whx: float,
+        can_pair_mask: list[list[bool]],
     ) -> None:
         """
         VHX: inner-helix context (k,l) inside outer (i,j).
         Pairability filter on (k,l) + hole width guards.
         """
-        for i, j in iter_spans(re.n):
+        spans = list(iter_spans(re.n))
+        for i, j in tqdm(spans, desc="VHX", leave=False):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
@@ -449,20 +533,21 @@ class EddyRivasFoldingEngine:
 
     # --------- ZHX ---------
     def _dp_zhx(
-            self,
-            seq: str,
-            re: EddyRivasFoldState,
-            q: float,
-            Gwi: float,
-            P_hole: float,
-            Q_hole: float,
-            can_pair_mask: list[list[bool]],
+        self,
+        seq: str,
+        re: EddyRivasFoldState,
+        q: float,
+        Gwi: float,
+        P_hole: float,
+        Q_hole: float,
+        can_pair_mask: list[list[bool]],
     ) -> None:
         """
         ZHX: inner-helix-anchored context for the outer stem (i,j) around hole (k,l).
         Pairability filter on (k,l) + hole width guards.
         """
-        for i, j in iter_spans(re.n):
+        spans = list(iter_spans(re.n))
+        for i, j in tqdm(spans, desc="ZHX", leave=False):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
@@ -601,16 +686,16 @@ class EddyRivasFoldingEngine:
 
     # --------- YHX ---------
     def _dp_yhx(
-            self,
-            seq: str,
-            re: EddyRivasFoldState,
-            q: float,
-            Gwi: float,
-            P_out: float,
-            Q_out: float,
-            M_yhx: float,
-            M_whx: float,
-            can_pair_mask: list[list[bool]],
+        self,
+        seq: str,
+        re: EddyRivasFoldState,
+        q: float,
+        Gwi: float,
+        P_out: float,
+        Q_out: float,
+        M_yhx: float,
+        M_whx: float,
+        can_pair_mask: list[list[bool]],
     ) -> None:
         """
         YHX: outer helix context around an inner (k,l) helix.
@@ -790,19 +875,20 @@ class EddyRivasFoldingEngine:
 
     # --------- WX Composition & Publish ---------
     def _compose_wx(
-            self,
-            seq: str,
-            re: EddyRivasFoldState,
-            Gw: float,
-            Gwh_wx: float,
-            can_pair_mask: list[list[bool]],
+        self,
+        seq: str,
+        re: EddyRivasFoldState,
+        Gw: float,
+        Gwh_wx: float,
+        can_pair_mask: list[list[bool]],
     ) -> None:
         """
         Compose WX from uncharged (WXU) + charged candidates built around pairable (k,l).
         Numba-accelerated: per-(k,l) we precompute vector components over r and let
         the kernel minimize across r in one go.
         """
-        for i, j in iter_spans(re.n):
+        spans = list(iter_spans(re.n))
+        for i, j in tqdm(spans, desc="WX Compose", leave=False):
             best_c = re.wxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
             wxu_baseline = re.wxu_matrix.get(i, j)
@@ -948,18 +1034,19 @@ class EddyRivasFoldingEngine:
 
     # --------- VX Composition & Publish ---------
     def _compose_vx(
-            self,
-            seq: str,
-            re: EddyRivasFoldState,
-            Gw: float,
-            g: float,
-            can_pair_mask: list[list[bool]],
+        self,
+        seq: str,
+        re: EddyRivasFoldState,
+        Gw: float,
+        g: float,
+        can_pair_mask: list[list[bool]],
     ) -> None:
         """
         Compose VX from uncharged (VXU) + charged candidates around pairable (k,l).
         Numba-accelerated: precompute vector components over r and minimize in kernel.
         """
-        for i, j in iter_spans(re.n):
+        spans = list(iter_spans(re.n))
+        for i, j in tqdm(spans, desc="VX Compose", leave=False):
             best_c = re.vxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
 

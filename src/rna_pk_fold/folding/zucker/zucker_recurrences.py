@@ -1,16 +1,23 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import math
+import time
+import logging
+
+from tqdm import tqdm
 
 from rna_pk_fold.folding.zucker import ZuckerFoldState, ZuckerBacktrackOp, ZuckerBackPointer
 from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModelProtocol
 from rna_pk_fold.rules import can_pair, MIN_HAIRPIN_UNPAIRED
 from rna_pk_fold.energies.energy_ops import best_multiloop_end_bonus
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(slots=True)
 class ZuckerFoldingConfig:
     temp_k: float = 310.15
+    verbose: bool = False
 
 
 @dataclass(slots=True)
@@ -24,11 +31,21 @@ class ZuckerFoldingEngine:
           1) compute WM[i][j] (uses V on smaller spans)
           2) compute V[i][j]   (can use WM[i+1][j-1])
         """
+        start_time = time.perf_counter()
         n = len(seq)
         a, b, c, d_bonus = self.energy_model.params.MULTILOOP
 
+        # Log algorithm start
+        logger.info("=" * 60)
+        logger.info(f"Zucker (Nested) DP for sequence length N={n}")
+        logger.info(f"Expected complexity: O(N³) ≈ {n ** 3:,} operations")
+        logger.info("=" * 60)
+
+        show_progress = self.config.verbose or logger.isEnabledFor(logging.INFO)
+        span_iter = tqdm(range(0, n), desc="Zucker DP", leave=True, disable=not show_progress)
+
         # d = 0..n-1 for WM; V is defined for d >= 1
-        for d in range(0, n):
+        for d in span_iter:
             for i in range(0, n - d):
                 j = i + d
 
@@ -41,6 +58,13 @@ class ZuckerFoldingEngine:
 
                 # ---------- 3. Matrix W: ----------
                 self._fill_w_cell(i, j, state)
+
+        elapsed = time.perf_counter() - start_time
+        final_energy = state.w_matrix.get(0, n - 1)
+
+        logger.info(f"Zucker DP completed in {elapsed:.2f}s ({elapsed * 1000:.0f}ms)")
+        logger.info(f"Final W[0,{n - 1}] = {final_energy:.3f} kcal/mol")
+        logger.info(f"Average time per cell: {elapsed * 1000 * 1000 / (n * (n + 1) / 2):.2f} μs")
 
     def _fill_wm_cell(
         self,
