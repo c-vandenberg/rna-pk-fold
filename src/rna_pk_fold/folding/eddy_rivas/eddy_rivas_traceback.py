@@ -119,21 +119,21 @@ def traceback_with_pk(
                     k_r, l_r = r + 1, l  # WHX uses l
 
                     # ADD THIS DEBUG BLOCK
-                    print(f"\n=== WX Composition at [{i},{j}] layer={layer} ===")
-                    print(f"Split r={r}, hole={bp.hole}")
-                    print(f"hole_left={bp.hole_left}, hole_right={bp.hole_right}")
-                    print(f"Pushing YHX[{i},{r},{k_l},{l_l}] layer={layer}")
-                    print(f"Pushing WHX[{r + 1},{j},{k_r},{l_r}] layer={layer + 1}")
+                    logger.debug(f"\n=== WX Composition at [{i},{j}] layer={layer} ===")
+                    logger.debug(f"Split r={r}, hole={bp.hole}")
+                    logger.debug(f"hole_left={bp.hole_left}, hole_right={bp.hole_right}")
+                    logger.debug(f"Pushing YHX[{i},{r},{k_l},{l_l}] layer={layer}")
+                    logger.debug(f"Pushing WHX[{r + 1},{j},{k_r},{l_r}] layer={layer + 1}")
 
                     # Check if backpointers exist
                     test_yhx = yhx_bp(re_state, i, r, k_l, l_l)
                     test_whx = whx_bp(re_state, r + 1, j, k_r, l_r)
-                    print(f"YHX BP exists: {test_yhx is not None}")
-                    print(f"WHX BP exists: {test_whx is not None}")
+                    logger.debug(f"YHX BP exists: {test_yhx is not None}")
+                    logger.debug(f"WHX BP exists: {test_whx is not None}")
                     if test_yhx:
-                        print(f"  YHX BP op: {test_yhx.op}")
+                        logger.debug(f"  YHX BP op: {test_yhx.op}")
                     if test_whx:
-                        print(f"  WHX BP op: {test_whx.op}")
+                        logger.debug(f"  WHX BP op: {test_whx.op}")
                 stack.append(("YHX", i, r, k_l, l_l, layer))
                 stack.append(("WHX", r + 1, j, k_r, l_r, layer + 1))
                 continue
@@ -159,10 +159,10 @@ def traceback_with_pk(
         # ---------------- WHX ----------------
         if tag == "WHX":
             _, i, j, k, l, layer = frame
-            print(f"\n=== WHX[{i},{j},{k},{l}] layer={layer} ===")
+            logger.debug(f"\n=== WHX[{i},{j},{k},{l}] layer={layer} ===")
             bp = whx_bp(re_state, i, j, k, l)
             if not bp:
-                print(f"  → NO BACKPOINTER! Falling back to nested...")
+                logger.debug(f"  → NO BACKPOINTER! Falling back to nested...")
                 merge_nested_interval(seq, nested_state, i, j, layer,
                                       trace_nested_interval, pairs, pair_layer)
                 continue
@@ -204,35 +204,54 @@ def traceback_with_pk(
             continue
 
         # ---------------- YHX ----------------
+        # ---------------- YHX ----------------
         if tag == "YHX":
             _, i, j, k, l, layer = frame
-            print(f"\n=== YHX[{i},{j},{k},{l}] layer={layer} ===")
+            logger.debug(f"YHX[{i},{j},{k},{l}] layer={layer}")
             add_pair_once(pairs, pair_layer, k, l, layer)  # ensure inner helix recorded
 
             bp = yhx_bp(re_state, i, j, k, l)
             if not bp:
-                print(f"  → NO BACKPOINTER! Skipping...")
+                logger.debug(f"  → NO BACKPOINTER! Skipping...")
                 continue
+
+            logger.debug(f"  → BP found: op={bp.op}")
             op = bp.op
 
-            if op in (
-                EddyRivasBacktrackOp.RE_YHX_DANGLE_L, EddyRivasBacktrackOp.RE_YHX_DANGLE_R,
-                EddyRivasBacktrackOp.RE_YHX_DANGLE_LR,
-                EddyRivasBacktrackOp.RE_YHX_SS_LEFT, EddyRivasBacktrackOp.RE_YHX_SS_RIGHT,
-                EddyRivasBacktrackOp.RE_YHX_SS_BOTH,
-            ):
-                (ni, nj) = bp.outer if bp.outer else (i, j)
-                (nk, nl) = bp.hole if bp.hole else (k, l)
-                stack.append(("YHX", ni, nj, nk, nl, layer))
+            # Dangle operations → push VHX with modified coordinates
+            if op is EddyRivasBacktrackOp.RE_YHX_DANGLE_L:
+                stack.append(("VHX", i + 1, j, k, l, layer))
 
-            elif op in (
-                EddyRivasBacktrackOp.RE_YHX_WRAP_WHX, EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L,
-                EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R, EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR,
-            ):
-                (wi, wj) = bp.outer if bp.outer else (i, j)
-                (wk, wl) = bp.hole if bp.hole else (k, l)
-                stack.append(("WHX", wi, wj, wk, wl, layer))
+            elif op is EddyRivasBacktrackOp.RE_YHX_DANGLE_R:
+                stack.append(("VHX", i, j - 1, k, l, layer))
 
+            elif op is EddyRivasBacktrackOp.RE_YHX_DANGLE_LR:
+                stack.append(("VHX", i + 1, j - 1, k, l, layer))
+
+            # SS trims → push YHX with modified coordinates
+            elif op is EddyRivasBacktrackOp.RE_YHX_SS_LEFT:
+                stack.append(("YHX", i + 1, j, k, l, layer))
+
+            elif op is EddyRivasBacktrackOp.RE_YHX_SS_RIGHT:
+                stack.append(("YHX", i, j - 1, k, l, layer))
+
+            elif op is EddyRivasBacktrackOp.RE_YHX_SS_BOTH:
+                stack.append(("YHX", i + 1, j - 1, k, l, layer))
+
+            # Wrap operations → push WHX
+            elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX:
+                stack.append(("WHX", i, j, k - 1, l + 1, layer))
+
+            elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L:
+                stack.append(("WHX", i + 1, j, k - 1, l + 1, layer))
+
+            elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R:
+                stack.append(("WHX", i, j - 1, k - 1, l + 1, layer))
+
+            elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR:
+                stack.append(("WHX", i + 1, j - 1, k - 1, l + 1, layer))
+
+            # Split operations
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX:
                 r = bp.split if bp.split is not None else (i + j) // 2
                 stack.append(("YHX", i, r, k, l, layer))
@@ -247,9 +266,11 @@ def traceback_with_pk(
 
             elif op is EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX:
                 # IS2 outer context then delegate to WHX
-                (wi, wj) = bp.outer if bp.outer else (i, j)
-                (wk, wl) = bp.hole if bp.hole else (k, l)
-                stack.append(("WHX", wi, wj, wk, wl, layer))
+                (r, s2) = bp.bridge if bp.bridge else (i, j)
+                stack.append(("WHX", r, s2, k, l, layer))
+
+            else:
+                logger.warning(f"Unknown YHX op: {op}, skipping")
 
             continue
 
@@ -355,8 +376,6 @@ def traceback_with_pk(
     dot = pairs_to_multilayer_dotbracket(n, ordered, pair_layer)
 
     elapsed = time.perf_counter() - start_time
-    print(f"Traceback completed in {elapsed:.3f}s")
-    print(f"Found {len(ordered)} base pairs")
     logger.info(f"Traceback completed in {elapsed:.3f}s")
     logger.info(f"Found {len(ordered)} base pairs")
 

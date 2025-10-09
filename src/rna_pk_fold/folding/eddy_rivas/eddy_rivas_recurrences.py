@@ -1003,17 +1003,17 @@ class EddyRivasFoldingEngine:
                                     outer=(i, j), hole=(k2, l2), split=r2, charged=True
                                 )
 
-            # (optional) summary print you already had
+            # (optional) summary logger.debug you already had
             if i == 0 and j == re.n - 1:
-                print(f"\n=== Final WX Composition Summary [0,{j}] ===")
-                print(f"WXU (nested baseline): {wxu_baseline:.3f}")
-                print(f"Best WXC found: {best_c:.3f}")
+                logger.debug(f"\n=== Final WX Composition Summary [0,{j}] ===")
+                logger.debug(f"WXU (nested baseline): {wxu_baseline:.3f}")
+                logger.debug(f"Best WXC found: {best_c:.3f}")
                 if best_bp:
-                    print(f"Winning op: {best_bp.op}")
-                    print(f"Winning (r,k,l): ({best_bp.split}, {best_bp.hole})")
+                    logger.debug(f"Winning op: {best_bp.op}")
+                    logger.debug(f"Winning (r,k,l): ({best_bp.split}, {best_bp.hole})")
                 else:
-                    print("No winning PK candidate found")
-                print(f"Improvement: {wxu_baseline - best_c:.3f} kcal/mol")
+                    logger.debug("No winning PK candidate found")
+                logger.debug(f"Improvement: {wxu_baseline - best_c:.3f} kcal/mol")
 
             re.wxc_matrix.set(i, j, best_c)
             if best_bp is not None:

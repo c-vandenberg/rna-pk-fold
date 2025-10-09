@@ -1,7 +1,11 @@
 from __future__ import annotations
+import logging
 from typing import Set, Dict, Tuple, Callable, Any
+
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.utils.indices_utils import canonical_pair
+
+logger = logging.getLogger(__name__)
 
 
 def add_pair_once(
