@@ -113,6 +113,8 @@ class EddyRivasBackPointer:
     op: EddyRivasBacktrackOp
     outer: Optional[Interval] = None
     hole: Optional[Interval] = None
+    hole_left: Optional[Tuple[int, int]] = None
+    hole_right: Optional[Tuple[int, int]] = None
     split: Optional[int] = None
     split2: Optional[int] = None
     bridge: Optional[Interval] = None

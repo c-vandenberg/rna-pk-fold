@@ -638,7 +638,7 @@ class EddyRivasFoldingEngine:
                     cand = Lo + P_out + v + Gwi
                     if cand < best:
                         best = cand
-                        best_bp = EddyRivasBackPointer(op=..., outer=(i, j), hole=(k, l))
+                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_DANGLE_L, outer=(i, j), hole=(k, l))
 
                 # Outer dangle R
                 v = re.vhx_matrix.get(i, j - 1, k, l)
@@ -860,19 +860,43 @@ class EddyRivasFoldingEngine:
 
                 if cand < best_c:
                     best_c = cand
-                    r_star = k + t_star
-                    # Map cases to your existing backpointer ops
+                    r_star = k + t_star  # Convert array index to absolute position
+
+                    hole_left = None
+                    hole_right = None
+
                     if case_id in (0, 1, 2, 3):
+                        # WHX + WHX
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX
+                        hole_left = (k, r_star)
+                        hole_right = (r_star + 1, l)  # WHX uses l
+
                     elif case_id == 4:
+                        # YHX + YHX
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX
+                        hole_left = (k, r_star)
+                        hole_right = (r_star + 1, l - 1)  # YHX uses l-1
+
                     elif case_id in (5, 6):
+                        # YHX + WHX (both cases use same holes!)
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX
-                    else:  # 7 or 8
+                        hole_left = (k, r_star)
+                        hole_right = (r_star + 1, l)  # WHX uses l
+
+                    else:  # case_id in (7, 8)
+                        # WHX + YHX
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX
+                        hole_left = (k, r_star)
+                        hole_right = (r_star + 1, l - 1)  # YHX uses l-1
 
                     best_bp = EddyRivasBackPointer(
-                        op=op, outer=(i, j), hole=(k, l), split=r_star, charged=True
+                        op=op,
+                        outer=(i, j),
+                        hole=(k, l),
+                        hole_left=hole_left,
+                        hole_right=hole_right,
+                        split=r_star,
+                        charged=True
                     )
 
             # optional overlap path (unchanged)

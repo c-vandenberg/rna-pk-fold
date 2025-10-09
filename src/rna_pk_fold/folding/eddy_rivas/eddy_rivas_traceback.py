@@ -75,49 +75,72 @@ def traceback_with_pk(
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX:
-                # hole indices on bp.hole (k,l), split r on bp.split
                 r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
-                if r is None or k is None or l is None:
-                    merge_nested_interval(seq, nested_state, i, j, layer,
-                                          trace_nested_interval, pairs, pair_layer)
-                    continue
-                # Anchored holes at the join (match DP):
-                stack.append(("WHX", i, r, k, r, layer))
-                stack.append(("WHX", r + 1, j, r + 1, l, layer + 1))
+                if bp.hole_left and bp.hole_right:
+                    k_l, l_l = bp.hole_left
+                    k_r, l_r = bp.hole_right
+                else:
+                    k, l = bp.hole if bp.hole else (None, None)
+                    k_l, l_l = k, r
+                    k_r, l_r = r + 1, l
+                stack.append(("WHX", i, r, k_l, l_l, layer))
+                stack.append(("WHX", r + 1, j, k_r, l_r, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX:
                 r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
-                if r is None or k is None or l is None:
-                    merge_nested_interval(seq, nested_state, i, j, layer,
-                                          trace_nested_interval, pairs, pair_layer)
-                    continue
-                stack.append(("YHX", i, r, k, r, layer))
-                stack.append(("YHX", r + 1, j, r + 1, l, layer + 1))
+                if bp.hole_left and bp.hole_right:
+                    k_l, l_l = bp.hole_left
+                    k_r, l_r = bp.hole_right
+                else:
+                    k, l = bp.hole if bp.hole else (None, None)
+                    k_l, l_l = k, r
+                    k_r, l_r = r + 1, l - 1  # YHX uses l-1
+                stack.append(("YHX", i, r, k_l, l_l, layer))
+                stack.append(("YHX", r + 1, j, k_r, l_r, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX:
                 r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
-                stack.append(("YHX", i, r, k, r, layer))
-                stack.append(("WHX", r + 1, j, r + 1, l, layer + 1))
+                if bp.hole_left and bp.hole_right:
+                    k_l, l_l = bp.hole_left
+                    k_r, l_r = bp.hole_right
+                else:
+                    k, l = bp.hole if bp.hole else (None, None)
+                    k_l, l_l = k, r
+                    k_r, l_r = r + 1, l  # WHX uses l
+
+                    # ADD THIS DEBUG BLOCK
+                    print(f"\n=== WX Composition at [{i},{j}] layer={layer} ===")
+                    print(f"Split r={r}, hole={bp.hole}")
+                    print(f"hole_left={bp.hole_left}, hole_right={bp.hole_right}")
+                    print(f"Pushing YHX[{i},{r},{k_l},{l_l}] layer={layer}")
+                    print(f"Pushing WHX[{r + 1},{j},{k_r},{l_r}] layer={layer + 1}")
+
+                    # Check if backpointers exist
+                    test_yhx = yhx_bp(re_state, i, r, k_l, l_l)
+                    test_whx = whx_bp(re_state, r + 1, j, k_r, l_r)
+                    print(f"YHX BP exists: {test_yhx is not None}")
+                    print(f"WHX BP exists: {test_whx is not None}")
+                    if test_yhx:
+                        print(f"  YHX BP op: {test_yhx.op}")
+                    if test_whx:
+                        print(f"  WHX BP op: {test_whx.op}")
+                stack.append(("YHX", i, r, k_l, l_l, layer))
+                stack.append(("WHX", r + 1, j, k_r, l_r, layer + 1))
                 continue
 
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX:
                 r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
-                stack.append(("WHX", i, r, k, r, layer))
-                stack.append(("YHX", r + 1, j, r + 1, l, layer + 1))
-                continue
-
-            if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP:
-                r = bp.split
-                k, l = bp.hole if bp.hole else (None, None)
-                # anchored holes on both sides
-                stack.append(("YHX", i, r, k, r, layer))
-                stack.append(("YHX", r + 1, j, r + 1, l, layer + 1))
+                if bp.hole_left and bp.hole_right:
+                    k_l, l_l = bp.hole_left
+                    k_r, l_r = bp.hole_right
+                else:
+                    k, l = bp.hole if bp.hole else (None, None)
+                    k_l, l_l = k, r
+                    k_r, l_r = r + 1, l - 1  # YHX uses l-1
+                stack.append(("WHX", i, r, k_l, l_l, layer))
+                stack.append(("YHX", r + 1, j, k_r, l_r, layer + 1))
                 continue
 
             # Fallback: treat as nested
@@ -128,12 +151,14 @@ def traceback_with_pk(
         # ---------------- WHX ----------------
         if tag == "WHX":
             _, i, j, k, l, layer = frame
+            print(f"\n=== WHX[{i},{j},{k},{l}] layer={layer} ===")
             bp = whx_bp(re_state, i, j, k, l)
             if not bp:
+                print(f"  → NO BACKPOINTER! Falling back to nested...")
                 merge_nested_interval(seq, nested_state, i, j, layer,
                                       trace_nested_interval, pairs, pair_layer)
                 continue
-
+            print(f"  → BP found: op={bp.op}")
             op = bp.op
 
             if op in (
@@ -174,11 +199,14 @@ def traceback_with_pk(
         # ---------------- YHX ----------------
         if tag == "YHX":
             _, i, j, k, l, layer = frame
+            print(f"\n=== YHX[{i},{j},{k},{l}] layer={layer} ===")
             add_pair_once(pairs, pair_layer, k, l, layer)  # ensure inner helix recorded
 
             bp = yhx_bp(re_state, i, j, k, l)
             if not bp:
+                print(f"  → NO BACKPOINTER! Skipping...")
                 continue
+            print(f"  → BP found: op={bp.op}")
             op = bp.op
 
             if op in (
