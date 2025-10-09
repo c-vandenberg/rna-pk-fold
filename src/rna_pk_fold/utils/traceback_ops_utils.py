@@ -20,7 +20,6 @@ def add_pair_once(
     if pr not in pairs:
         pairs.add(pr)
         pair_layer[(i, j)] = layer
-        print(f"    Added pair ({i},{j}) at layer={layer}")
 
 
 def merge_nested_interval(

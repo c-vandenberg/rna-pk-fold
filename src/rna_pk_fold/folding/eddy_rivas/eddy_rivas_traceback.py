@@ -120,7 +120,7 @@ def traceback_with_pk(
                 else:
                     k, l = bp.hole if bp.hole else (None, None)
                     k_l, l_l = k, r
-                    k_r, l_r = r + 1, l - 1  # YHX uses l-1
+                    k_r, l_r = r + 1, l
                 stack.append(("YHX", i, r, k_l, l_l, layer))
                 stack.append(("YHX", r + 1, j, k_r, l_r, layer + 1))
                 continue
@@ -163,7 +163,7 @@ def traceback_with_pk(
                 else:
                     k, l = bp.hole if bp.hole else (None, None)
                     k_l, l_l = k, r
-                    k_r, l_r = r + 1, l - 1  # YHX uses l-1
+                    k_r, l_r = r + 1, l
                 stack.append(("WHX", i, r, k_l, l_l, layer))
                 stack.append(("YHX", r + 1, j, k_r, l_r, layer + 1))
                 continue

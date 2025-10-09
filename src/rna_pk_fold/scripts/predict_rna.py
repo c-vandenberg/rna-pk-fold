@@ -26,7 +26,7 @@ from typing import Tuple, Optional
 from importlib.resources import files as ir_files
 
 # Add logging setup
-from rna_pk_fold.utils.logging_config import setup_logger, DEFAULT_LOG_DIR
+from rna_pk_fold.utils.logging_utils import setup_logger, DEFAULT_LOG_DIR
 
 from rna_pk_fold.energies import SecondaryStructureEnergyLoader
 from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
