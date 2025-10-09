@@ -236,7 +236,6 @@ def traceback_with_pk(
         if tag == "YHX":
             _, i, j, k, l, layer = frame
             logger.debug(f"YHX[{i},{j},{k},{l}] layer={layer}")
-            add_pair_once(pairs, pair_layer, k, l, layer)  # ensure inner helix recorded
 
             bp = yhx_bp(re_state, i, j, k, l)
             if not bp:
@@ -268,6 +267,7 @@ def traceback_with_pk(
 
             # Wrap operations → push WHX
             elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX:
+                add_pair_once(pairs, pair_layer, k, l, layer)
                 stack.append(("WHX", i, j, k - 1, l + 1, layer))
 
             elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L:
@@ -311,7 +311,6 @@ def traceback_with_pk(
         # ---------------- ZHX ----------------
         if tag == "ZHX":
             _, i, j, k, l, layer = frame
-            add_pair_once(pairs, pair_layer, i, j, layer)  # ensure outer helix recorded
 
             bp = zhx_bp(re_state, i, j, k, l)
             if not bp:
@@ -364,7 +363,6 @@ def traceback_with_pk(
         # ---------------- VHX ----------------
         if tag == "VHX":
             _, i, j, k, l, layer = frame
-            add_pair_once(pairs, pair_layer, k, l, layer)
 
             bp = vhx_bp(re_state, i, j, k, l)
             if not bp:
@@ -410,8 +408,8 @@ def traceback_with_pk(
                 stack.append(("WHX", wi, wj, k, l, layer))
 
             elif op is EddyRivasBacktrackOp.RE_VHX_CLOSE_BOTH:
-                add_pair_once(pairs, pair_layer, i, j, layer)
-                add_pair_once(pairs, pair_layer, k, l, layer)
+                add_pair_once(pairs, pair_layer, i, j, layer)  # Outer helix
+                add_pair_once(pairs, pair_layer, k, l, layer)  # Inner helix
                 if bp.outer and bp.hole:
                     wi, wj = bp.outer
                     wk, wl = bp.hole
