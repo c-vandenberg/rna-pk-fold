@@ -1,44 +1,26 @@
-# -----------------------
-# Standard Library Imports
-# -----------------------
 import math
-import json
 import time
 import logging
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import Tuple, Dict, Optional, Any, Callable
 
-# -----------------------
-# Third-party Imports
-# -----------------------
 import numpy as np
 from tqdm import tqdm
 
-# -----------------------
-# Local Application Imports
-# -----------------------
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
-from rna_pk_fold.utils.iter_utils import (iter_spans, iter_holes, iter_complementary_tuples, iter_inner_holes,
-                                          iter_holes_pairable, iter_complementary_tuples_pairable_kl)
-from rna_pk_fold.utils.matrix_utils import (clear_matrix_caches, get_whx_with_collapse, get_zhx_with_collapse, wxI,
-                                                             whx_collapse_with, zhx_collapse_with)
+from rna_pk_fold.utils.iter_utils import iter_spans, iter_inner_holes, iter_holes_pairable
+from rna_pk_fold.utils.matrix_utils import (clear_matrix_caches, get_whx_with_collapse, get_zhx_with_collapse,
+                                            wxI, whx_collapse_with, zhx_collapse_with)
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
                                                 dangle_outer_right, coax_pack, short_hole_penalty)
-from rna_pk_fold.folding.eddy_rivas.numba_kernels import (
-    compose_wx_best_over_r_arrays,
-    compose_vx_best_over_r,
-    best_sum,
-    best_sum_with_penalty,
-)
+from rna_pk_fold.folding.eddy_rivas.numba_kernels import (compose_wx_best_over_r_arrays, compose_vx_best_over_r,
+                                                          best_sum, best_sum_with_penalty)
 from rna_pk_fold.utils.logging_utils import setup_logger
 
-# -----------------------
-# Logging Setup
-# -----------------------
 logger = setup_logger(
     name=__name__,
     level=logging.DEBUG,
@@ -125,7 +107,9 @@ def make_back_pointer_factory(
         )
     return create_back_pointer
 
-
+# -----------------------
+# Configuration
+# -----------------------
 @dataclass(slots=True)
 class EddyRivasFoldingConfig:
     """
@@ -367,8 +351,8 @@ class EddyRivasFoldingEngine:
         # YHX
         logger.info("Filling YHX matrix...")
         yhx_start = time.perf_counter()
-        self._dp_yhx(seq, eddy_rivas_fold_state, q_ss, g_wi, p_out, q_tilde_out,
-                     m_tilde_yhx, m_tilde_whx, can_pair_mask)
+        self._dp_yhx(seq, eddy_rivas_fold_state, g_wi, p_out, q_tilde_out, m_tilde_yhx,
+                     m_tilde_whx, can_pair_mask)
         self.timings['yhx'] = time.perf_counter() - yhx_start
         logger.info(f"YHX filled in {self.timings['yhx']:.2f}s")
 
@@ -1060,21 +1044,58 @@ class EddyRivasFoldingEngine:
     def _dp_yhx(
         self,
         seq: str,
-        re: EddyRivasFoldState,
-        q: float,
-        Gwi: float,
-        P_out: float,
-        Q_out: float,
-        M_yhx: float,
-        M_whx: float,
+        eddy_rivas_fold_state: EddyRivasFoldState,
+        internal_pk_penalty: float,
+        tilde_p_out: float,
+        tilde_q_out: float,
+        tilde_m_yhx: float,
+        tilde_m_whx: float,
         can_pair_mask: list[list[bool]],
     ) -> None:
         """
-        YHX: outer helix context around an inner (k,l) helix.
-        Now iterates only pairable (k,l) and respects min/max hole width.
+        Fills the YHX gap matrix using dynamic programming.
+
+        YHX(i, j: k, l) stores the minimum free energy for a structure where
+        the inner hole span (k, l) is **closed by a base pair**, but the pairing
+        status of the outer endpoints (i, j) is undetermined. This is the
+        symmetric counterpart to the ZHX matrix.
+
+        Parameters
+        ----------
+        seq : str
+            The RNA sequence.
+        eddy_rivas_fold_state : EddyRivasFoldState
+            The state object containing all DP matrices.
+        internal_pk_penalty : float
+            Penalty for forming an internal pseudoknot (Gwi).
+        tilde_p_out : float
+            Penalty for a base pair in the outer span (~P).
+        tilde_q_out : float
+            Penalty for an unpaired base in the outer span (~Q).
+        tilde_m_yhx : float
+            Penalty for a multiloop originating from a YHX state (~M).
+        tilde_m_whx : float
+            Penalty for a multiloop originating from a WHX state (~M).
+        can_pair_mask : np.ndarray
+            A boolean matrix indicating allowed base pairs.
+
+        Notes
+        -----
+        The recursion for YHX mirrors that of ZHX but acts on the outer span:
+        - **Dangles**: Adding dangling bases next to the (i, j) pair, deriving
+          from a VHX subproblem.
+        - **Add Unpaired Base**: Adding a single-stranded base to the 5' or 3'
+          end of the outer span (i.e., trimming), recursing on a smaller YHX.
+        - **Bifurcation**: Splitting the outer span into a nested part (WX) and
+          another gapped part (YHX).
+        - **Multiloop Wrap**: Forming a multiloop by closing the (i,j) pair
+          around a WHX subproblem.
+        - **IS2 Motif**: Forming an Irreducible Surface of order 2 with an
+          inner WHX structure.
         """
-        for i, j in iter_spans(re.seq_len):
+        for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
+                # Apply hole width and beam search filters
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
                     continue
@@ -1082,55 +1103,58 @@ class EddyRivasFoldingEngine:
                     continue
 
                 if self.cfg.beam_v_threshold != 0.0:
-                    if re.vxu_matrix.get(k, l) > self.cfg.beam_v_threshold:
+                    if eddy_rivas_fold_state.vxu_matrix.get(k, l) > self.cfg.beam_v_threshold:
                         continue
 
                 best = math.inf
                 best_bp: Optional[EddyRivasBackPointer] = None
 
+                # Case 1: Dangles on the outer pair (i,j), from VHX.
                 # Outer dangle L
-                v = re.vhx_matrix.get(i + 1, j, k, l)
+                v = eddy_rivas_fold_state.vhx_matrix.get(i + 1, j, k, l)
                 if math.isfinite(v):
-                    Lo = dangle_outer_left(seq, i, self.cfg.costs)
-                    cand = Lo + P_out + v + Gwi
+                    lo = dangle_outer_left(seq, i, self.cfg.costs)
+                    cand = lo + tilde_p_out + v + internal_pk_penalty
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_DANGLE_L, outer=(i, j), hole=(k, l))
 
                 # Outer dangle R
-                v = re.vhx_matrix.get(i, j - 1, k, l)
+                v = eddy_rivas_fold_state.vhx_matrix.get(i, j - 1, k, l)
                 if math.isfinite(v):
-                    Ro = dangle_outer_right(seq, j, self.cfg.costs)
-                    cand = Ro + P_out + v + Gwi
+                    ro = dangle_outer_right(seq, j, self.cfg.costs)
+                    cand = ro + tilde_p_out + v + internal_pk_penalty
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_DANGLE_R,
                                                        outer=(i, j), hole=(k, l))
 
                 # Outer dangle LR
-                v = re.vhx_matrix.get(i + 1, j - 1, k, l)
+                v = eddy_rivas_fold_state.vhx_matrix.get(i + 1, j - 1, k, l)
                 if math.isfinite(v):
-                    Lo = dangle_outer_left(seq, i, self.cfg.costs)
-                    Ro = dangle_outer_right(seq, j, self.cfg.costs)
-                    cand = Lo + Ro + P_out + v + Gwi
+                    lo = dangle_outer_left(seq, i, self.cfg.costs)
+                    ro = dangle_outer_right(seq, j, self.cfg.costs)
+                    cand = lo + ro + tilde_p_out + v + internal_pk_penalty
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_DANGLE_LR, outer=(i, j),
                                                        hole=(k, l))
 
-                # SS trims: Left
-                v = re.yhx_matrix.get(i + 1, j, k, l)
+                # Case 2: Add an unpaired base to the outer span (trimming).
+                # This section includes special tie-breaking logic.
+                # SS Left: Trim from the 5' side.
+                v = eddy_rivas_fold_state.yhx_matrix.get(i + 1, j, k, l)
                 if math.isfinite(v):
-                    cand = Q_out + v
+                    cand = tilde_q_out + v
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_SS_LEFT, outer=(i, j),
                                                        hole=(k, l))
 
-                # SS trims: Right (flip on tie)
-                v = re.yhx_matrix.get(i, j - 1, k, l)
+                # SS Right: Trim from the 3' side (with tie-breaking).
+                v = eddy_rivas_fold_state.yhx_matrix.get(i, j - 1, k, l)
                 if math.isfinite(v):
-                    cand = Q_out + v
+                    cand = tilde_q_out + v
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(
@@ -1145,58 +1169,62 @@ class EddyRivasFoldingEngine:
                             outer=(i, j), hole=(k, l)
                         )
 
-                # SS both sides
-                v = re.yhx_matrix.get(i + 1, j - 1, k, l)
+                # Add unpaired bases at both outer ends.
+                v = eddy_rivas_fold_state.yhx_matrix.get(i + 1, j - 1, k, l)
                 if math.isfinite(v):
-                    cand = 2.0 * Q_out + v
+                    cand = 2.0 * tilde_q_out + v
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_SS_BOTH, outer=(i, j),
                                                        hole=(k, l))
 
-                # Wrap via WHX(i,j:k-1,l+1)
-                v = re.whx_matrix.get(i, j, k - 1, l + 1)
+                # Case 3: Multiloop wrap of a WHX subproblem.
+                v = eddy_rivas_fold_state.whx_matrix.get(i, j, k - 1, l + 1)
                 if math.isfinite(v):
-                    cand = P_out + M_yhx + M_whx + v + Gwi
+                    cand = tilde_p_out + tilde_m_yhx + tilde_m_whx + v + internal_pk_penalty
                     if cand < best:
                         best = cand
-                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX, outer=(i, j), hole=(k, l))
+                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX, outer=(i, j),
+                                                       hole=(k, l))
 
-                # Wrap + outer dangles
-                v = re.whx_matrix.get(i + 1, j, k - 1, l + 1)
+                v = eddy_rivas_fold_state.whx_matrix.get(i + 1, j, k - 1, l + 1)
                 if math.isfinite(v):
-                    Lo = dangle_outer_left(seq, i, self.cfg.costs)
-                    cand = Lo + P_out + M_yhx + M_whx + v + Gwi
+                    lo = dangle_outer_left(seq, i, self.cfg.costs)
+                    cand = lo + tilde_p_out + tilde_m_yhx + tilde_m_whx + v + internal_pk_penalty
                     if cand < best:
                         best = cand
-                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L, outer=(i, j), hole=(k, l))
+                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L, outer=(i, j),
+                                                       hole=(k, l))
 
-                v = re.whx_matrix.get(i, j - 1, k - 1, l + 1)
+                v = eddy_rivas_fold_state.whx_matrix.get(i, j - 1, k - 1, l + 1)
                 if math.isfinite(v):
-                    Ro = dangle_outer_right(seq, j, self.cfg.costs)
-                    cand = Ro + P_out + M_yhx + M_whx + v + Gwi
+                    ro = dangle_outer_right(seq, j, self.cfg.costs)
+                    cand = ro + tilde_p_out + tilde_m_yhx + tilde_m_whx + v + internal_pk_penalty
                     if cand < best:
                         best = cand
-                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R, outer=(i, j), hole=(k, l))
+                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R, outer=(i, j),
+                                                       hole=(k, l))
 
-                v = re.whx_matrix.get(i + 1, j - 1, k - 1, l + 1)
+                v = eddy_rivas_fold_state.whx_matrix.get(i + 1, j - 1, k - 1, l + 1)
                 if math.isfinite(v):
-                    Lo = dangle_outer_left(seq, i, self.cfg.costs)
-                    Ro = dangle_outer_right(seq, j, self.cfg.costs)
-                    cand = Lo + Ro + P_out + M_yhx + M_whx + v + Gwi
+                    lo = dangle_outer_left(seq, i, self.cfg.costs)
+                    ro = dangle_outer_right(seq, j, self.cfg.costs)
+                    cand = lo + ro + tilde_p_out + tilde_m_yhx + tilde_m_whx + v + internal_pk_penalty
                     if cand < best:
                         best = cand
-                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR, outer=(i, j), hole=(k, l))
+                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR, outer=(i, j),
+                                                       hole=(k, l))
 
-                # Outer splits with WX
-                Lr = max(0, j - i)
-                if Lr > 0:
-                    left_vec = np.full(Lr, np.inf, dtype=np.float64)
-                    right_vec = np.full(Lr, np.inf, dtype=np.float64)
-                    for t in range(Lr):
+                # Case 4: Bifurcation of the outer span into YHX + WX.
+                # Left-gapped split: YHX(i, r) + WX(r+1, j)
+                lr = max(0, j - i)
+                if lr > 0:
+                    left_vec = np.full(lr, np.inf, dtype=np.float64)
+                    right_vec = np.full(lr, np.inf, dtype=np.float64)
+                    for t in range(lr):
                         r = i + t
-                        lv = re.yhx_matrix.get(i, r, k, l)
-                        rv = wxI(re, r + 1, j)
+                        lv = eddy_rivas_fold_state.yhx_matrix.get(i, r, k, l)
+                        rv = wxI(eddy_rivas_fold_state, r + 1, j)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
                     cand_split, t_star = best_sum(left_vec, right_vec)
@@ -1208,14 +1236,15 @@ class EddyRivasFoldingEngine:
                             outer=(i, j), hole=(k, l), split=r_star
                         )
 
-                Ls = max(0, j - i)
-                if Ls > 0:
-                    left_vec = np.full(Ls, np.inf, dtype=np.float64)
-                    right_vec = np.full(Ls, np.inf, dtype=np.float64)
-                    for t in range(Ls):
+                # Right-gapped split: WX(i, s) + YHX(s+1, j)
+                ls = max(0, j - i)
+                if ls > 0:
+                    left_vec = np.full(ls, np.inf, dtype=np.float64)
+                    right_vec = np.full(ls, np.inf, dtype=np.float64)
+                    for t in range(ls):
                         s2 = i + t
-                        lv = wxI(re, i, s2)
-                        rv = re.yhx_matrix.get(s2 + 1, j, k, l)
+                        lv = wxI(eddy_rivas_fold_state, i, s2)
+                        rv = eddy_rivas_fold_state.yhx_matrix.get(s2 + 1, j, k, l)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
                     cand_split, t_star = best_sum(left_vec, right_vec)
@@ -1227,12 +1256,13 @@ class EddyRivasFoldingEngine:
                             outer=(i, j), hole=(k, l), split=s2_star
                         )
 
-                # IS2 (optional, expensive)
+                # Case 5: IS2 motif (Irreducible Surface of order 2).
                 if self.cfg.enable_is2:
                     for r2 in range(i, k + 1):
                         for s2 in range(l, j + 1):
                             if r2 <= s2:
-                                inner_w = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, r2, s2, k, l)
+                                inner_w = get_whx_with_collapse(eddy_rivas_fold_state.whx_matrix,
+                                                                eddy_rivas_fold_state.wxu_matrix, r2, s2, k, l)
                                 if math.isfinite(inner_w):
                                     bridge = IS2_outer_yhx(self.cfg, seq, i, j, r2, s2)
                                     cand = bridge + inner_w
@@ -1242,106 +1272,159 @@ class EddyRivasFoldingEngine:
                                                                        outer=(i, j), hole=(k, l), bridge=(r2, s2))
 
 
-                re.yhx_matrix.set(i, j, k, l, best)
-                re.yhx_back_ptr.set(i, j, k, l, best_bp)
+                eddy_rivas_fold_state.yhx_matrix.set(i, j, k, l, best)
+                eddy_rivas_fold_state.yhx_back_ptr.set(i, j, k, l, best_bp)
 
     # --------- WX Composition & Publish ---------
     def _compose_wx(
-            self,
-            seq: str,
-            re: EddyRivasFoldState,
-            Gw: float,
-            Gwh_wx: float,
-            can_pair_mask: list[list[bool]],
+        self,
+        seq: str,
+        eddy_rivas_fold_state: EddyRivasFoldState,
+        pseudoknot_penalty: float,
+        g_wh_wx: float,
+        can_pair_mask: list[list[bool]],
     ) -> None:
         """
-        Compose WX from uncharged (WXU) + charged candidates built around pairable (k,l).
-        Per-(k,l) we precompute vector components over r and let the kernel minimize across r.
+        Updates the WX matrix by composing gapped fragments into pseudoknots.
+
+        This is the O(N⁶) core of the algorithm where the optimal non-nested
+        structures are identified. It iterates through all spans (i, j), all
+        potential holes (k, l) within that span, and all split points (r)
+        that can partition the structure into two complementary gapped fragments.
+        The minimum energy found across all possible pseudoknotted configurations
+        updates the initial nested energy for WX(i, j).
+
+        Parameters
+        ----------
+        seq : str
+            The RNA sequence.
+        eddy_rivas_fold_state : EddyRivasFoldState
+            The state object containing all DP matrices.
+        pseudoknot_penalty : float
+            The energy penalty for initiating a pseudoknot (Gw).
+        can_pair_mask : np.ndarray
+            A boolean matrix indicating allowed base pairs.
+
+        Notes
+        -----
+        The composition logic is as follows:
+        For each span `(i, j)` and hole `(k, l)`:
+        1.  A split point `r` is chosen, `k <= r < l`.
+        2.  This `r` defines two complementary gapped subproblems:
+            - A "left" fragment covering `[i..r]` with a hole `[k..r]`.
+            - A "right" fragment covering `[r+1..j]` with a hole `[r+1..l]`.
+        3.  The energies for these fragments (from `whx` and `yhx` matrices)
+            are combined with the `pseudoknot_penalty`.
+        4.  An efficient kernel (`compose_wx_best_over_r_arrays`) finds the
+            optimal split point `r` and the best combination of `whx`/`yhx`
+            matrices for the given `(i, j, k, l)`.
+        5.  The resulting minimum energy is compared to the current best
+            composed energy for `WX(i, j)`, and updated if it's better.
         """
-        spans = list(iter_spans(re.seq_len))
+        # Iterate over all possible outer spans (i, j) of the structure.
+        spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
         for i, j in tqdm(spans, desc="WX Compose", leave=False):
-            best_c = re.wxc_matrix.get(i, j)
+            # Initialize with the best composed energy found so far for this span.
+            best_c = eddy_rivas_fold_state.wxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
 
-            # iterate pairable holes only
+            # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
             for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
+                # Apply configured filters to prune the search space.
+                # Filter 1: Minimum and maximum allowed hole width.
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
                     continue
                 if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
                     continue
 
-                # Beam pruning on inner helix
+                # Filter 2: Beam search pruning based on the stability of the inner helix (k, l).
                 if self.cfg.beam_v_threshold != 0.0:
-                    v_inner = re.vxu_matrix.get(k, l)
+                    v_inner = eddy_rivas_fold_state.vxu_matrix.get(k, l)
                     if v_inner > self.cfg.beam_v_threshold:
                         continue
 
-                # Precompute r-range vectors: r ∈ [k, l-1]
-                L = l - k
-                Lu = np.full(L, np.inf, dtype=np.float64)
-                Ru = np.full(L, np.inf, dtype=np.float64)
-                Lc = np.full(L, np.inf, dtype=np.float64)
-                Rc = np.full(L, np.inf, dtype=np.float64)
-                left_y = np.full(L, np.inf, dtype=np.float64)
-                right_y = np.full(L, np.inf, dtype=np.float64)
+                # --- Pre-computation Step for Numba Kernal ---
+                # Create vectors to store energies for every possible split point 'r' between k and l.
+                # This vectorization allows for efficient processing by a Numba kernel.
+                base_l = l - k
+                l_u = np.full(base_l, np.inf, dtype=np.float64) # Left, uncharged (nested subproblem)
+                r_u = np.full(base_l, np.inf, dtype=np.float64) # Right, uncharged
+                l_c = np.full(base_l, np.inf, dtype=np.float64) # Left, charged (pseudoknotted subproblem)
+                r_c = np.full(base_l, np.inf, dtype=np.float64) # Right, charged
+                left_y = np.full(base_l, np.inf, dtype=np.float64) # Energies from YHX matrix (left)
+                right_y = np.full(base_l, np.inf, dtype=np.float64) # Energies from YHX matrix (right)
 
-                for t in range(L):
+                # Iterate through all possible split points 'r' to populate the energy vectors.
+                for t in range(base_l):
                     r = k + t
-                    if self.cfg.strict_complement_order:
-                        if not (i < k <= r < l <= j):
+
+                    # Enforce the strict Rivas & Eddy ordering for pseudoknot helices.
+                    if self.cfg.strict_complement_order and not (i < k <= r < l <= j):
                             continue
-                    # min outer lengths mask
+
+                    # Enforce minimum lengths for the 5' and 3' outer segments.
                     if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
                         continue
 
-                    # collapse terms (uncharged/charged)
-                    Lu[t] = whx_collapse_with(re, i, r, k, r, charged=False, can_pair_mask=can_pair_mask)
-                    Ru[t] = whx_collapse_with(re, k + 1, j, r + 1, l, charged=False, can_pair_mask=can_pair_mask)
-                    Lc[t] = whx_collapse_with(re, i, r, k, r, charged=True, can_pair_mask=can_pair_mask)
-                    Rc[t] = whx_collapse_with(re, k + 1, j, r + 1, l, charged=True, can_pair_mask=can_pair_mask)
+                    # Calculate energies for the left and right gapped subproblems.
+                    # 'whx_collapse_with' gets the energy, handling cases where the subproblem's hole is empty.
+                    # 'charged=False' (u) gets the nested baseline; 'charged=True' (c) gets the pseudoknotted energy.
+                    l_u[t] = whx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=False,
+                                               can_pair_mask=can_pair_mask)
+                    r_u[t] = whx_collapse_with(eddy_rivas_fold_state, k + 1, j, r + 1, l, charged=False,
+                                               can_pair_mask=can_pair_mask)
+                    l_c[t] = whx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=True,
+                                               can_pair_mask=can_pair_mask)
+                    r_c[t] = whx_collapse_with(eddy_rivas_fold_state, k + 1, j, r + 1, l, charged=True,
+                                               can_pair_mask=can_pair_mask)
 
+                    # Get energies from the YHX matrix as an alternative subproblem type.
                     if can_pair_mask[k][r]:
-                        ly = re.yhx_matrix.get(i, r, k, r)
+                        ly = eddy_rivas_fold_state.yhx_matrix.get(i, r, k, r)
                         if math.isfinite(ly): left_y[t] = ly
 
                     if can_pair_mask[r + 1][l]:
-                        ry = re.yhx_matrix.get(k + 1, j, r + 1, l)
+                        ry = eddy_rivas_fold_state.yhx_matrix.get(k + 1, j, r + 1, l)
                         if math.isfinite(ry): right_y[t] = ry
 
-                    # YHX terms (left and right). IMPORTANT: right uses l (not l-1)
-                    ly = re.yhx_matrix.get(i, r, k, r)
-                    ry = re.yhx_matrix.get(k + 1, j, r + 1, l)
+                    # YHX terms (left and right).
+                    ly = eddy_rivas_fold_state.yhx_matrix.get(i, r, k, r)
+                    ry = eddy_rivas_fold_state.yhx_matrix.get(k + 1, j, r + 1, l)
                     if math.isfinite(ly): left_y[t] = ly
                     if math.isfinite(ry): right_y[t] = ry
 
+                # Calculate penalty for very short loops between helices.
                 cap_pen = short_hole_penalty(self.cfg.costs, k, l)
 
-                # Kernel: best over r for this (k,l)
+                # --- Kernel Execution ---
+                # Pass the energy vectors to the optimized Numba kernel to find the best split point 'r'
+                # and the best combination of subproblems (WHX+WHX, YHX+YHX, etc.).
                 cand, t_star, case_id = compose_wx_best_over_r_arrays(
-                    Lu, Ru, Lc, Rc, left_y, right_y, float(Gw), float(cap_pen)
+                    l_u, r_u, l_c, r_c, left_y, right_y, float(pseudoknot_penalty), float(cap_pen)
                 )
 
-                # Right after the pairability checks and kernel call:
-                if i == 0 and j == re.seq_len - 1 and (k, l) == (28, 59):
+                # --- Debugging Block ---
+                # This block prints detailed information for a specific, hardcoded case to aid in debugging.
+                if i == 0 and j == eddy_rivas_fold_state.seq_len - 1 and (k, l) == (28, 59):
                     print(f"\n[HOLE (28,59) EVAL]", flush=True)
-                    print(f"  Built vectors for L={L}", flush=True)
-                    finite_Lu = np.sum(np.isfinite(Lu))
-                    finite_Ru = np.sum(np.isfinite(Ru))
+                    print(f"  Built vectors for L={base_l}", flush=True)
+                    finite_Lu = np.sum(np.isfinite(l_u))
+                    finite_Ru = np.sum(np.isfinite(r_u))
                     finite_ly = np.sum(np.isfinite(left_y))
                     finite_ry = np.sum(np.isfinite(right_y))
-                    print(f"  Finite: Lu={finite_Lu}/{L}, Ru={finite_Ru}/{L}, ly={finite_ly}/{L}, ry={finite_ry}/{L}",
-                          flush=True)
+                    print(f"  Finite: Lu={finite_Lu}/{base_l}, Ru={finite_Ru}/{base_l}, ly={finite_ly}/{base_l}, "
+                          f"ry={finite_ry}/{base_l}", flush=True)
 
-                    # Check specific positions
+                    # Check specific split point positions for debugging.
                     for test_r in [28, 35, 43, 51, 54, 58]:
                         t = test_r - k
-                        if 0 <= t < L:
+                        if 0 <= t < base_l:
                             print(
-                                f"  r={test_r}: Lu={Lu[t]:.2f}, Ru={Ru[t]:.2f}, ly={left_y[t]:.2f}, ry={right_y[t]:.2f}",
-                                flush=True)
+                                f"  r={test_r}: Lu={l_u[t]:.2f}, Ru={r_u[t]:.2f}, ly={left_y[t]:.2f}, "
+                                f"ry={right_y[t]:.2f}", flush=True)
 
-                if i == 0 and j == re.seq_len - 1 and (k, l) == (28, 59):
+                if i == 0 and j == eddy_rivas_fold_state.seq_len - 1 and (k, l) == (28, 59):
                     r_star = k + t_star if t_star >= 0 else -1
                     print(f"  Kernel: cand={cand:.2f}, r={r_star}, case={case_id}", flush=True)
                     if cand < best_c:
@@ -1350,10 +1433,10 @@ class EddyRivasFoldingEngine:
                         print(f"  ✗ LOSES to current best {best_c:.2f}", flush=True)
 
                     if r_star >= 0:
-                        whx_l = re.whx_matrix.get(i, r_star, k, r_star)
-                        whx_r = re.whx_matrix.get(r_star + 1, j, r_star + 1, l)
-                        yhx_l = re.yhx_matrix.get(i, r_star, k, r_star)
-                        yhx_r = re.yhx_matrix.get(r_star + 1, j, r_star + 1, l)
+                        whx_l = eddy_rivas_fold_state.whx_matrix.get(i, r_star, k, r_star)
+                        whx_r = eddy_rivas_fold_state.whx_matrix.get(r_star + 1, j, r_star + 1, l)
+                        yhx_l = eddy_rivas_fold_state.yhx_matrix.get(i, r_star, k, r_star)
+                        yhx_r = eddy_rivas_fold_state.yhx_matrix.get(r_star + 1, j, r_star + 1, l)
                         print(
                             f"  At r={r_star}: WHX_L={whx_l:.2f}, WHX_R={whx_r:.2f}, YHX_L={yhx_l:.2f}, YHX_R={yhx_r:.2f}",
                             flush=True)
@@ -1363,53 +1446,61 @@ class EddyRivasFoldingEngine:
                         if not (left_ok and right_ok):
                             print(f"  ✗ WILL BE FILTERED! (left_ok={left_ok}, right_ok={right_ok})", flush=True)
 
-
+                # --- Update Step ---
+                # If the candidate energy from the kernel is better than the best found so far...
                 if cand < best_c:
                     r_star = k + t_star if t_star >= 0 else -1
 
+                    # Proceed only if the kernel returned a valid split point.
                     if r_star >= 0:
-                        whx_l_sparse = re.whx_matrix.get(i, r_star, k, r_star)
-                        whx_r_sparse = re.whx_matrix.get(r_star + 1, j, r_star + 1, l)
-                        yhx_l_sparse = re.yhx_matrix.get(i, r_star, k, r_star)
-                        yhx_r_sparse = re.yhx_matrix.get(r_star + 1, j, r_star + 1, l)
+                        # Retrieve the sparse matrix values for a final check.
+                        whx_l_sparse = eddy_rivas_fold_state.whx_matrix.get(i, r_star, k, r_star)
+                        whx_r_sparse = eddy_rivas_fold_state.whx_matrix.get(r_star + 1, j, r_star + 1, l)
+                        yhx_l_sparse = eddy_rivas_fold_state.yhx_matrix.get(i, r_star, k, r_star)
+                        yhx_r_sparse = eddy_rivas_fold_state.yhx_matrix.get(r_star + 1, j, r_star + 1, l)
 
-                        # Need at least one finite SPARSE value on each side
+                        # This is a critical filter: ensure that both the left and right sub-fragments
+                        # have a defined gapped structure. This prevents selecting combinations where
+                        # one side has simply collapsed to a nested structure, which wouldn't form a true pseudoknot.
                         left_has_structure = math.isfinite(whx_l_sparse) or math.isfinite(yhx_l_sparse)
                         right_has_structure = math.isfinite(whx_r_sparse) or math.isfinite(yhx_r_sparse)
 
                         if not (left_has_structure and right_has_structure):
-                            continue  # Not a true PK - at least one side is collapsed baseline
+                            continue  # Skip if it's not a true pseudoknot.
 
-                    # OK, valid PK candidate with both sides having structure
+                    # If all checks pass, this is a valid, new best pseudoknot candidate.
                     best_c = cand
-                    r_star = k + t_star
+                    r_star = k + t_star # Recalculate best split point.
 
-                    # Map kernel case -> backpointer op + holes
+                    # Decode the 'case_id' from the kernel to determine the backtrack operation.
                     if case_id in (0, 1, 2, 3):
-                        # WHX + WHX
+                        # Case: WHX + WHX
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX
                         hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)  # WHX uses l
+                        hole_right = (r_star + 1, l)
                     elif case_id == 4:
-                        # YHX + YHX
+                        # Case: YHX + YHX
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX
                         hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)  # FIXED: YHX uses l
+                        hole_right = (r_star + 1, l)
                     elif case_id in (5, 6):
-                        # YHX + WHX
+                        # Case: YHX + WHX
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX
                         hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)  # WHX uses l
-                    else:  # case_id in (7, 8): WHX + YHX
+                        hole_right = (r_star + 1, l)
+                    else:  # case_id in (7, 8)
+                        # Case: WHX + YHX
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX
                         hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)  # FIXED: YHX uses l
+                        hole_right = (r_star + 1, l)
 
+                    # Final guard against creating backpointers to invalid, empty sub-holes.
                     k_l, l_l = hole_left
                     k_r, l_r = hole_right
                     if (l_l - k_l <= 1) or (l_r - k_r <= 1):
                         continue
 
+                    # Create the backpointer for this optimal pseudoknot configuration.
                     best_bp = EddyRivasBackPointer(
                         op=op,
                         outer=(i, j),
@@ -1420,16 +1511,21 @@ class EddyRivasFoldingEngine:
                         charged=True,
                     )
 
-            # Optional overlap path
-            if self.cfg.enable_wx_overlap and Gwh_wx != 0.0:
+            # --- Optional Overlap Path ---
+            # This section handles a different class of pseudoknots where two YHX structures overlap.
+            if self.cfg.enable_wx_overlap and g_wh_wx != 0.0:
+                # Iterate through a different set of inner holes and split points.
                 for (k2, l2) in iter_inner_holes(i, j, min_hole=self.cfg.min_hole_width):
                     for r2 in range(i, j):
-                        left_yv = re.yhx_matrix.get(i, r2, k2, l2)
-                        right_yv = re.yhx_matrix.get(r2 + 1, j, k2, l2)
+                        left_yv = eddy_rivas_fold_state.yhx_matrix.get(i, r2, k2, l2)
+                        right_yv = eddy_rivas_fold_state.yhx_matrix.get(r2 + 1, j, k2, l2)
+
+                        # If both subproblems have finite energy, calculate the total energy.
                         if math.isfinite(left_yv) and math.isfinite(right_yv):
                             cand_overlap = (
-                                    Gwh_wx + left_yv + right_yv + short_hole_penalty(self.cfg.costs, k2, l2)
+                                    g_wh_wx + left_yv + right_yv + short_hole_penalty(self.cfg.costs, k2, l2)
                             )
+                            # If this is a new best energy, update the backpointer.
                             if cand_overlap < best_c:
                                 best_c = cand_overlap
                                 best_bp = EddyRivasBackPointer(
@@ -1440,62 +1536,132 @@ class EddyRivasFoldingEngine:
                                     charged=True,
                                 )
 
-            # Commit value + backpointer
-            re.wxc_matrix.set(i, j, best_c)
+            # After checking all holes (k,l) for the current span (i,j), commit the best result.
+            eddy_rivas_fold_state.wxc_matrix.set(i, j, best_c)
             if best_bp is not None:
-                re.wx_back_ptr.set(i, j, best_bp)
+                eddy_rivas_fold_state.wx_back_ptr.set(i, j, best_bp)
 
-            if i == 0 and j == re.seq_len - 1:
+            # --- Final Debugging Block ---
+            # This block prints the final winning configuration for the entire sequence.
+            if i == 0 and j == eddy_rivas_fold_state.seq_len - 1:
                 print(f"\n[WX FINAL] best_c={best_c:.2f}, best_bp={best_bp}", flush=True)
                 if best_bp and hasattr(best_bp, 'hole'):
                     k_win, l_win = best_bp.hole
                     r_win = best_bp.split
                     print(f"  Winner: hole=({k_win},{l_win}), split={r_win}", flush=True)
 
-                    # Check what values contributed
-                    whx_l = re.whx_matrix.get(i, r_win, k_win, r_win)
-                    whx_r = re.whx_matrix.get(r_win + 1, j, r_win + 1, l_win)
-                    yhx_l = re.yhx_matrix.get(i, r_win, k_win, r_win)
-                    yhx_r = re.yhx_matrix.get(r_win + 1, j, r_win + 1, l_win)
+                    # Check what energy values contributed to the winning structure.
+                    whx_l = eddy_rivas_fold_state.whx_matrix.get(i, r_win, k_win, r_win)
+                    whx_r = eddy_rivas_fold_state.whx_matrix.get(r_win + 1, j, r_win + 1, l_win)
+                    yhx_l = eddy_rivas_fold_state.yhx_matrix.get(i, r_win, k_win, r_win)
+                    yhx_r = eddy_rivas_fold_state.yhx_matrix.get(r_win + 1, j, r_win + 1, l_win)
 
                     print(f"  WHX_L={whx_l:.2f}, WHX_R={whx_r:.2f}", flush=True)
                     print(f"  YHX_L={yhx_l:.2f}, YHX_R={yhx_r:.2f}", flush=True)
 
-                    # Check backpointers
-                    whx_bp_l = re.whx_back_ptr.get(i, r_win, k_win, r_win)
-                    whx_bp_r = re.whx_back_ptr.get(r_win + 1, j, r_win + 1, l_win)
+                    # Check the backpointers of the contributing subproblems.
+                    whx_bp_l = eddy_rivas_fold_state.whx_back_ptr.get(i, r_win, k_win, r_win)
+                    whx_bp_r = eddy_rivas_fold_state.whx_back_ptr.get(r_win + 1, j, r_win + 1, l_win)
                     print(f"  WHX_L backptr: {whx_bp_l}", flush=True)
                     print(f"  WHX_R backptr: {whx_bp_r}", flush=True)
 
-    def _publish_wx(self, re: EddyRivasFoldState) -> None:
-        for i, j in iter_spans(re.seq_len):
-            wxu = re.wxu_matrix.get(i, j)
-            wxc = re.wxc_matrix.get(i, j)
+    def _publish_wx(self, eddy_rivas_fold_state: EddyRivasFoldState) -> None:
+        """
+        Finalizes the WX matrix by selecting the optimal energy for each span.
+
+        This method compares the energy of the best nested-only structure
+        (the "uncomposed" energy from `wxu_matrix`) with the energy of the
+        best pseudoknotted structure (the "composed" energy from `wxc_matrix`).
+        It selects the minimum of the two and populates the final `wx_matrix`.
+
+        Parameters
+        ----------
+        eddy_rivas_fold_state : EddyRivasFoldState
+            The state object containing all DP matrices for the Eddy-Rivas fold.
+
+        Notes
+        -----
+        For each span (i, j), this function performs the final selection:
+        - If `uncomposed_energy <= composed_energy`, the optimal structure is
+          nested. The final `wx_matrix` is set to the uncomposed energy, and
+          a backpointer is created to indicate this choice.
+        - If `composed_energy < uncomposed_energy`, the optimal structure
+          contains a pseudoknot. The final `wx_matrix` is set to the composed
+          energy. The backpointer for this case was already set during the
+          `_compose_wx` step and is implicitly retained.
+        """
+        for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
+            # Retrieve the optimal energy for the nested-only structure for this span.
+            # This 'uncharged' energy comes from the initial Zuker-style fold.
+            wxu = eddy_rivas_fold_state.wxu_matrix.get(i, j)
+
+            # Retrieve the optimal energy for any pseudoknotted structure for this span.
+            # This 'charged' energy was calculated in the _compose_wx step.
+            wxc = eddy_rivas_fold_state.wxc_matrix.get(i, j)
+
+            # This is a fallback mechanism. If the overlap feature is enabled but no
+            # finite-energy pseudoknot was found (wxc is infinity), we consider the
+            # uncharged (nested) energy as the best possible 'composed' energy.
             if self.cfg.enable_wx_overlap and not math.isfinite(wxc):
-                re.wxc_matrix.set(i, j, wxu)
+                eddy_rivas_fold_state.wxc_matrix.set(i, j, wxu)
                 wxc = wxu
+
+            # --- Final Selection ---
+            # Compare the energy of the best nested structure with the best pseudoknotted one.
             if wxu <= wxc:
-                re.wx_matrix.set(i, j, wxu)
-                re.wx_back_ptr.set(i, j, EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED))
+                # If the nested structure is more stable (or equally stable), select it and set a
+                # backpointer indicating that the uncharged (nested) path was chosen.
+                eddy_rivas_fold_state.wx_matrix.set(i, j, wxu)
+                eddy_rivas_fold_state.wx_back_ptr.set(i, j, EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED))
             else:
-                re.wx_matrix.set(i, j, wxc)
+                # If the pseudoknotted structure is more stable, select it. The backpointer for this
+                # case was already set in _compose_wx
+                eddy_rivas_fold_state.wx_matrix.set(i, j, wxc)
 
     # --------- VX Composition & Publish ---------
     def _compose_vx(
         self,
         seq: str,
-        re: EddyRivasFoldState,
-        Gw: float,
-        g: float,
+        eddy_rivas_fold_state: EddyRivasFoldState,
+        pseudoknot_penalty: float,
+        coaxial_scale: float,
         can_pair_mask: list[list[bool]],
     ) -> None:
         """
-        Compose VX from uncharged (VXU) + charged candidates around pairable (k,l).
-        Numba-accelerated: precompute vector components over r and minimize in kernel.
+        Updates the VX matrix by composing gapped fragments into pseudoknots.
+
+        This method calculates the energy of the optimal pseudoknotted structure
+        that can be formed *within* a closing base pair (i, j). It is analogous
+        to the multiloop calculation in a standard nested folding algorithm. This
+        is an O(N^6) operation that is accelerated by vectorizing the innermost
+        loop and executing it with a Numba-optimized kernel.
+
+        Parameters
+        ----------
+        seq : str
+            The RNA sequence.
+        eddy_rivas_fold_state : EddyRivasFoldState
+            The state object containing all DP matrices for the Eddy-Rivas fold.
+        pseudoknot_penalty : float
+            The energy penalty for initiating a pseudoknot.
+        coaxial_scale : float
+            A scaling factor for coaxial stacking energies in pseudoknots.
+        can_pair_mask : list[list[bool]]
+            A boolean matrix indicating which nucleotides can form pairs.
+
+        Notes
+        -----
+        For each closing pair `(i, j)`, the algorithm finds the best pseudoknot
+        by iterating through all possible inner holes `(k, l)` and split points
+        `r`. The structure is formed by combining two `ZHX` subproblems, as `ZHX`
+        requires its outer span to be paired, fitting the context of being
+        enclosed by the `(i, j)` pair. This composition also includes energy
+        bonuses for coaxial stacking between the inner helices.
         """
-        spans = list(iter_spans(re.seq_len))
+        # Iterate over all possible outer spans (i, j) that could form a closing pair.
+        spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
         for i, j in tqdm(spans, desc="VX Compose", leave=False):
-            best_c = re.vxc_matrix.get(i, j)
+            best_c = eddy_rivas_fold_state.vxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
 
             for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
@@ -1505,44 +1671,64 @@ class EddyRivasFoldingEngine:
                 if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
                     continue
 
-                L = l - k
-                Lu = np.full(L, np.inf, dtype=np.float64)
-                Ru = np.full(L, np.inf, dtype=np.float64)
-                Lc = np.full(L, np.inf, dtype=np.float64)
-                Rc = np.full(L, np.inf, dtype=np.float64)
-                coax_total = np.zeros(L, dtype=np.float64)
-                coax_bonus = np.zeros(L, dtype=np.float64)
+                # --- Pre-computation Step for Numba Kernal ---
+                # Create vectors to store energies for every possible split point 'r' between k and l.
+                # This vectorization allows for efficient processing by a Numba kernel.
+                base_l = l - k
+                l_u = np.full(base_l, np.inf, dtype=np.float64)  # Left, uncharged (nested subproblem)
+                r_u = np.full(base_l, np.inf, dtype=np.float64)  # Right, uncharged
+                l_c = np.full(base_l, np.inf, dtype=np.float64)  # Left, charged (pseudoknotted subproblem)
+                r_c = np.full(base_l, np.inf, dtype=np.float64)  # Right, charged
+                coax_total = np.zeros(base_l, dtype=np.float64)  # Total coaxial stacking energy
+                coax_bonus = np.zeros(base_l, dtype=np.float64)  # Coaxial stacking bonus energy
 
-                for t in range(L):
-                    r = k + t
+                # Iterate through all possible split points 'r' to populate the energy vectors.
+                for t in range(base_l):
+                    r = k + t # 'r' is the split point.
+
+                    # Enforce the strict Rivas & Eddy ordering for pseudoknot helices.
                     if self.cfg.strict_complement_order:
                         if not (i < k <= r < l <= j):
                             continue
+
+                    # Enforce minimum lengths for the 5' and 3' outer segments.
                     if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
                         continue
 
-                    # collapse terms for VX composition
-                    Lu[t] = zhx_collapse_with(re, i, r, k, r, charged=False, can_pair_mask=can_pair_mask)
-                    Ru[t] = zhx_collapse_with(re, k + 1, j, r + 1, l, charged=False, can_pair_mask=can_pair_mask)
-                    Lc[t] = zhx_collapse_with(re, i, r, k, r, charged=True, can_pair_mask=can_pair_mask)
-                    Rc[t] = zhx_collapse_with(re, k + 1, j, r + 1, l, charged=True, can_pair_mask=can_pair_mask)
+                    # Calculate energies for the left and right gapped subproblems from the ZHX matrix.
+                    # 'zhx_collapse_with' gets the energy, handling cases where the subproblem's hole is empty.
+                    l_u[t] = zhx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=False,
+                                               can_pair_mask=can_pair_mask)
+                    r_u[t] = zhx_collapse_with(eddy_rivas_fold_state, k + 1, j, r + 1, l, charged=False,
+                                               can_pair_mask=can_pair_mask)
+                    l_c[t] = zhx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=True,
+                                               can_pair_mask=can_pair_mask)
+                    r_c[t] = zhx_collapse_with(eddy_rivas_fold_state, k + 1, j, r + 1, l, charged=True,
+                                               can_pair_mask=can_pair_mask)
 
-                    # coax terms for this r
-                    adjacent = (r == k)
+                    # Calculate the coaxial stacking energy bonus for this specific split point 'r'.
+                    adjacent = (r == k) # Check if the helices are adjacent for a flush stack.
                     cx_total, cx_bonus = coax_pack(
                         seq, i, j, r, k, l, self.cfg, self.cfg.costs, adjacent
                     )
                     coax_total[t] = cx_total
                     coax_bonus[t] = cx_bonus
 
+                # Calculate penalty for very short loops between helices.
                 cap_pen = short_hole_penalty(self.cfg.costs, k, l)
 
+                # --- Kernel Execution ---
+                # Pass the energy vectors to the optimized Numba kernel. It efficiently finds the
+                # best split point 'r' (returned as t_star) and the minimum energy 'cand'.
                 cand, t_star, base_case = compose_vx_best_over_r(
-                    Lu, Ru, Lc, Rc, coax_total, coax_bonus,
-                    float(Gw), float(cap_pen), float(g)
+                    l_u, r_u, l_c, r_c, coax_total, coax_bonus,
+                    float(pseudoknot_penalty), float(cap_pen), float(coaxial_scale)
                 )
 
+                # --- Update Step ---
+                # If the candidate energy from the kernel is better than the best found so far...
                 if cand < best_c:
+                    # ...update the best energy and create a new backpointer for this configuration.
                     best_c = cand
                     r_star = k + t_star
                     best_bp = EddyRivasBackPointer(
@@ -1550,99 +1736,55 @@ class EddyRivasFoldingEngine:
                         outer=(i, j), hole=(k, l), split=r_star, charged=True
                     )
 
-            re.vxc_matrix.set(i, j, best_c)
+            # After checking all possible holes (k, l) for the current span (i, j),
+            # commit the best result to the composed matrix and its backpointer store.
+            eddy_rivas_fold_state.vxc_matrix.set(i, j, best_c)
             if best_bp is not None:
-                re.vx_back_ptr.set(i, j, best_bp)
+                eddy_rivas_fold_state.vx_back_ptr.set(i, j, best_bp)
 
     @staticmethod
     def _publish_vx(re: EddyRivasFoldState) -> None:
+        """
+        Finalizes the VX matrix by selecting the optimal energy for each pair.
+
+        This method compares the energy of the best nested structure enclosed by
+        the pair (i, j) (the "uncomposed" energy from `vxu_matrix`) with the
+        energy of the best pseudoknotted structure enclosed by the same pair
+        (the "composed" energy from `vxc_matrix`). It selects the minimum of
+        the two and populates the final `vx_matrix`.
+
+        Parameters
+        ----------
+        re : EddyRivasFoldState
+            The state object containing all DP matrices for the Eddy-Rivas fold.
+
+        Notes
+        -----
+        For each span (i, j), this function performs the final selection:
+        - If `uncomposed_energy <= composed_energy`, the optimal structure
+          enclosed by the pair (i, j) is nested.
+        - If `composed_energy < uncomposed_energy`, the optimal enclosed
+          structure contains a pseudoknot. The backpointer for this case was
+          already set during the `_compose_vx` step and is implicitly retained.
+        """
+        # Iterate over all possible spans (i, j) in the sequence.
         for i, j in iter_spans(re.seq_len):
+            # Retrieve the optimal energy for a nested structure enclosed by the pair (i, j).
+            # This 'uncomposed' energy is the baseline from the initial Zuker-style fold.
             vxu = re.vxu_matrix.get(i, j)
+
+            # Retrieve the optimal energy for a pseudoknotted structure enclosed by the pair (i, j).
+            # This 'composed' energy was calculated in the _compose_vx step.
             vxc = re.vxc_matrix.get(i, j)
+
+            # --- Final Selection ---
+            # Compare the energy of the best nested structure with the best pseudoknotted one.
             if vxu <= vxc:
+                # If the nested structure is more stable (or equally stable), select it and set a
+                # back pointer indicating that the uncharged (nested) path was chosen for this pair.
                 re.vx_matrix.set(i, j, vxu)
                 re.vx_back_ptr.set(i, j, EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED))
             else:
+                # If the pseudoknotted structure is more stable, select its energy.The back pointer
+                # for this pseudoknotted case was already set in _compose_vx,
                 re.vx_matrix.set(i, j, vxc)
-
-
-def load_costs_json(path: str) -> PseudoknotEnergies:
-    with open(path, "r") as fh:
-        d = json.load(fh)
-    return costs_from_dict(d)
-
-def save_costs_json(path: str, costs: PseudoknotEnergies) -> None:
-    with open(path, "w") as fh:
-        json.dump(costs_to_dict(costs), fh, indent=2, sort_keys=True)
-
-def costs_from_dict(d: Dict) -> PseudoknotEnergies:
-    """Create RERECosts from a flat dict; keys not present use dataclass defaults."""
-    field_names = {f.name for f in fields(PseudoknotEnergies)}
-    kwargs = {k: v for k, v in d.items() if k in field_names}
-    return PseudoknotEnergies(**kwargs)
-
-def costs_to_dict(costs: PseudoknotEnergies) -> Dict:
-    """Round-trip exporter useful for saving tuned params."""
-    return {f.name: getattr(costs, f.name) for f in fields(PseudoknotEnergies)}
-
-def costs_from_vienna_like(tbl: Dict[str, Any]) -> PseudoknotEnergies:
-    """
-    Map a Vienna-like dict to RERECosts.
-    Expected keys (suggested, adapt to your source):
-      - 'q_ss', 'Gw', 'Gwi', 'Gwh', 'coax_scale', 'coax_bonus',
-      - 'coax_pairs': { "GC|CG": -0.5, "AU|UA": -0.3, ... },
-      - 'dangle_outer_left/R', 'dangle_hole_left/R': { "GA": -0.1, ... },
-      - 'short_hole_caps': { "1": 2.0, "2": 1.0 },
-      - optional: 'mismatch_coax_scale', 'mismatch_coax_bonus',
-                  'coax_min_helix_len', 'coax_scale_oo/oi/io',
-                  'P_tilde_out', 'P_tilde_hole', 'Q_tilde_out', 'Q_tilde_hole',
-                  'M_tilde_yhx', 'M_tilde_vhx', 'M_tilde_whx'.
-    """
-    d = {}
-
-    # simple scalars
-    for k in [
-        "q_ss","Gwh","Gwi","coax_scale","coax_bonus",
-        "mismatch_coax_scale","mismatch_coax_bonus",
-        "coax_min_helix_len","coax_scale_oo","coax_scale_oi","coax_scale_io",
-        "P_tilde_out","P_tilde_hole","Q_tilde_out","Q_tilde_hole",
-        "L_tilde", "R_tilde", "M_tilde_yhx","M_tilde_vhx","M_tilde_whx"
-    ]:
-        if k in tbl: d[k] = tbl[k]
-
-    # coax pairs: accept "XY|UV" keys
-    coax_pairs = {}
-    for key, val in tbl.get("coax_pairs", {}).items():
-        left,right = key.split("|")
-        coax_pairs[(left, right)] = float(val)
-    d["coax_pairs"] = coax_pairs
-
-    # dangles: accept bigrams like "GA": value
-    for name in ["dangle_outer_left","dangle_outer_right","dangle_hole_left","dangle_hole_right"]:
-        m = {}
-        for bigram, val in tbl.get(name, {}).items():
-            if len(bigram) == 2:
-                m[(bigram[0], bigram[1])] = float(val)
-        d[name] = m
-
-    # short-hole caps
-    caps = {}
-    for h, val in tbl.get("short_hole_caps", {}).items():
-        caps[int(h)] = float(val)
-    d["short_hole_caps"] = caps
-
-    return costs_from_dict(d)
-
-def quick_energy_harness(seq: str, cfg: EddyRivasFoldingConfig, nested: ZuckerFoldState, re: EddyRivasFoldState) -> Dict[str, float]:
-    """
-    Run fill_with_costs and report a few sentinel energies for regression:
-    """
-    eng = EddyRivasFoldingEngine(cfg)
-    eng.fill_with_costs(seq, nested, re)
-    out = {
-        "W(0,n-1)": re.wx_matrix.get(0, re.seq_len - 1),
-        "V(0,n-1)": re.vx_matrix.get(0, re.seq_len - 1),
-    }
-    # Add any other coordinates you want to track here.
-    return out
-
