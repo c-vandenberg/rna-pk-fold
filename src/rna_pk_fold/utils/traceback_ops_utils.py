@@ -32,6 +32,9 @@ def merge_nested_interval(
     pairs: Set[Pair],
     pair_layer: Dict[Tuple[int, int], int],
 ) -> None:
+    print(f"\n[MERGE] Interval [{i},{j}] at layer={layer}")
     base = collect_fn(seq, nested_state, i, j)
+    print(f"[MERGE] Found {len(base.pairs)} nested pairs:")
     for p in base.pairs:
+        print(f"  → ({p.base_i},{p.base_j})")
         add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)

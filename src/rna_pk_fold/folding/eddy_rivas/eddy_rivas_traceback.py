@@ -282,12 +282,18 @@ def traceback_with_pk(
             # Split operations
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX:
                 r = bp.split if bp.split is not None else (i + j) // 2
+                print(f"[YHX SPLIT LEFT] YHX[{i},{j},{k},{l}] splitting at r={r}")
+                print(f"  → Pushing YHX[{i},{r},{k},{l}]")
+                print(f"  → Merging nested [{r + 1},{j}]")
                 stack.append(("YHX", i, r, k, l, layer))
                 merge_nested_interval(seq, nested_state, r + 1, j, layer,
                                       trace_nested_interval, pairs, pair_layer)
 
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_RIGHT_WX_YHX:
                 s2 = bp.split if bp.split is not None else (i + j) // 2
+                print(f"[YHX SPLIT RIGHT] YHX[{i},{j},{k},{l}] splitting at s2={s2}")
+                print(f"  → Merging nested [{i},{s2}]")
+                print(f"  → Pushing YHX[{s2 + 1},{j},{k},{l}]")
                 merge_nested_interval(seq, nested_state, i, s2, layer,
                                       trace_nested_interval, pairs, pair_layer)
                 stack.append(("YHX", s2 + 1, j, k, l, layer))
