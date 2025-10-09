@@ -93,59 +93,67 @@ def zhx_collapse_first(re: EddyRivasFoldState, i: int, j: int, k: int, l: int) -
     return v if math.isfinite(v) else re.zhx_matrix.get(i, j, k, l)
 
 
-def whx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool) -> float:
+def whx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool, can_pair_mask=None) -> float:
     """
     Get WHX value with collapse optimization and caching.
-    Always collapses to WXU (uncharged baseline) regardless of charged flag.
+    Falls back to WXU for zero-width holes OR non-pairable holes.
     """
     # Check cache first
     cache_key = (i, j, k, l, charged)
     if cache_key in _whx_cache:
         return _whx_cache[cache_key]
 
-    # For the common collapse case (k == l-1), use direct lookup
+    # Collapse case 1: zero-width hole
     if k + 1 == l:
-        result = re.wxu_matrix.get(i, j)  # Always use uncharged for collapse
+        result = re.wxu_matrix.get(i, j)
         _whx_cache[cache_key] = result
         return result
 
-    # Check sparse matrix first (it's already computed)
+    # Collapse case 2: non-pairable hole (if mask provided)
+    if can_pair_mask is not None and not can_pair_mask[k][l]:
+        result = re.wxu_matrix.get(i, j)
+        _whx_cache[cache_key] = result
+        return result
+
+    # Check sparse matrix (was computed)
     v = re.whx_matrix.get(i, j, k, l)
     if math.isfinite(v):
         _whx_cache[cache_key] = v
         return v
 
-    # Only fall back to collapse if needed
-    v_collapse = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l)
-    result = v_collapse if math.isfinite(v_collapse) else math.inf
-    _whx_cache[cache_key] = result
-    return result
+    # No valid value - return inf
+    _whx_cache[cache_key] = math.inf
+    return math.inf
 
 
-def zhx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool) -> float:
+def zhx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool, can_pair_mask=None) -> float:
     """
     Get ZHX value with collapse optimization and caching.
-    Always collapses to VXU (uncharged baseline) regardless of charged flag.
+    Falls back to VXU for zero-width holes OR non-pairable holes.
     """
     # Check cache first
     cache_key = (i, j, k, l, charged)
     if cache_key in _zhx_cache:
         return _zhx_cache[cache_key]
 
-    # For the common collapse case (k == l-1), use direct lookup
+    # Collapse case 1: zero-width hole
     if k + 1 == l:
         result = re.vxu_matrix.get(i, j)  # Always use uncharged for collapse
         _zhx_cache[cache_key] = result
         return result
 
-    # Check sparse matrix first (it's already computed)
+    # Collapse case 2: non-pairable hole (if mask provided)
+    if can_pair_mask is not None and not can_pair_mask[k][l]:
+        result = re.vxu_matrix.get(i, j)
+        _zhx_cache[cache_key] = result
+        return result
+
+    # Check sparse matrix (was computed)
     v = re.zhx_matrix.get(i, j, k, l)
     if math.isfinite(v):
         _zhx_cache[cache_key] = v
         return v
 
-    # Only fall back to collapse if needed
-    v_collapse = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, l)
-    result = v_collapse if math.isfinite(v_collapse) else math.inf
-    _zhx_cache[cache_key] = result
-    return result
+    # No valid value - return inf
+    _zhx_cache[cache_key] = math.inf
+    return math.inf

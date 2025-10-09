@@ -147,26 +147,29 @@ def load_energy_model(yaml_path: Optional[str], temp_c: float) -> SecondaryStruc
 
 
 def build_er_costs(energy_model: SecondaryStructureEnergyModel,
-                   q_ss: float,
+                   q_ss_override: Optional[float],
                    gw_override: Optional[float]) -> eddy_rivas_recurrences.PseudoknotEnergies:
-    """Minimal PK cost set; keep simple unless you want to tune."""
-    # Try to take Gw from model if present, else use override, else default 7.0
-    try:
-        model_gw = getattr(getattr(energy_model.params, "PSEUDOKNOT", None), "pk_penalty_gw", None)
-    except Exception:
-        model_gw = None
-    Gw = gw_override if gw_override is not None else (model_gw if model_gw is not None else 7.0)
+    """Load PK costs from YAML, allowing selective overrides via CLI flags."""
 
-    return eddy_rivas_recurrences.costs_from_dict({
-        "q_ss": q_ss,
-        "P_tilde_out": 0.0, "P_tilde_hole": 0.0,
-        "Q_tilde_out": 0.0, "Q_tilde_hole": 0.0,
-        "L_tilde": 0.0, "R_tilde": 0.0,
-        "M_tilde_yhx": 0.0, "M_tilde_vhx": 0.0, "M_tilde_whx": 0.0,
-        "Gwh": 0.0, "Gwi": 0.0,
-        "coax_scale": 0.0, "coax_bonus": 0.0,
-        "pk_penalty_gw": Gw,
-    })
+    # Get base params from loaded YAML
+    pk_params = energy_model.params.PSEUDOKNOT
+    if pk_params is None:
+        raise ValueError("No pseudoknot parameters in YAML file!")
+
+    # Apply CLI overrides if provided
+    overrides = {}
+    if gw_override is not None:
+        overrides["pk_penalty_gw"] = gw_override
+    if q_ss_override is not None:
+        overrides["q_ss"] = q_ss_override
+
+    # If no overrides, return YAML params directly
+    if not overrides:
+        return pk_params
+
+    # Otherwise, create modified copy
+    from dataclasses import replace
+    return replace(pk_params, **overrides)
 
 
 def predict_nested(seq: str, energy_model: SecondaryStructureEnergyModel) -> Tuple[str, float]:
@@ -199,32 +202,31 @@ def predict_er(
         enable_overlap: bool,
         min_hole_width: int,
         max_hole_width: int,
-        q_ss: float
+        q_ss: Optional[float]
 ) -> Tuple[str, float]:
-    """
-    Full Eddy–Rivas prediction. Falls back to nested traceback if ER traceback
-    machinery is not available.
-    """
     logger.info("=" * 60)
     logger.info("Using Eddy-Rivas (pseudoknot) algorithm")
     logger.info("=" * 60)
-    logger.info(f"PK penalty Gw: {pk_penalty_gw}")
-    logger.info(f"Coaxial stacking: {enable_coax}")
-    logger.info(f"WX overlap: {enable_overlap}")
-    logger.info(f"Hole width: [{min_hole_width}, {max_hole_width if max_hole_width > 0 else '∞'}]")
 
     start_time = time.perf_counter()
 
-    # 1) Nested setup (Eddy Rivas builds on Zuker's WX/V)
+    # 1) Nested setup
     logger.info("Running nested (Zuker) phase...")
     z_cfg = ZuckerFoldingConfig(verbose=logger.isEnabledFor(logging.INFO))
     z_engine = ZuckerFoldingEngine(energy_model=energy_model, config=z_cfg)
     z_state = make_z_state(len(seq))
     z_engine.fill_all_matrices(seq, z_state)
 
-    # 2) Eddy Rivas engine & state
+    # 2) Eddy Rivas setup
     logger.info("Running pseudoknot (Eddy-Rivas) phase...")
-    costs = build_er_costs(energy_model, q_ss=q_ss, gw_override=pk_penalty_gw)
+    costs = build_er_costs(energy_model, q_ss_override=q_ss, gw_override=pk_penalty_gw)
+
+    # Log actual values being used
+    logger.info(f"PK penalty Gw: {costs.pk_penalty_gw}")
+    logger.info(f"Coaxial stacking: {enable_coax}")
+    logger.info(f"WX overlap: {enable_overlap}")
+    logger.info(f"Hole width: [{min_hole_width}, {max_hole_width if max_hole_width > 0 else '∞'}]")
+
     er_cfg = eddy_rivas_recurrences.EddyRivasFoldingConfig(
         enable_coax=enable_coax,
         enable_coax_variants=enable_coax,
@@ -305,7 +307,7 @@ def main(argv=None) -> int:
                    help="Minimum hole width (k,l) seam interior (default: 0).")
     p.add_argument("--max-hole-width", type=int, default=0,
                    help="Maximum hole width (0 means no cap).")
-    p.add_argument("--q-ss", type=float, default=0.0,
+    p.add_argument("--q-ss", type=float, default=None,
                    help="Backbone per-SS penalty used by ER recurrences (default: 0.0).")
 
     args = p.parse_args(argv)

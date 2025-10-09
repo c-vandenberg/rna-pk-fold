@@ -133,34 +133,26 @@ def engines_and_costs(energy_model):
         config=ZuckerFoldingConfig(),
     )
 
-    costs = ER.costs_from_dict({
-        "q_ss": 0.0,
-        "P_tilde_out": 0.0, "P_tilde_hole": 0.0,
-        "Q_tilde_out": 0.0, "Q_tilde_hole": 0.0,
-        "L_tilde": 0.0, "R_tilde": 0.0,
-        "M_tilde_yhx": 0.0, "M_tilde_vhx": 0.0, "M_tilde_whx": 0.0,
-    })
+    # Get loaded PK params from YAML
+    pk_params = energy_model.params.PSEUDOKNOT
+    if pk_params is None:
+        raise ValueError("No pseudoknot parameters in YAML!")
 
-    try:
-        pk_gw = getattr(getattr(energy_model.params, "PSEUDOKNOT", None), "pk_penalty_gw", 1.0)
-    except Exception:
-        pk_gw = 1.0
-
+    # Use the loaded params directly (don't override!)
     er_cfg = ER.EddyRivasFoldingConfig(
         enable_coax=True,
         enable_coax_variants=True,
         enable_coax_mismatch=True,
         enable_wx_overlap=True,
-
         strict_complement_order=False,
         enable_join_drift=False,
-        enable_is2=False,  # big speed boost
+        enable_is2=False,
 
-        pk_penalty_gw=pk_gw,
-        costs=costs,
+        pk_penalty_gw=pk_params.pk_penalty_gw,  # ← From YAML
+        costs=pk_params,  # ← Use entire loaded params!
     )
     er_engine = ER.EddyRivasFoldingEngine(er_cfg)
-    return z_engine, er_engine, costs
+    return z_engine, er_engine, pk_params
 
 
 # ------------------------

@@ -85,7 +85,7 @@ def hairpin_energy(
             delta_h, delta_s = terminal_mm_energies
             delta_g += SecondaryStructureEnergies.delta_g(delta_h, delta_s, temp_k)
 
-    # 3) AU/GU end penalty (temporary until it is added in YAML file)
+    # 4. AU/GU end penalty (temporary until it is added in YAML file)
     #   - Because AU and GU pairs are weaker at helix ends and the Turner models
     #     compensate for that with a small terminal penalty (≈ +0.5 kcal/mol at 37 °C).
     #   - If this penalty isn't included, short stems closed by AU/GU get over-stabilized,
@@ -96,8 +96,7 @@ def hairpin_energy(
     #       * Pair Strength: GC (3 H-bonds) is intrinsically stronger than AU/GU wobble pair (2 H-bonds).
     #         Therefore, the “missing” outside stack hurts AU/GU ends more. We therefore add a small
     #         destabilizing term when the terminal closing pair is AU/UA/GU/UG.
-    #if (base_x + base_y) in ("AU", "UA", "GU", "UG"):
-    #    delta_g += 0.5
+    delta_g += _terminal_au_penalty(base_x, base_y)
 
     return delta_g
 
@@ -214,7 +213,13 @@ def internal_loop_energy(
     if (loop_open_base == 0) ^ (loop_close_base == 0):
         size = loop_open_base + loop_close_base
         base = lookup_loop_baseline_js(energies.BULGE, size)
-        return calculate_delta_g(base, temp_k)
+        delta_g = calculate_delta_g(base, temp_k)
+
+        # Terminal AU/GU penalty for BOTH closing and inner pairs
+        delta_g += _terminal_au_penalty(normalize_base(seq[base_i]), normalize_base(seq[base_j]))
+        delta_g += _terminal_au_penalty(normalize_base(seq[base_k]), normalize_base(seq[base_l]))
+
+        return delta_g
 
     # Internal loop (including 1x1)
     if loop_open_base > 0 and loop_close_base > 0:
@@ -237,8 +242,13 @@ def internal_loop_energy(
                 pass
 
         base = lookup_loop_baseline_js(energies.INTERNAL, size)
+        delta_g = calculate_delta_g(base, temp_k)
 
-        return calculate_delta_g(base, temp_k)
+        # Terminal AU/GU penalty for BOTH closing and inner pairs
+        delta_g += _terminal_au_penalty(normalize_base(seq[base_i]), normalize_base(seq[base_j]))
+        delta_g += _terminal_au_penalty(normalize_base(seq[base_k]), normalize_base(seq[base_l]))
+
+        return delta_g
 
     # Not an internal/bulge geometry.
     return float("inf")
@@ -384,3 +394,27 @@ def best_multiloop_end_bonus(
     )
 
     return 0.0 if best == float("inf") else best
+
+
+def _terminal_au_penalty(base_x: str, base_y: str) -> float:
+    """
+    Terminal AU/GU penalty (~0.45 kcal/mol at 37°C).
+
+    Applied when a helix END is closed by AU/UA/GU/UG.
+    These pairs are weaker (2 H-bonds) than GC (3 H-bonds),
+    so the missing outside stack hurts more.
+
+    Parameters
+    ----------
+    base_x, base_y : str
+        Normalized bases forming a pair.
+
+    Returns
+    -------
+    float
+        Penalty in kcal/mol (0.45 for AU/GU, 0.0 for GC).
+    """
+    pair = base_x + base_y
+    if pair in ("AU", "UA", "GU", "UG"):
+        return 0.45
+    return 0.0

@@ -708,12 +708,8 @@ class EddyRivasFoldingEngine:
         YHX: outer helix context around an inner (k,l) helix.
         Now iterates only pairable (k,l) and respects min/max hole width.
         """
-        def dbg(*a):
-            print(*a, flush=True)
         for i, j in iter_spans(re.n):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
-                def _maybe_mark(i, j, k, l):
-                    return (i == 0 and j == re.n - 1) or (j - i) <= 12  # tweak as needed
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
                     continue
@@ -735,10 +731,6 @@ class EddyRivasFoldingEngine:
                     if cand < best:
                         best = cand
                         best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_DANGLE_L, outer=(i, j), hole=(k, l))
-
-                        # whenever you set best_bp (just before set())
-                        if _maybe_mark(i, j, k, l):
-                            logger.debug(f"YHX set [{i},{j}:{k},{l}] op={best_bp.op} val={best:.2f}")
 
                 # Outer dangle R
                 v = re.vhx_matrix.get(i, j - 1, k, l)
@@ -884,13 +876,6 @@ class EddyRivasFoldingEngine:
                                         best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX,
                                                                        outer=(i, j), hole=(k, l), bridge=(r2, s2))
 
-                def _maybe_mark(ii, jj, kk, ll):
-                    return (ii == 0 and jj == re.n - 1) or ((jj - ii) <= 12)
-
-                if _maybe_mark(i, j, k, l):
-                    dbg(f"YHX set [{i},{j}:{k},{l}] "
-                        f"op={getattr(best_bp, 'op', None)} val={best:.2f}")
-
 
                 re.yhx_matrix.set(i, j, k, l, best)
                 re.yhx_back_ptr.set(i, j, k, l, best_bp)
@@ -908,15 +893,10 @@ class EddyRivasFoldingEngine:
         Compose WX from uncharged (WXU) + charged candidates built around pairable (k,l).
         Per-(k,l) we precompute vector components over r and let the kernel minimize across r.
         """
-
-        def dbg(*a):  # simple print helper
-            print(*a, flush=True)
-
         spans = list(iter_spans(re.n))
         for i, j in tqdm(spans, desc="WX Compose", leave=False):
             best_c = re.wxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
-            wxu_baseline = re.wxu_matrix.get(i, j)
 
             # iterate pairable holes only
             for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
@@ -951,10 +931,18 @@ class EddyRivasFoldingEngine:
                         continue
 
                     # collapse terms (uncharged/charged)
-                    Lu[t] = whx_collapse_with(re, i, r, k, r, charged=False)
-                    Ru[t] = whx_collapse_with(re, k + 1, j, r + 1, l, charged=False)
-                    Lc[t] = whx_collapse_with(re, i, r, k, r, charged=True)
-                    Rc[t] = whx_collapse_with(re, k + 1, j, r + 1, l, charged=True)
+                    Lu[t] = whx_collapse_with(re, i, r, k, r, charged=False, can_pair_mask=can_pair_mask)
+                    Ru[t] = whx_collapse_with(re, k + 1, j, r + 1, l, charged=False, can_pair_mask=can_pair_mask)
+                    Lc[t] = whx_collapse_with(re, i, r, k, r, charged=True, can_pair_mask=can_pair_mask)
+                    Rc[t] = whx_collapse_with(re, k + 1, j, r + 1, l, charged=True, can_pair_mask=can_pair_mask)
+
+                    if can_pair_mask[k][r]:
+                        ly = re.yhx_matrix.get(i, r, k, r)
+                        if math.isfinite(ly): left_y[t] = ly
+
+                    if can_pair_mask[r + 1][l]:
+                        ry = re.yhx_matrix.get(k + 1, j, r + 1, l)
+                        if math.isfinite(ry): right_y[t] = ry
 
                     # YHX terms (left and right). IMPORTANT: right uses l (not l-1)
                     ly = re.yhx_matrix.get(i, r, k, r)
@@ -969,9 +957,67 @@ class EddyRivasFoldingEngine:
                     Lu, Ru, Lc, Rc, left_y, right_y, float(Gw), float(cap_pen)
                 )
 
+                # Right after the pairability checks and kernel call:
+                if i == 0 and j == re.n - 1 and (k, l) == (28, 59):
+                    print(f"\n[HOLE (28,59) EVAL]", flush=True)
+                    print(f"  Built vectors for L={L}", flush=True)
+                    finite_Lu = np.sum(np.isfinite(Lu))
+                    finite_Ru = np.sum(np.isfinite(Ru))
+                    finite_ly = np.sum(np.isfinite(left_y))
+                    finite_ry = np.sum(np.isfinite(right_y))
+                    print(f"  Finite: Lu={finite_Lu}/{L}, Ru={finite_Ru}/{L}, ly={finite_ly}/{L}, ry={finite_ry}/{L}",
+                          flush=True)
+
+                    # Check specific positions
+                    for test_r in [28, 35, 43, 51, 54, 58]:
+                        t = test_r - k
+                        if 0 <= t < L:
+                            print(
+                                f"  r={test_r}: Lu={Lu[t]:.2f}, Ru={Ru[t]:.2f}, ly={left_y[t]:.2f}, ry={right_y[t]:.2f}",
+                                flush=True)
+
+                if i == 0 and j == re.n - 1 and (k, l) == (28, 59):
+                    r_star = k + t_star if t_star >= 0 else -1
+                    print(f"  Kernel: cand={cand:.2f}, r={r_star}, case={case_id}", flush=True)
+                    if cand < best_c:
+                        print(f"  ✓ NEW WINNER! (beats current best {best_c:.2f})", flush=True)
+                    else:
+                        print(f"  ✗ LOSES to current best {best_c:.2f}", flush=True)
+
+                    if r_star >= 0:
+                        whx_l = re.whx_matrix.get(i, r_star, k, r_star)
+                        whx_r = re.whx_matrix.get(r_star + 1, j, r_star + 1, l)
+                        yhx_l = re.yhx_matrix.get(i, r_star, k, r_star)
+                        yhx_r = re.yhx_matrix.get(r_star + 1, j, r_star + 1, l)
+                        print(
+                            f"  At r={r_star}: WHX_L={whx_l:.2f}, WHX_R={whx_r:.2f}, YHX_L={yhx_l:.2f}, YHX_R={yhx_r:.2f}",
+                            flush=True)
+
+                        left_ok = math.isfinite(whx_l) or math.isfinite(yhx_l)
+                        right_ok = math.isfinite(whx_r) or math.isfinite(yhx_r)
+                        if not (left_ok and right_ok):
+                            print(f"  ✗ WILL BE FILTERED! (left_ok={left_ok}, right_ok={right_ok})", flush=True)
+
+
                 if cand < best_c:
+                    r_star = k + t_star if t_star >= 0 else -1
+
+                    if r_star >= 0:
+                        whx_l_sparse = re.whx_matrix.get(i, r_star, k, r_star)
+                        whx_r_sparse = re.whx_matrix.get(r_star + 1, j, r_star + 1, l)
+                        yhx_l_sparse = re.yhx_matrix.get(i, r_star, k, r_star)
+                        yhx_r_sparse = re.yhx_matrix.get(r_star + 1, j, r_star + 1, l)
+
+                        # Need at least one finite SPARSE value on each side
+                        left_has_structure = math.isfinite(whx_l_sparse) or math.isfinite(yhx_l_sparse)
+                        right_has_structure = math.isfinite(whx_r_sparse) or math.isfinite(yhx_r_sparse)
+
+                        if not (left_has_structure and right_has_structure):
+                            continue  # Not a true PK - at least one side is collapsed baseline
+
+                    # OK, valid PK candidate with both sides having structure
                     best_c = cand
-                    r_star = k + t_star  # Convert array index to absolute position
+                    r_star = k + t_star
 
                     # Map kernel case -> backpointer op + holes
                     if case_id in (0, 1, 2, 3):
@@ -993,6 +1039,11 @@ class EddyRivasFoldingEngine:
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX
                         hole_left = (k, r_star)
                         hole_right = (r_star + 1, l)  # FIXED: YHX uses l
+
+                    k_l, l_l = hole_left
+                    k_r, l_r = hole_right
+                    if (l_l - k_l <= 1) or (l_r - k_r <= 1):
+                        continue
 
                     best_bp = EddyRivasBackPointer(
                         op=op,
@@ -1029,40 +1080,27 @@ class EddyRivasFoldingEngine:
             if best_bp is not None:
                 re.wx_back_ptr.set(i, j, best_bp)
 
-            # One-shot explain for the global cell
             if i == 0 and j == re.n - 1:
-                dbg(f"\n=== Final WX Composition Summary [0,{j}] ===")
-                dbg(f"WXU (nested baseline): {wxu_baseline:.3f}")
-                dbg(f"Best WXC found: {best_c:.3f}")
-                if best_bp:
-                    r = best_bp.split
-                    k, l = best_bp.hole
-                    # left YHX used by RE_PK_COMPOSE_WX_YHX_WHX and RE_PK_COMPOSE_WX_YHX
-                    y_val = re.yhx_matrix.get(0, r, k, r)
-                    y_bp = re.yhx_back_ptr.get(0, r, k, r)
-                    print(f"YHX[0,{r}:{k},{r}] = {y_val:.2f}, via {getattr(y_bp, 'op', None)}", flush=True)
+                print(f"\n[WX FINAL] best_c={best_c:.2f}, best_bp={best_bp}", flush=True)
+                if best_bp and hasattr(best_bp, 'hole'):
+                    k_win, l_win = best_bp.hole
+                    r_win = best_bp.split
+                    print(f"  Winner: hole=({k_win},{l_win}), split={r_win}", flush=True)
 
-                    dbg(f"Winning op: {best_bp.op}")
-                    dbg(f"Winning (r,k,l): ({best_bp.split}, {best_bp.hole})")
-                    # Recompute components for the winner
-                    r = best_bp.split
-                    (k, l) = best_bp.hole or (-1, -1)
-                    Gw_eff = float(self.cfg.pk_penalty_gw)
-                    cap = short_hole_penalty(self.cfg.costs, k, l)
-                    Lu = whx_collapse_with(re, 0, r, k, r, charged=False)
-                    Ru = whx_collapse_with(re, k + 1, j, r + 1, l, charged=False)
-                    Lc = whx_collapse_with(re, 0, r, k, r, charged=True)
-                    Rc = whx_collapse_with(re, k + 1, j, r + 1, l, charged=True)
-                    ly = re.yhx_matrix.get(0, r, k, r)
-                    ry = re.yhx_matrix.get(k + 1, j, r + 1, l)  # uses l (not l-1)
-                    print(
-                        f"  comps: Lu={Lu:.2f} Ru={Ru:.2f} Lc={Lc:.2f} Rc={Rc:.2f} "
-                        f"ly={ly:.2f} ry={ry:.2f} Gw={Gw_eff:.2f} cap={cap:.2f}",
-                        flush=True
-                    )
-                else:
-                    dbg("No winning PK candidate found")
-                dbg(f"Improvement: {wxu_baseline - best_c:.3f} kcal/mol")
+                    # Check what values contributed
+                    whx_l = re.whx_matrix.get(i, r_win, k_win, r_win)
+                    whx_r = re.whx_matrix.get(r_win + 1, j, r_win + 1, l_win)
+                    yhx_l = re.yhx_matrix.get(i, r_win, k_win, r_win)
+                    yhx_r = re.yhx_matrix.get(r_win + 1, j, r_win + 1, l_win)
+
+                    print(f"  WHX_L={whx_l:.2f}, WHX_R={whx_r:.2f}", flush=True)
+                    print(f"  YHX_L={yhx_l:.2f}, YHX_R={yhx_r:.2f}", flush=True)
+
+                    # Check backpointers
+                    whx_bp_l = re.whx_back_ptr.get(i, r_win, k_win, r_win)
+                    whx_bp_r = re.whx_back_ptr.get(r_win + 1, j, r_win + 1, l_win)
+                    print(f"  WHX_L backptr: {whx_bp_l}", flush=True)
+                    print(f"  WHX_R backptr: {whx_bp_r}", flush=True)
 
     def _publish_wx(self, re: EddyRivasFoldState) -> None:
         for i, j in iter_spans(re.n):
@@ -1119,10 +1157,10 @@ class EddyRivasFoldingEngine:
                         continue
 
                     # collapse terms for VX composition
-                    Lu[t] = zhx_collapse_with(re, i, r, k, r, charged=False)
-                    Ru[t] = zhx_collapse_with(re, k + 1, j, r + 1, l, charged=False)
-                    Lc[t] = zhx_collapse_with(re, i, r, k, r, charged=True)
-                    Rc[t] = zhx_collapse_with(re, k + 1, j, r + 1, l, charged=True)
+                    Lu[t] = zhx_collapse_with(re, i, r, k, r, charged=False, can_pair_mask=can_pair_mask)
+                    Ru[t] = zhx_collapse_with(re, k + 1, j, r + 1, l, charged=False, can_pair_mask=can_pair_mask)
+                    Lc[t] = zhx_collapse_with(re, i, r, k, r, charged=True, can_pair_mask=can_pair_mask)
+                    Rc[t] = zhx_collapse_with(re, k + 1, j, r + 1, l, charged=True, can_pair_mask=can_pair_mask)
 
                     # coax terms for this r
                     adjacent = (r == k)

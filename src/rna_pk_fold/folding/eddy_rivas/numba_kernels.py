@@ -3,7 +3,7 @@ import numba as nb
 
 INF64 = np.float64(np.inf)
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=False, fastmath=True)
 def _min4(a: float, b: float, c: float, d: float):
     m = a; w = 0
     if b < m: m = b; w = 1
@@ -15,7 +15,7 @@ def _min4(a: float, b: float, c: float, d: float):
 # -------------------------
 # WX (array-based variant)
 # -------------------------
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=False, fastmath=True)
 def compose_wx_best_over_r_arrays(
     Lu: np.ndarray, Ru: np.ndarray, Lc: np.ndarray, Rc: np.ndarray,
     left_y: np.ndarray, right_y: np.ndarray,
@@ -77,7 +77,7 @@ def compose_wx_best_over_r_arrays(
 # -------------------------
 # VX (array-based variant)
 # -------------------------
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=False, fastmath=True)
 def compose_vx_best_over_r(
     Lu: np.ndarray, Ru: np.ndarray, Lc: np.ndarray, Rc: np.ndarray,
     coax_total: np.ndarray, coax_bonus: np.ndarray,
@@ -117,7 +117,7 @@ def compose_vx_best_over_r(
     return best, best_idx, best_case
 
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=False, fastmath=True)
 def best_sum(left: np.ndarray, right: np.ndarray):
     """
     Return (min_t left[t]+right[t], t). Assumes same length.
@@ -133,7 +133,7 @@ def best_sum(left: np.ndarray, right: np.ndarray):
     return best, best_idx
 
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=False, fastmath=True)
 def best_sum_with_penalty(left: np.ndarray, right: np.ndarray, penalty: float):
     """
     Return (min_t left[t]+right[t]+penalty, t). Assumes same length.
