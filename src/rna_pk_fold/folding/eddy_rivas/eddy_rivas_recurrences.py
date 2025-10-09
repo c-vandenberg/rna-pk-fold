@@ -1035,6 +1035,13 @@ class EddyRivasFoldingEngine:
                 dbg(f"WXU (nested baseline): {wxu_baseline:.3f}")
                 dbg(f"Best WXC found: {best_c:.3f}")
                 if best_bp:
+                    r = best_bp.split
+                    k, l = best_bp.hole
+                    # left YHX used by RE_PK_COMPOSE_WX_YHX_WHX and RE_PK_COMPOSE_WX_YHX
+                    y_val = re.yhx_matrix.get(0, r, k, r)
+                    y_bp = re.yhx_back_ptr.get(0, r, k, r)
+                    print(f"YHX[0,{r}:{k},{r}] = {y_val:.2f}, via {getattr(y_bp, 'op', None)}", flush=True)
+
                     dbg(f"Winning op: {best_bp.op}")
                     dbg(f"Winning (r,k,l): ({best_bp.split}, {best_bp.hole})")
                     # Recompute components for the winner

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 from typing import List, Set, Tuple
 
 from rna_pk_fold.folding.common_traceback import TraceResult, pairs_to_dotbracket
@@ -89,7 +90,7 @@ def _traceback_core(seq: str, state: ZuckerFoldState) -> TraceResult:
                 pairs.add(Pair(i, j))
                 p, q = bp.inner
                 # follow the helix content
-                stack.append(('V', p, q))
+                stack.append(('WM', p, q))
                 # remainder of the multiloop contents
                 if q + 1 <= j:
                     stack.append(('WM', q + 1, j))
@@ -108,12 +109,19 @@ def _traceback_core(seq: str, state: ZuckerFoldState) -> TraceResult:
             elif op is ZuckerBacktrackOp.UNPAIRED_RIGHT:
                 stack.append(('WM', i, j - 1))
 
+
             elif op is ZuckerBacktrackOp.MULTI_ATTACH and bp.inner is not None:
                 p, q = bp.inner
-                pairs.add(Pair(p, q))
-                stack.append(('V', p, q))
-                if q + 1 <= j:
-                    stack.append(('WM', q + 1, j))
+                # Only add pair if V[p,q] is finite
+                if math.isfinite(state.v_matrix.get(p, q)):
+                    pairs.add(Pair(p, q))
+                    stack.append(('V', p, q))
+                    if q + 1 <= j:
+                        stack.append(('WM', q + 1, j))
+                else:
+                    # Skip invalid pair, continue with rest of multiloop
+                    if q + 1 <= j:
+                        stack.append(('WM', q + 1, j))
 
             # NONE => base case / nothing more
 
@@ -187,9 +195,7 @@ def _traceback_core_with_seed(
             elif op is ZuckerBacktrackOp.MULTI_ATTACH and bp.inner is not None:
                 pairs.add(Pair(i, j))
                 p, q = bp.inner
-                stack.append(('V', p, q))
-                if q + 1 <= j:
-                    stack.append(('WM', q + 1, j))
+                stack.append(('WM', p, q))
 
             else:
                 pairs.add(Pair(i, j))
@@ -206,10 +212,15 @@ def _traceback_core_with_seed(
 
             elif op is ZuckerBacktrackOp.MULTI_ATTACH and bp.inner is not None:
                 p, q = bp.inner
-                pairs.add(Pair(p, q))
-                stack.append(('V', p, q))
-                if q + 1 <= j:
-                    stack.append(('WM', q + 1, j))
+                if math.isfinite(state.v_matrix.get(p, q)):
+                    pairs.add(Pair(p, q))
+                    stack.append(('V', p, q))
+                    if q + 1 <= j:
+                        stack.append(('WM', q + 1, j))
+                else:
+                    # Skip invalid pair, continue with rest of multiloop
+                    if q + 1 <= j:
+                        stack.append(('WM', q + 1, j))
 
     ordered = sorted(pairs, key=lambda pr: (pr.base_i, pr.base_j))
 
