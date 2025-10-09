@@ -53,11 +53,11 @@ class ZuckerFoldingEngine:
                 self._fill_wm_cell(seq, i, j, state, b, c)
 
                 # ---------- 2. Matrix V: Paired Spans (only if length >= 2) ----------
-                if d >= 1:
+                if d >= 4:
                     self._fill_v_cell(seq, i, j, state, a)
 
                 # ---------- 3. Matrix W: ----------
-                self._fill_w_cell(i, j, state)
+                self._fill_w_cell(i, j, state, seq)
 
         elapsed = time.perf_counter() - start_time
         final_energy = state.w_matrix.get(0, n - 1)
@@ -133,6 +133,11 @@ class ZuckerFoldingEngine:
         v_matrix = state.v_matrix
         v_back_ptr = state.v_back_ptr
 
+        if j - i < 4:  # Need at least 3 unpaired bases for a hairpin
+            v_matrix.set(i, j, math.inf)
+            v_back_ptr.set(i, j, ZuckerBackPointer())
+            return
+
         # If endpoints can't pair, V is +inf
         if not can_pair(seq[i], seq[j]):
             v_matrix.set(i, j, math.inf)
@@ -145,6 +150,11 @@ class ZuckerFoldingEngine:
 
         # Case 1: Hairpin. (Rank 3)
         delta_g_hp = self.energy_model.hairpin(base_i=i, base_j=j, seq=seq, temp_k=self.config.temp_k)
+        # DEBUG: Log hairpin energies for specific problematic sequences
+        if len(seq) == 10 and seq == "GCAUCUAUGC" and i == 3 and j == 6:
+            logger.debug(f"V[{i},{j}] hairpin energy: {delta_g_hp:.2f}")
+            logger.debug(f"  Closing pair: {seq[i]}-{seq[j]}")
+            logger.debug(f"  Loop sequence: {seq[i + 1:j]}")
         cand_energy = delta_g_hp
         cand_rank = 3
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.HAIRPIN)
@@ -198,7 +208,7 @@ class ZuckerFoldingEngine:
         v_matrix.set(i, j, best_energy)
         v_back_ptr.set(i, j, best_back_ptr)
 
-    def _fill_w_cell(self, i: int, j: int, state: ZuckerFoldState) -> None:
+    def _fill_w_cell(self, i: int, j: int, state: ZuckerFoldState, seq) -> None:
         """
         Fill W[i][j] = min(
             W[i+1][j],         # leave i unpaired
@@ -253,6 +263,12 @@ class ZuckerFoldingEngine:
             best_energy, best_rank, best_back_ptr = self._compare_candidates(
                 cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
             )
+
+        if i == 0 and j == len(seq) - 1:  # Final cell
+            logger.debug(f"\n=== W[0,{j}] Final ===")
+            logger.debug(f"Best energy: {best_energy:.2f}")
+            logger.debug(f"Best operation: {best_back_ptr.operation}")
+            logger.debug(f"V[0,{j}]: {v_matrix.get(i, j):.2f}")
 
         w_matrix.set(i, j, best_energy)
         w_back_ptr.set(i, j, best_back_ptr)
