@@ -1,6 +1,6 @@
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import TraceResult
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import make_re_fold_state
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import (
     EddyRivasBackPointer,
     EddyRivasBacktrackOp,
@@ -26,7 +26,7 @@ def make_nested_tracer():
 
 # ----------------- Tests -----------------
 def test_empty_sequence_returns_empty_result():
-    re_state = make_re_fold_state(0)  # n == 0 triggers early return
+    re_state = init_eddy_rivas_fold_state(0)  # n == 0 triggers early return
     res = traceback_with_pk(
         seq="",
         nested_state=object(),
@@ -43,7 +43,7 @@ def test_wx_fallback_to_nested_merges_pairs():
     The nested tracer returns Pair(0,1).
     """
     seq = "GC"
-    re_state = make_re_fold_state(len(seq))  # wx_back_ptr.get(0,1) => None
+    re_state = init_eddy_rivas_fold_state(len(seq))  # wx_back_ptr.get(0,1) => None
 
     res = traceback_with_pk(
         seq=seq,
@@ -67,7 +67,7 @@ def test_wx_compose_whx_two_collapses_yield_two_disjoint_pairs_across_layers():
     """
     n = 6
     seq = "GCAUGC"
-    re_state = make_re_fold_state(n)
+    re_state = init_eddy_rivas_fold_state(n)
 
     # WX(0,5) → WHX(0,2:1,4) and WHX(2,5:3,3) at layers 0 and 1 respectively
     re_state.wx_back_ptr.set(
@@ -111,7 +111,7 @@ def test_wx_compose_yhx_overlap_adds_inner_pair_once():
     """
     n = 6
     seq = "GCAUGC"
-    re_state = make_re_fold_state(n)
+    re_state = init_eddy_rivas_fold_state(n)
 
     k, l = 1, 4
     re_state.wx_back_ptr.set(
@@ -143,7 +143,7 @@ def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
     """
     n = 6
     seq = "GCAUGC"
-    re_state = make_re_fold_state(n)
+    re_state = init_eddy_rivas_fold_state(n)
 
     i, j = 0, 5
     r, k, l = 2, 1, 4

@@ -4,7 +4,7 @@ import builtins
 import pytest
 
 from rna_pk_fold.folding.zucker import make_fold_state
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import make_re_fold_state
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import (
@@ -65,7 +65,7 @@ def test_seed_from_nested_copies_nested_into_uncharged_and_wx_vx():
     nested.w_matrix.set(0, 2, 7.0)
     nested.v_matrix.set(0, 2, 9.5)
 
-    re_state = make_re_fold_state(n)
+    re_state = init_eddy_rivas_fold_state(n)
     # sanity: initial charged cells for i!=j are +inf, diagonals 0
     assert math.isinf(re_state.wxc_matrix.get(0, 2))
     assert re_state.wxc_matrix.get(1, 1) == 0.0
@@ -90,7 +90,7 @@ def test_seed_from_nested_copies_nested_into_uncharged_and_wx_vx():
 
 def test_publish_wx_prefers_unscaled_uncharged_and_sets_backpointer():
     n = 2
-    re_state = make_re_fold_state(n)
+    re_state = init_eddy_rivas_fold_state(n)
     cfg = EddyRivasFoldingConfig(
         costs=PseudoknotEnergies(
             q_ss=0.0, P_tilde_out=0.0, P_tilde_hole=0.0, Q_tilde_out=0.0, Q_tilde_hole=0.0,
@@ -110,7 +110,7 @@ def test_publish_wx_prefers_unscaled_uncharged_and_sets_backpointer():
 
 def test_publish_vx_prefers_unscaled_uncharged_and_sets_backpointer():
     n = 2
-    re_state = make_re_fold_state(n)
+    re_state = init_eddy_rivas_fold_state(n)
     cfg = EddyRivasFoldingConfig(
         costs=PseudoknotEnergies(
             q_ss=0.0, P_tilde_out=0.0, P_tilde_hole=0.0, Q_tilde_out=0.0, Q_tilde_hole=0.0,
@@ -237,7 +237,7 @@ def test_fill_with_costs_calls_internal_steps_in_expected_order(monkeypatch):
     eng = EddyRivasFoldingEngine(cfg)
 
     nested = make_fold_state(3)
-    re_state = make_re_fold_state(3)
+    re_state = init_eddy_rivas_fold_state(3)
 
     calls = []
 
@@ -293,7 +293,7 @@ def test_quick_energy_harness_reports_end_cells(monkeypatch):
     # Build states
     n = 4
     nested = make_fold_state(n)
-    re_state = make_re_fold_state(n)
+    re_state = init_eddy_rivas_fold_state(n)
 
     # Make fill_with_costs place known values in (0, n-1)
     def fake_fill(self, seq, nested_arg, re_arg):

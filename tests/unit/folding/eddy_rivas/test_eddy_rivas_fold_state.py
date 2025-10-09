@@ -1,6 +1,6 @@
 import math
 
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import make_re_fold_state
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.structures.tri_matrix import (
     EddyRivasTriMatrix,
     EddyRivasTriBackPointer,
@@ -13,7 +13,7 @@ from rna_pk_fold.structures.gap_matrix import (
 
 def test_make_state_constructs_all_matrices_and_slots():
     n = 5
-    st = make_re_fold_state(n)
+    st = init_eddy_rivas_fold_state(n)
 
     # dataclass is slotted
     assert hasattr(st, "__slots__")
@@ -43,12 +43,12 @@ def test_make_state_constructs_all_matrices_and_slots():
     assert isinstance(st.zhx_back_ptr, SparseGapBackptr)
 
     # Dimensions
-    assert st.n == n
+    assert st.seq_len == n
 
 
 def test_non_gap_base_cases_diagonal_and_defaults():
     n = 4
-    st = make_re_fold_state(n)
+    st = init_eddy_rivas_fold_state(n)
 
     # Diagonal base cases
     for i in range(n):
@@ -76,7 +76,7 @@ def test_non_gap_base_cases_diagonal_and_defaults():
 
 def test_non_gap_backpointers_default_none_and_set_get():
     n = 3
-    st = make_re_fold_state(n)
+    st = init_eddy_rivas_fold_state(n)
 
     # Defaults: None
     assert st.wx_back_ptr.get(0, 0) is None
@@ -92,7 +92,7 @@ def test_non_gap_backpointers_default_none_and_set_get():
 
 def test_gap_matrices_initial_state_and_roundtrip():
     n = 6
-    st = make_re_fold_state(n)
+    st = init_eddy_rivas_fold_state(n)
 
     # Data dicts should start empty (lazy fill)
     assert st.whx_matrix.data == {}
@@ -125,7 +125,7 @@ def test_gap_matrices_initial_state_and_roundtrip():
 
 def test_setting_values_in_non_gap_matrices_roundtrip():
     n = 5
-    st = make_re_fold_state(n)
+    st = init_eddy_rivas_fold_state(n)
 
     st.wx_matrix.set(0, 3, -3.5)
     st.vx_matrix.set(1, 4, 2.0)

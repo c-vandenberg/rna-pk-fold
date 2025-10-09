@@ -25,7 +25,7 @@ except Exception:
 
 # --- Eddy–Rivas (pseudoknots) ---
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences as ER
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import make_re_fold_state
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 
 # Use your existing ER multilayer traceback
 try:
@@ -213,7 +213,7 @@ def test_full_vs_ipknot_shape_and_energy(seq: str, energy_model, engines_and_cos
     assert math.isfinite(ours_nested_e)
 
     # 2) Eddy–Rivas DP (pseudoknots) — energies
-    re_state = make_re_fold_state(len(seq))
+    re_state = init_eddy_rivas_fold_state(len(seq))
     er_engine.fill_with_costs(seq, z_state, re_state)
     ours_full_e = re_state.wx_matrix.get(0, len(seq) - 1)
     assert math.isfinite(ours_full_e)

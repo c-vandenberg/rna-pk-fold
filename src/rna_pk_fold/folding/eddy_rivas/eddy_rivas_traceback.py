@@ -42,7 +42,7 @@ def traceback_with_pk(
     """
     start_time = time.perf_counter()
 
-    n = re_state.n
+    n = re_state.seq_len
     if n == 0:
         return TraceResult(pairs=[], dot_bracket="")
 

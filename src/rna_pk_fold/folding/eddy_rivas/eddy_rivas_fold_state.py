@@ -13,12 +13,18 @@ vx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
 @dataclass(slots=True)
 class EddyRivasFoldState:
     """
-    Holds the non-gap and gap matrices for the R&E algorithm.
-    Values only for scaffolding; Step 12 will fill recurrences.
-    """
-    n: int
+    Holds all dynamic programming matrices for the Eddy & Rivas algorithm.
 
-    # Non-gap (Energies, 2D)
+    This class encapsulates both the non-gap (2D triangular) and gap (4D sparse)
+    matrices required for the RNA pseudoknot folding algorithm. Upon instantiation,
+    it initializes all matrices and sets their base conditions.
+
+    Attributes:
+        seq_len: The length of the RNA sequence.
+    """
+    seq_len: int
+
+    # --- Non-gap Matrices (Energies, 2D) ---
     wx_matrix: EddyRivasTriMatrix
     vx_matrix: EddyRivasTriMatrix
     wxi_matrix: EddyRivasTriMatrix
@@ -27,28 +33,29 @@ class EddyRivasFoldState:
     vxu_matrix: EddyRivasTriMatrix
     vxc_matrix: EddyRivasTriMatrix
 
-    # Non-gap (Back-pointers, 2D)
+    # --- Non-gap Matrices (Back-pointers, 2D) ---
     wx_back_ptr: EddyRivasTriBackPointer
     vx_back_ptr: EddyRivasTriBackPointer
 
-    # Gap (Energies, 4D)
+    # --- Gap Matrices (Energies, 4D) ---
     whx_matrix: SparseGapMatrix
     vhx_matrix: SparseGapMatrix
     yhx_matrix: SparseGapMatrix
     zhx_matrix: SparseGapMatrix
 
-    # Gap (Back-pointers, 4D)
+    # --- Gap Matrices (Back-pointers, 4D) ---
     whx_back_ptr: SparseGapBackptr
     vhx_back_ptr: SparseGapBackptr
     yhx_back_ptr: SparseGapBackptr
     zhx_back_ptr: SparseGapBackptr
 
 
-def make_re_fold_state(n: int) -> EddyRivasFoldState:
-    re = EddyRivasFoldState(
-        n=n,
+def init_eddy_rivas_fold_state(n: int) -> EddyRivasFoldState:
+    er_fold_state = EddyRivasFoldState(
+        seq_len=n,
 
-        # Non-gap (Energies, 2D)
+        # --- Matrix Instantiation ---
+        # Non-gap (Energies)
         wx_matrix=EddyRivasTriMatrix(n),
         vx_matrix=EddyRivasTriMatrix(n),
         wxi_matrix=EddyRivasTriMatrix(n),
@@ -57,11 +64,11 @@ def make_re_fold_state(n: int) -> EddyRivasFoldState:
         vxu_matrix=EddyRivasTriMatrix(n),
         vxc_matrix=EddyRivasTriMatrix(n),
 
-        # Non-gap (Back-pointers, 2D)
+        # Non-gap (Back-pointers)
         wx_back_ptr=EddyRivasTriBackPointer(n),
         vx_back_ptr=EddyRivasTriBackPointer(n),
 
-        # Gap (Energies, 4D)
+        # Gap (Back-pointers)
         whx_matrix=SparseGapMatrix(n),
         vhx_matrix=SparseGapMatrix(n),
         yhx_matrix=SparseGapMatrix(n),
@@ -74,20 +81,21 @@ def make_re_fold_state(n: int) -> EddyRivasFoldState:
         zhx_back_ptr=SparseGapBackptr(n),
     )
 
-    # ---------- Initialization (base conditions) ----------
-    # Non-gap base cases (R&E Section 5.2):
-    #   wx(i,i) = 0; vx(i,i) = +inf
+    # ---------- Matrix Initialization (base conditions) ----------
+    # As per Eddy & Rivas, Section 5.2, for spans of length 0.
     for i in range(n):
-        re.wx_matrix.set(i, i, 0.0)
-        re.vx_matrix.set(i, i, math.inf)
-        re.wxi_matrix.set(i, i, 0.0)
-        re.wxu_matrix.set(i, i, 0.0)
-        re.wxc_matrix.set(i, i, 0.0)  # neutral so empty-in-empty stays finite if used
-        re.vxu_matrix.set(i, i, math.inf)
-        re.vxc_matrix.set(i, i, math.inf)
+        er_fold_state.wx_matrix.set(i, i, 0.0)
+        er_fold_state.vx_matrix.set(i, i, math.inf)
+        er_fold_state.wxi_matrix.set(i, i, 0.0)
+        er_fold_state.wxu_matrix.set(i, i, 0.0)
 
-    # Gap matrices: we *don’t* prefill O(N^4); instead we implement the
-    # collapse identities via helpers below (lazy). We do set illegal holes to +inf
-    # by default due to SparseGapMatrix.get() behavior.
+        # Neutral init, so empty regions don't cause infinite energy
+        er_fold_state.wxc_matrix.set(i, i, 0.0)
+        er_fold_state.vxu_matrix.set(i, i, math.inf)
+        er_fold_state.vxc_matrix.set(i, i, math.inf)
 
-    return re
+    # Note: Gap matrices are sparse and initialized on-demand.
+    # The default `get()` behavior of SparseGapMatrix returns +inf for
+    # unassigned entries, correctly handling illegal holes.
+
+    return er_fold_state

@@ -3,7 +3,7 @@ import pytest
 
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBacktrackOp
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState, make_re_fold_state
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState, init_eddy_rivas_fold_state
 from rna_pk_fold.structures.tri_matrix import ZuckerTriMatrix, EddyRivasTriMatrix, EddyRivasTriBackPointer
 from rna_pk_fold.structures.gap_matrix import SparseGapMatrix, SparseGapBackptr
 
@@ -112,7 +112,7 @@ def test_wxI_prefers_wxi_over_wx():
 def _try_build_states(n):
     try:
         nested = make_fold_state(n)  # current factory; default finite base cases inside
-        re_state = make_re_fold_state(n)
+        re_state = init_eddy_rivas_fold_state(n)
     except Exception:
         # Fallback construction
         inf = math.inf
@@ -158,7 +158,7 @@ def _try_build_states(n):
         zhx_back_ptr = SparseGapBackptr(n)
 
         re_state = EddyRivasFoldState(
-            n=n,
+            seq_len=n,
             wx_matrix=wx_matrix, vx_matrix=vx_matrix,
             wxi_matrix=wxi_matrix, wxu_matrix=wxu_matrix, wxc_matrix=wxc_matrix,
             vxu_matrix=vxu_matrix, vxc_matrix=vxc_matrix,

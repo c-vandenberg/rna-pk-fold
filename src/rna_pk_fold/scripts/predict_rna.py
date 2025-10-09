@@ -41,7 +41,7 @@ from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested_interva
 
 # Eddy–Rivas (pseudoknots)
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import make_re_fold_state
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pk as er_traceback_with_pk
 
 # Set up module logger
@@ -241,7 +241,7 @@ def predict_er(
         verbose=logger.isEnabledFor(logging.INFO),
     )
     er_engine = eddy_rivas_recurrences.EddyRivasFoldingEngine(er_cfg)
-    re_state = make_re_fold_state(len(seq))
+    re_state = init_eddy_rivas_fold_state(len(seq))
     er_engine.fill_with_costs(seq, z_state, re_state)
 
     e = re_state.wx_matrix.get(0, len(seq) - 1)
