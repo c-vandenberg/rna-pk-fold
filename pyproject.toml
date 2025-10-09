@@ -31,6 +31,9 @@ dependencies = [
 Repository = "https://github.com/your-username/your-package-name"
 "Bug Tracker" = "https://github.com/your-username/your-package-name/issues"
 
+[project.scripts]
+rna-pk-fold = "rna_pk_fold.scripts.predict_rna:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["rna_pk_fold*"]

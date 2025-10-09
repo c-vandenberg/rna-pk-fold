@@ -130,7 +130,7 @@ def energy_model():
 def engines_and_costs(energy_model):
     z_engine = ZuckerFoldingEngine(
         energy_model=energy_model,
-        config=ZuckerFoldingConfig(enable_pk_h=True, pk_h_penalty=1.0),
+        config=ZuckerFoldingConfig(),
     )
 
     costs = ER.costs_from_dict({

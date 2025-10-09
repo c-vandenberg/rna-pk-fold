@@ -11,8 +11,6 @@ from rna_pk_fold.energies.energy_ops import best_multiloop_end_bonus
 @dataclass(slots=True)
 class ZuckerFoldingConfig:
     temp_k: float = 310.15
-    enable_pk_h: bool = False
-    pk_h_penalty: float = 1.0
 
 
 @dataclass(slots=True)

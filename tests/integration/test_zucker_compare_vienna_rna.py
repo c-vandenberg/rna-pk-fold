@@ -106,7 +106,7 @@ def engine_nested(energy_model):
     # Pseudoknots disabled for Vienna comparison
     return ZuckerFoldingEngine(
         energy_model=energy_model,
-        config=ZuckerFoldingConfig(enable_pk_h=False)
+        config=ZuckerFoldingConfig()
     )
 
 @pytest.fixture(scope="module")
@@ -114,7 +114,7 @@ def engine_pk(energy_model):
     # Pseudoknots enabled (minimal H-type term)
     return ZuckerFoldingEngine(
         energy_model=energy_model,
-        config=ZuckerFoldingConfig(enable_pk_h=True, pk_h_penalty=1.0)
+        config=ZuckerFoldingConfig()
     )
 
 # ---------- Parameterized sequences ----------
