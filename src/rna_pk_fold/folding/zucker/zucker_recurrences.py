@@ -69,6 +69,10 @@ class ZuckerFoldingEngine:
         n = len(seq)
         a, b, c, d_bonus = self.energy_model.params.MULTILOOP
 
+        if n == 0:
+            logger.info("Zucker DP: empty sequence; nothing to fill.")
+            return
+
         # Log algorithm start
         logger.info("=" * 60)
         logger.info(f"Zucker (Nested) DP for sequence length N={n}")

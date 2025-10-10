@@ -201,6 +201,9 @@ def internal_loop_energy(
         base_dh_ds = lookup_loop_baseline_js(energies.BULGE, bulge_size)
         delta_g = calculate_delta_g(base_dh_ds, temp_k)
 
+        if bulge_size == 1:
+            return delta_g
+
         # Apply terminal AU/GU penalties to both the outer and inner closing pairs.
         delta_g += _terminal_au_penalty(normalize_base(seq[base_i]), normalize_base(seq[base_j]))
         delta_g += _terminal_au_penalty(normalize_base(seq[base_k]), normalize_base(seq[base_l]))

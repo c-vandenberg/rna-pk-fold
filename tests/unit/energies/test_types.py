@@ -62,15 +62,15 @@ def test_pseudoknot_energies_is_frozen_slotted_and_defaults():
     """
     pk = PseudoknotEnergies(
         q_ss=0.2,
-        P_tilde_out=1.0,
-        P_tilde_hole=1.0,
-        Q_tilde_out=0.2,
-        Q_tilde_hole=0.2,
-        L_tilde=0.0,
-        R_tilde=0.0,
-        M_tilde_yhx=0.0,
-        M_tilde_vhx=0.0,
-        M_tilde_whx=0.0,
+        p_tilde_out=1.0,
+        p_tilde_hole=1.0,
+        q_tilde_out=0.2,
+        q_tilde_hole=0.2,
+        l_tilde=0.0,
+        r_tilde=0.0,
+        m_tilde_yhx=0.0,
+        m_tilde_vhx=0.0,
+        m_tilde_whx=0.0,
         # optional maps omitted → default None
         # coax_* controls & others use their defaults
     )
