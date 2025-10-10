@@ -1,5 +1,11 @@
+"""
+Unit tests for coaxial stacking energy utility functions.
+
+This module validates helper functions from `energy_pk_utils` that are used to
+construct keys and look up energies for coaxial stacking calculations in the
+context of pseudoknotted structures.
+"""
 import math
-import pytest
 
 from rna_pk_fold.utils.energy_pk_utils import (
     coax_pair_key,
@@ -11,22 +17,35 @@ from rna_pk_fold.utils.energy_pk_utils import (
 # coax_pair_key
 # ------------------------------
 def test_coax_pair_key_in_range_and_boundaries():
-    # 0..3 valid on a 4-mer; returns 2-char pair from indices (a,b)
+    """
+    Tests that `coax_pair_key` correctly extracts a two-character string
+    representing a base pair from a sequence using valid indices.
+    """
+    # Define a sequence for testing.
     seq = "AUGC"  # indices: 0:A, 1:U, 2:G, 3:C
+
+    # Test standard in-range extraction.
     assert coax_pair_key(seq, 0, 1) == "AU"
     assert coax_pair_key(seq, 2, 3) == "GC"
-    # boundaries inclusive
+
+    # Test boundary conditions to ensure indices are inclusive.
     assert coax_pair_key(seq, 0, 3) == "AC"
-    assert coax_pair_key(seq, 3, 3) == "CC"  # same index allowed, pair_str simply concatenates bases
+    # Same index is allowed; the function simply concatenates the bases.
+    assert coax_pair_key(seq, 3, 3) == "CC"
 
 
 def test_coax_pair_key_out_of_range_returns_none():
+    """
+    Tests that `coax_pair_key` gracefully handles out-of-range indices
+    by returning `None`.
+    """
     seq = "AUGC"  # len = 4
-    # negative index
+
+    # A negative index should be out of range.
     assert coax_pair_key(seq, -1, 1) is None
-    # index == len(seq) (out of range)
+    # An index equal to the sequence length is out of range.
     assert coax_pair_key(seq, 0, 4) is None
-    # both bad
+    # Both indices being out of range should also return None.
     assert coax_pair_key(seq, -2, 7) is None
 
 
@@ -34,36 +53,62 @@ def test_coax_pair_key_out_of_range_returns_none():
 # coax_energy_for_join
 # ------------------------------
 def test_coax_energy_for_join_direct_key_hit():
-    # left pair (0,1) -> "AU", right pair (2,3) -> "GC"
+    """
+    Tests the primary success case where the energy key is found directly
+    in the provided table.
+    """
+    # The left pair (0,1) -> "AU", and the right pair (2,3) -> "GC".
     seq = "AUGC"
-    pairs_tbl = {("AU", "GC"): -0.6}  # stabilizing
+    # The key ("AU", "GC") is present in the table.
+    pairs_tbl = {("AU", "GC"): -0.6}  # Stabilizing energy.
+
     e = coax_energy_for_join(seq, (0, 1), (2, 3), pairs_tbl)
     assert math.isclose(e, -0.6, rel_tol=1e-12)
 
 
 def test_coax_energy_for_join_reversed_key_hit():
-    # Only reversed ordering present in the table
+    """
+    Tests the symmetric lookup capability of the function.
+    If the direct key is not found, the function should try the reversed key.
+    """
     seq = "AUGC"
+    # The table only contains the reversed key ("GC", "AU").
     pairs_tbl = {("GC", "AU"): -0.8}
+
+    # The function should still find the energy by checking the reversed key.
     e = coax_energy_for_join(seq, (0, 1), (2, 3), pairs_tbl)
     assert math.isclose(e, -0.8, rel_tol=1e-12)
 
 
 def test_coax_energy_for_join_missing_key_defaults_zero():
-    # Key not present in either order
+    """
+    Tests the default behavior when a key is not found in either the direct
+    or reversed order. The function should return 0.0.
+    """
     seq = "AUGC"
-    pairs_tbl = {("AU", "UA"): -0.3}
-    e = coax_energy_for_join(seq, (0, 1), (2, 3), pairs_tbl)  # looking for ("AU","GC") or ("GC","AU")
+    pairs_tbl = {("AU", "UA"): -0.3} # This table does not contain the required key.
+
+    # The function looks for ("AU","GC") or ("GC","AU"), neither of which are in the table.
+    e = coax_energy_for_join(seq, (0, 1), (2, 3), pairs_tbl)
+    # The result should be the default value of 0.0.
     assert math.isclose(e, 0.0, rel_tol=1e-12)
 
 
 def test_coax_energy_for_join_invalid_indices_return_zero():
+    """
+    Tests that the function returns 0.0 if any of the input indices are invalid.
+    This ensures graceful failure without raising an error if out-of-range
+    coordinates are passed.
+    """
     seq = "AUGC"
     pairs_tbl = {("AU", "GC"): -1.0}
-    # Left out-of-range
+
+    # Test with the left pair's indices out of range.
     e1 = coax_energy_for_join(seq, (-1, 1), (2, 3), pairs_tbl)
-    # Right out-of-range
+    # Test with the right pair's indices out of range.
     e2 = coax_energy_for_join(seq, (0, 1), (2, 4), pairs_tbl)
-    # Both out-of-range
+    # Test with both pairs' indices out of range.
     e3 = coax_energy_for_join(seq, (-1, 5), (9, 9), pairs_tbl)
+
+    # In all cases of invalid indices, the energy should be 0.0.
     assert e1 == e2 == e3 == 0.0

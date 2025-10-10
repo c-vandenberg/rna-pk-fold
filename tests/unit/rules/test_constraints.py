@@ -1,3 +1,10 @@
+"""
+Unit tests for fundamental RNA secondary structure rules and constraints.
+
+This module validates the helper functions that enforce the basic biophysical
+rules of RNA folding, such as which nucleotides can form pairs and the minimum
+allowable size for a hairpin loop.
+"""
 import pytest
 
 from rna_pk_fold.rules.constraints import (
@@ -10,16 +17,10 @@ from rna_pk_fold.rules.constraints import (
 
 def test_can_pair_allows_watson_crick_and_wobble():
     """
-    Test whether canonical and wobble pairs are allowed.
-
-    Expected
-    --------
-    - Returns True for AU, UA, GC, CG, GU, UG.
-
-    Notes
-    -----
-    Allowed (RNA): AU, UA, GC, CG, GU, UG.
+    Tests that `can_pair` correctly identifies all canonical and wobble base pairs.
     """
+    # Define the list of standard allowed RNA base pairs.
+    # This includes Watson-Crick pairs (A-U, G-C) and the G-U wobble pair.
     allowed = [("A", "U"), ("U", "A"), ("G", "C"), ("C", "G"), ("G", "U"), ("U", "G")]
     for i, j in allowed:
         assert can_pair(i, j) is True
@@ -27,40 +28,33 @@ def test_can_pair_allows_watson_crick_and_wobble():
 
 def test_can_pair_is_case_insensitive_and_handles_T_as_U():
     """
-    Verify bases are normalized to uppercase and T is treated as U.
-
-    Expected
-    --------
-    - Case-insensitive matching works (e.g., 'a' with 'u').
-    - 'T' is treated as 'U' (e.g., A–T returns True).
+    Verifies that the `can_pair` function normalizes inputs for robustness.
+    It should handle lowercase letters and treat Thymine (T) as Uracil (U),
+    which is useful for handling DNA sequences or mixed-format inputs.
     """
-    # Case-insensitive
+    # Test case-insensitivity.
     assert can_pair("a", "u")
     assert can_pair("G", "c")
-    # T behaves like U
-    assert can_pair("A", "T")  # A–U via T->U mapping
-    assert can_pair("t", "A")  # U–A via T->U mapping
+    # Test that 'T' is treated as 'U' for pairing purposes.
+    assert can_pair("A", "T")  # Should be treated as A-U.
+    assert can_pair("t", "A")  # Should be treated as U-A.
 
 
 def test_can_pair_rejects_invalid_inputs_and_ambiguity():
     """
-    Ensure invalid or ambiguous inputs fail fast.
-
-    Expected
-    --------
-    - Non-strings, non-length-1 strings, and ambiguity code 'N' all return False.
-    - Disallowed pairs (e.g., A–G, C–U) return False.
+    Ensures that `can_pair` returns False for disallowed pairs and invalid inputs.
+    This demonstrates the function's strictness and safety against improper use.
     """
-    # Non-strings
+    # Test with non-string inputs.
     assert can_pair(None, "A") is False
     assert can_pair("A", 3) is False
-    # Wrong length
+    # Test with inputs that are not single characters.
     assert can_pair("AU", "A") is False
     assert can_pair("A", "UA") is False
-    # Ambiguity code
+    # Test with the ambiguity code 'N'.
     assert can_pair("N", "A") is False
     assert can_pair("A", "N") is False
-    # Disallowed pairs
+    # Test with disallowed canonical base combinations.
     assert can_pair("A", "G") is False
     assert can_pair("C", "U") is False
 
@@ -68,44 +62,43 @@ def test_can_pair_rejects_invalid_inputs_and_ambiguity():
 @pytest.mark.parametrize(
     "base_i,base_j,expected",
     [
-        (0, 1, 0),
-        (0, 2, 1),
-        (2, 6, 3),
-        (3, 7, 3),
+        (0, 1, 0), # A hairpin closed by (0,1) has 0 unpaired bases inside.
+        (0, 2, 1), # A hairpin closed by (0,2) has 1 unpaired base inside.
+        (2, 6, 3), # A hairpin closed by (2,6) has 3 unpaired bases inside.
+        (3, 7, 3), # A hairpin closed by (3,7) also has 3 unpaired bases.
     ],
 )
 def test_hairpin_size_formula(base_i, base_j, expected):
     """
-    Check the hairpin size formula ``j - i - 1``.
-
-    Expected
-    --------
-    - `hairpin_size(i, j)` equals `j - i - 1` for each parametrized case.
+    Tests the `hairpin_size` calculation using several examples.
+    The size of a hairpin loop is defined as the number of unpaired bases it
+    contains, which is calculated by the formula `j - i - 1`.
     """
     assert hairpin_size(base_i, base_j) == expected
 
 
 def test_is_min_hairpin_size_uses_default_threshold():
     """
-    Validate default minimum hairpin size threshold.
-
-    Expected
-    --------
-    - With default `MIN_HAIRPIN_UNPAIRED == 3`, `(0,4)` is allowed and `(0,3)` is not.
+    Validates the check for the minimum hairpin size using the default threshold.
+    Biophysically, hairpin loops must contain at least 3 unpaired bases to be stable.
+    This test confirms the function enforces this default rule.
     """
-    i, j = 0, 4  # loop length = 3
+    # The default minimum number of unpaired bases is 3.
     assert MIN_HAIRPIN_UNPAIRED == 3
-    assert is_min_hairpin_size(i, j) is True
-    assert is_min_hairpin_size(0, 3) is False  # loop length = 2
+
+    # A pair at (0,4) creates a loop of size 4-0-1 = 3, which is allowed.
+    assert is_min_hairpin_size(0, 4) is True
+    # A pair at (0,3) creates a loop of size 3-0-1 = 2, which is too small.
+    assert is_min_hairpin_size(0, 3) is False
 
 
 def test_is_min_hairpin_size_with_custom_threshold():
     """
-    Validate custom minimum threshold argument.
-
-    Expected
-    --------
-    - With `min_unpaired=4`, `(0,4)` is not allowed; `(0,5)` is allowed.
+    Validates the minimum hairpin size check when a custom threshold is provided.
+    This demonstrates the function's flexibility for use in algorithms that may
+    need to explore non-canonical structures.
     """
+    # A loop of size 3 (from pair 0,4) is NOT large enough for a min_unpaired of 4.
     assert is_min_hairpin_size(0, 4, min_unpaired=4) is False
+    # A loop of size 4 (from pair 0,5) IS large enough for a min_unpaired of 4.
     assert is_min_hairpin_size(0, 5, min_unpaired=4) is True

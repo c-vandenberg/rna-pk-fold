@@ -1,3 +1,11 @@
+"""
+Unit tests for the IS2 (Symmetric Internal Loop) energy utility functions.
+
+This module validates helper functions like `IS2_outer` and `IS2_outer_yhx`,
+which are responsible for retrieving specialized energy terms. The tests focus
+on ensuring these functions can correctly interact with a `tables` object that
+may provide the energy value either as a static attribute or via a callable method.
+"""
 import pytest
 
 from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
@@ -6,22 +14,40 @@ from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
 # ----------------------- IS2_outer -----------------------
 
 def test_is2_outer_uses_callable_and_returns_value():
+    """
+    Tests that `IS2_outer` correctly calls the `IS2_outer` method on the
+    `tables` object when it is a callable.
+    """
     class Tables:
+        """A mock tables object with a callable IS2_outer method."""
         def IS2_outer(self, seq, i, j, r, s):
-            # Return something we can check precisely
+            # This method simulates a dynamic energy calculation.
             return -1.25
 
+    # Instantiate the mock object.
     t = Tables()
+    # Call the helper function, which should invoke the method on the tables object.
     got = IS2_outer("ACGU", t, 0, 5, 1, 4)
+
+    # The result should be the value returned by the method.
     assert got == -1.25
 
 
 def test_is2_outer_uses_numeric_attribute_when_non_callable():
+    """
+    Tests that `IS2_outer` correctly returns the `IS2_outer` attribute from
+    the `tables` object when it is a simple numeric value (non-callable).
+    """
     class Tables:
-        IS2_outer = 2.5  # non-callable numeric
+        """A mock tables object with a static, numeric IS2_outer attribute."""
+        IS2_outer = 2.5  # This simulates a constant energy bonus/penalty.
 
+    # Instantiate the mock object.
     t = Tables()
+    # Call the helper function, which should access the attribute directly.
     got = IS2_outer("ACGU", t, 0, 5, 1, 4)
+
+    # The result should be the value of the attribute.
     assert got == 2.5
 
 
