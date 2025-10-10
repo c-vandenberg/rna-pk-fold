@@ -104,7 +104,7 @@ def test_iter_inner_holes_no_min_returns_all_pairs_inclusive():
                 (1,2),(1,3),(1,4),
                 (2,3),(2,4),
                 (3,4)]
-    got = list(iter_inner_holes(0, 4, min_hole=0))
+    got = list(iter_inner_holes(0, 4, min_hole_width=0))
     assert got == expected
 
 
@@ -113,17 +113,17 @@ def test_iter_inner_holes_min_hole_1_excludes_adjacents():
     expected = [(0,2),(0,3),(0,4),
                 (1,3),(1,4),
                 (2,4)]
-    got = list(iter_inner_holes(0, 4, min_hole=1))
+    got = list(iter_inner_holes(0, 4, min_hole_width=1))
     assert got == expected
 
 
 def test_iter_inner_holes_min_hole_too_large_yields_empty():
     # If min_hole >= (j - i), no (k,l) satisfy l >= k+1+min_hole
-    assert list(iter_inner_holes(0, 4, min_hole=4)) == []
+    assert list(iter_inner_holes(0, 4, min_hole_width=4)) == []
 
 
 def test_iter_inner_holes_bounds_hold():
     i, j = 3, 9
-    for k, l in iter_inner_holes(i, j, min_hole=2):
+    for k, l in iter_inner_holes(i, j, min_hole_width=2):
         assert i <= k < l <= j
         assert (l - k - 1) >= 2

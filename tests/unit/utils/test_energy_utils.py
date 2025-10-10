@@ -1,4 +1,3 @@
-# tests/unit/utils/test_energy_utils.py
 import math
 import pytest
 

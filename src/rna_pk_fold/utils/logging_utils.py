@@ -1,6 +1,6 @@
 import logging
 import sys
-import os
+import time
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -15,37 +15,45 @@ def get_log_file_path(
         include_timestamp: bool = True
 ) -> Path:
     """
-    Generate a log file path for a module.
+    Generates a standardized file path for a log file.
+
+    This function creates a safe filename from a module name and appends a
+    timestamp to ensure uniqueness. It also ensures the target log directory exists.
 
     Parameters
     ----------
     module_name : str
-        Name of the module (e.g., "rna_pk_fold.folding.eddy_rivas")
-    log_dir : Path, optional
-        Directory to store logs. Defaults to var/log
-    include_timestamp : bool
-        If True, add timestamp to filename
+        The name of the module or logger (e.g., "my_app.utils").
+    log_dir : Optional[Path], optional
+        The directory where the log file will be saved. Defaults to `DEFAULT_LOG_DIR`.
+    include_timestamp : bool, optional
+        If True, a timestamp is added to the filename to prevent overwrites,
+        by default True.
 
     Returns
     -------
     Path
-        Full path to the log file
+        The full `pathlib.Path` object for the generated log file.
     """
+    # Use the default log directory if none is provided.
     if log_dir is None:
         log_dir = DEFAULT_LOG_DIR
 
-    # Create directory if it doesn't exist
+    # Create the log directory and any necessary parent directories.
+    # `exist_ok=True` prevents an error if the directory already exists.
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Clean module name for filename
+    # Sanitize the module name to create a filesystem-safe filename.
     safe_name = module_name.replace(".", "_")
 
+    # Append a timestamp to the filename for uniqueness if requested.
     if include_timestamp:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{safe_name}_{timestamp}.log"
     else:
         filename = f"{safe_name}.log"
 
+    # Combine the directory and filename into a full Path object.
     return log_dir / filename
 
 
@@ -59,6 +67,42 @@ def setup_logger(
     console_level: Optional[int] = None,
     file_level: Optional[int] = None,
 ) -> logging.Logger:
+    """
+    Configures and returns a logger with console and optional file handlers.
+
+    This function provides a standardized way to set up logging for different
+    modules. It clears any existing handlers to prevent duplicate messages and
+    configures new handlers for console (stdout) and file output with distinct
+    log levels if needed.
+
+    Parameters
+    ----------
+    name : str
+        The name of the logger, typically `__name__`.
+    level : int, optional
+        The base logging level for the logger and its handlers, by default `logging.INFO`.
+    log_file : Optional[str], optional
+        A specific path for the log file. If provided, it overrides the
+        automatic path generation.
+    log_dir : Optional[Path], optional
+        The directory to store the log file if `log_file` is not provided.
+        Defaults to `DEFAULT_LOG_DIR`.
+    enable_file_logging : bool, optional
+        If True and `log_file` is not specified, a default timestamped log file
+        will be created. If False, no file logging will occur unless `log_file`
+        is explicitly set. By default True.
+    console_level : Optional[int], optional
+        An override for the logging level of the console handler. If None, it
+        defaults to the base `level`.
+    file_level : Optional[int], optional
+        An override for the logging level of the file handler. If None, it
+        defaults to the base `level`.
+
+    Returns
+    -------
+    logging.Logger
+        The configured logger instance.
+    """
     logger = logging.getLogger(name)
     logger.setLevel(level)
     if logger.hasHandlers():
@@ -67,13 +111,11 @@ def setup_logger(
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                                   datefmt='%Y-%m-%d %H:%M:%S')
 
-    # Console
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     console_handler.setLevel(console_level if console_level is not None else level)
     logger.addHandler(console_handler)
 
-    # File
     file_handler = None
     if log_file:
         log_path = Path(log_file)
@@ -82,7 +124,6 @@ def setup_logger(
     elif enable_file_logging:
         log_path = get_log_file_path(name, log_dir=log_dir, include_timestamp=True)
         file_handler = logging.FileHandler(log_path, mode='a')
-        # this INFO goes to console; fine — it tells you the exact path
         logger.info(f"Logging to file: {log_path}")
 
     if file_handler:
@@ -94,7 +135,16 @@ def setup_logger(
 
 
 def set_log_level(logger: logging.Logger, level: int) -> None:
-    """Update logger and all its handlers to the new level."""
+    """
+    Dynamically updates the logging level for a logger and all its handlers.
+
+    Parameters
+    ----------
+    logger : logging.Logger
+        The logger instance to update.
+    level : int
+        The new logging level to set (e.g., `logging.DEBUG`, `logging.INFO`).
+    """
     logger.setLevel(level)
     for handler in logger.handlers:
         handler.setLevel(level)
@@ -102,14 +152,17 @@ def set_log_level(logger: logging.Logger, level: int) -> None:
 
 def cleanup_old_logs(log_dir: Optional[Path] = None, days_to_keep: int = 7) -> None:
     """
-    Remove log files older than specified days.
+    Removes log files from a directory that are older than a specified number of days.
+
+    This function helps manage disk space by automatically deleting old logs based on
+    their last modification time.
 
     Parameters
     ----------
-    log_dir : Path, optional
-        Log directory to clean (defaults to var/log)
-    days_to_keep : int
-        Keep logs from the last N days
+    log_dir : Optional[Path], optional
+        The directory to clean. Defaults to `DEFAULT_LOG_DIR`.
+    days_to_keep : int, optional
+        The maximum age of log files to keep, in days. By default 7.
     """
     if log_dir is None:
         log_dir = DEFAULT_LOG_DIR
@@ -117,7 +170,6 @@ def cleanup_old_logs(log_dir: Optional[Path] = None, days_to_keep: int = 7) -> N
     if not log_dir.exists():
         return
 
-    import time
     cutoff_time = time.time() - (days_to_keep * 86400)
 
     for log_file in log_dir.glob("*.log"):

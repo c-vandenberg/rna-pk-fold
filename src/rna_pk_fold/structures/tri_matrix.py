@@ -50,9 +50,9 @@ class ZuckerTriMatrix(Generic[T]):
 
         Parameters
         ----------
-        i : int
+        base_i : int
             The row index (0-based).
-        j : int
+        base_j : int
             The column index (0-based).
 
         Returns
@@ -63,7 +63,18 @@ class ZuckerTriMatrix(Generic[T]):
         return self._rows[base_i][self._offset(base_i, base_j)]
 
     def set(self, base_i: int, base_j: int, value: T) -> None:
-        """Set cell value at (i, j)."""
+        """
+        Sets the `value` at cell `(i, j)`.
+
+        Parameters
+        ----------
+        base_i : int
+            The row index (0-based).
+        base_j : int
+            The column index (0-based).
+        value : T
+            The value to store in the cell.
+        """
         self._rows[base_i][self._offset(base_i, base_j)] = value
 
     def safe_range(self) -> range:
@@ -74,7 +85,17 @@ class ZuckerTriMatrix(Generic[T]):
         return range(self._seq_len)
 
     def iter_upper_indices(self) -> Iterator[Tuple[int, int]]:
-        """Yield all valid (i, j) with i <= j in row-major order."""
+        """
+        Yields all valid `(i, j)` index tuples in the upper triangle.
+
+        This iterator proceeds in row-major order, yielding `(i, j)` for all
+        `j >= i`.
+
+        Yields
+        ------
+        Iterator[Tuple[int, int]]
+            An iterator over the `(i, j)` index tuples.
+        """
         n = self._seq_len
         for i in range(n):
             for j in range(i, n):
@@ -84,60 +105,141 @@ class ZuckerTriMatrix(Generic[T]):
 @dataclass(slots=True)
 class EddyRivasTriMatrix:
     """
-    Triangular N x N float matrix with +inf default.
-    Only (i <= j) are meaningful. Use get/set.
+    A sparse, dictionary-based triangular matrix for Eddy-Rivas DP tables.
+
+    This class provides an `(i, j)`-indexed matrix that defaults to infinity.
+    It can be optionally converted to a dense NumPy array for performance-critical
+    access patterns after being populated.
+
+    Attributes
+    ----------
+    n : int
+        The length of the sequence (N).
+    data : Dict[OuterSpan, float]
+        The primary sparse storage, mapping `(i, j)` tuples to float energy values.
+    _dense : Optional[np.ndarray]
+        A dense NumPy array mirror of the matrix, created on demand.
+    _is_dense_enabled : bool
+        A flag indicating whether the dense mirror has been created.
     """
     n: int
     data: Dict[Outer, float] = field(default_factory=dict)
 
     _dense: Optional[np.ndarray] = field(default=None, repr=False)
-    _dense_enabled: bool = field(default=False, repr=False)
+    _is_dense_enabled: bool = field(default=False, repr=False)
 
     def enable_dense(self) -> None:
-        """Allocate dense NxN mirror and backfill from existing dict entries."""
-        if self._dense_enabled:
+        """
+        Converts the internal storage from a sparse dictionary to a dense NumPy array.
+
+        This method allocates a full NxN NumPy array, initializes it with infinity,
+        and copies all existing values from the sparse dictionary into it.
+        Subsequent `get` and `set` calls will use the faster NumPy array.
+        """
+        if self._is_dense_enabled:
             return
+
         self._dense = np.full((self.n, self.n), np.inf, dtype=np.float64)
         for (i, j), v in self.data.items():
             if 0 <= i <= j < self.n:
                 self._dense[i, j] = v
-        self._dense_enabled = True
+        self._is_dense_enabled = True
 
     def as_dense(self) -> np.ndarray:
-        """Return the dense mirror (allocates it if needed)."""
-        if not self._dense_enabled:
+        if not self._is_dense_enabled:
             self.enable_dense()
         # mypy: _dense is not None here
         return self._dense  # type: ignore[return-value]
 
     def get(self, i: int, j: int) -> float:
+        """
+        Retrieves the energy value for the given coordinates `(i, j)`.
+
+        Parameters
+        ----------
+        i, j : int
+            The indices of the cell.
+
+        Returns
+        -------
+        float
+            The stored energy value. Defaults to `np.inf` for unassigned cells
+            or invalid indices. Returns 0.0 for empty segments `(i = j + 1)`.
+        """
         if i > j:
             return 0.0 if i == j + 1 else INF  # empty segment convenience
         if i < 0 or j >= self.n:
             return INF
-        if self._dense_enabled:
+        if self._is_dense_enabled:
             return float(self._dense[i, j])  # type: ignore[index]
         return self.data.get((i, j), INF)
 
     def set(self, i: int, j: int, value: float) -> None:
+        """
+        Sets the energy `value` for the given coordinates `(i, j)`.
+
+        The value is written to both the sparse dictionary and the dense array
+        (if it has been enabled) to keep them synchronized.
+
+        Parameters
+        ----------
+        i, j : int
+            The indices of the cell.
+        value : float
+            The energy value to store.
+        """
         self.data[(i, j)] = value
-        if self._dense_enabled:
+        if self._is_dense_enabled:
             self._dense[i, j] = value  # type: ignore[index]
 
 
 @dataclass(slots=True)
 class EddyRivasTriBackPointer:
     """
-    Triangular N x N back-pointer matrix for WX/VX.
-    Only (i <= j) are meaningful. Missing entries return None.
+    A sparse, dictionary-based triangular matrix for WX/VX backpointers.
+
+    This class provides storage for backpointer objects corresponding to the
+    `EddyRivasTriMatrix`. It uses a dictionary for sparse storage, as many
+    cells may not have a backpointer.
+
+    Attributes
+    ----------
+    n : int
+        The length of the sequence (N).
+    data : Dict[OuterSpan, Any]
+        The sparse dictionary mapping `(i, j)` tuples to backpointer objects.
     """
     n: int
     data: Dict[Outer, Any] = field(default_factory=dict)  # store RivasEddyBackPointer
 
     def get(self, i: int, j: int):
+        """
+        Retrieves the backpointer object for the given coordinates `(i, j)`.
+
+        Parameters
+        ----------
+        i, j : int
+            The indices of the cell.
+
+        Returns
+        -------
+        Any | None
+            The stored backpointer object, or `None` if the indices are invalid
+            or no backpointer has been set.
+        """
         if i > j or i < 0 or j >= self.n:
             return None
         return self.data.get((i, j))
 
     def set(self, i: int, j: int, value) -> None:
+        """
+        Sets the `value` (a backpointer object) for the given coordinates `(i, j)`.
+
+        Parameters
+        ----------
+        i, j : int
+            The indices of the cell.
+        value : Any
+            The backpointer object to store.
+        """
         self.data[(i, j)] = value

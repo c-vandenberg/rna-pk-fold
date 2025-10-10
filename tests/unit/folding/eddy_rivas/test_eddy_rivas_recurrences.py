@@ -1,24 +1,11 @@
-import json
 import math
-import builtins
-import pytest
 
 from rna_pk_fold.folding.zucker import make_fold_state
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import (
-    EddyRivasFoldingEngine,
-    EddyRivasFoldingConfig,
-    take_best,
-    make_bp,
-    costs_from_dict,
-    costs_to_dict,
-    costs_from_vienna_like,
-    save_costs_json,
-    load_costs_json,
-    quick_energy_harness,
-)
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import (EddyRivasFoldingEngine, EddyRivasFoldingConfig,
+                                                                   take_best)
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import (
     EddyRivasBackPointer,
     EddyRivasBacktrackOp,
@@ -46,14 +33,6 @@ def test_take_best_keeps_old_on_tie_or_worse():
     # tie
     best2, bp2 = take_best(3.0, old_bp, 3.0, lambda: None)
     assert best2 == 3.0 and bp2 is old_bp
-
-def test_make_bp_closure_sets_outer_and_hole():
-    BP = make_bp(1, 7, 2, 6)
-    bp = BP(EddyRivasBacktrackOp.RE_WHX_TRIM_LEFT, note="x")
-    assert bp.outer == (1, 7)
-    assert bp.hole == (2, 6)
-    assert bp.op is EddyRivasBacktrackOp.RE_WHX_TRIM_LEFT
-    assert bp.note == "x"
 
 
 # -------------------- _seed_from_nested (static) --------------------
@@ -127,101 +106,6 @@ def test_publish_vx_prefers_unscaled_uncharged_and_sets_backpointer():
     bp = re_state.vx_back_ptr.get(0, 1)
     assert bp is not None and bp.op is EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED
 
-
-# -------------------- costs: dict/json helpers --------------------
-
-def test_costs_from_dict_uses_defaults_for_missing_fields():
-    # Provide all required tilde scalars + a couple of extras; unspecified fields
-    # should fall back to the dataclass defaults (e.g., mismatch_coax_scale=0.5).
-    minimal = {
-        "q_ss": 0.5,
-        "P_tilde_out": 1.0,
-        "P_tilde_hole": 1.0,
-        "Q_tilde_out": 0.0,
-        "Q_tilde_hole": 0.0,
-        "L_tilde": 0.0,
-        "R_tilde": 0.0,
-        "M_tilde_yhx": 0.0,
-        "M_tilde_vhx": 0.0,
-        "M_tilde_whx": 0.0,
-        # plus one optional override so we can verify it sticks
-        "coax_scale": 2.0,
-    }
-    c = costs_from_dict(minimal)
-
-    # Required fields set as provided
-    assert c.q_ss == 0.5
-    assert c.P_tilde_out == 1.0 and c.P_tilde_hole == 1.0
-    assert c.Q_tilde_out == 0.0 and c.Q_tilde_hole == 0.0
-    assert c.L_tilde == 0.0 and c.R_tilde == 0.0
-    assert c.M_tilde_yhx == 0.0 and c.M_tilde_vhx == 0.0 and c.M_tilde_whx == 0.0
-
-    # Optional field override sticks
-    assert c.coax_scale == 2.0
-
-    # Unspecified optional fields use dataclass defaults
-    assert c.coax_bonus == 0.0
-    assert c.mismatch_coax_scale == 0.5
-    assert c.coax_min_helix_len == 1
-    assert c.short_hole_caps is None
-    assert c.coax_pairs is None
-
-def test_costs_to_dict_roundtrip_scalars_only(tmp_path):
-    costs = PseudoknotEnergies(
-        q_ss=0.1,
-        P_tilde_out=1.0, P_tilde_hole=1.0,
-        Q_tilde_out=0.0, Q_tilde_hole=0.0,
-        L_tilde=0.0, R_tilde=0.0,
-        M_tilde_yhx=0.0, M_tilde_vhx=0.0, M_tilde_whx=0.0,
-        # leave dict fields None to keep JSON serializable keys
-    )
-    p = tmp_path / "costs.json"
-    save_costs_json(str(p), costs)
-    reloaded = load_costs_json(str(p))
-
-    # Compare dict views (JSON-safe subset)
-    d1 = costs_to_dict(costs)
-    d2 = costs_to_dict(reloaded)
-    # All scalar fields must survive identically (dict-valued fields are None)
-    assert d1 == d2
-
-def test_costs_from_vienna_like_maps_keys_and_types():
-    # Include the required tilde scalars so costs_from_dict() can construct the dataclass.
-    tbl = {
-        "q_ss": 0.2,
-        "P_tilde_out": 1.0, "P_tilde_hole": 1.0,
-        "Q_tilde_out": 0.0, "Q_tilde_hole": 0.0,
-        "L_tilde": 0.0, "R_tilde": 0.0,
-        "M_tilde_yhx": 0.0, "M_tilde_vhx": 0.0, "M_tilde_whx": 0.0,
-
-        "coax_pairs": {"GC|CG": -0.5, "AU|UA": -0.3},
-        "dangle_outer_left": {"GA": -0.1},
-        "dangle_outer_right": {"UC": -0.2},
-        "dangle_hole_left": {"AG": -0.15},
-        "dangle_hole_right": {"CU": -0.25},
-        "short_hole_caps": {"1": 2.0, "2": 1.5},
-    }
-    c = costs_from_vienna_like(tbl)
-
-    # scalars copied
-    assert c.q_ss == 0.2
-    assert c.P_tilde_out == 1.0 and c.P_tilde_hole == 1.0
-    assert c.Q_tilde_out == 0.0 and c.Q_tilde_hole == 0.0
-    assert c.L_tilde == 0.0 and c.R_tilde == 0.0
-    assert c.M_tilde_yhx == 0.0 and c.M_tilde_vhx == 0.0 and c.M_tilde_whx == 0.0
-
-    # coax tuple-keys generated
-    assert c.coax_pairs == {("GC", "CG"): -0.5, ("AU", "UA"): -0.3}
-
-    # dangles mapped to tuple keys
-    assert c.dangle_outer_left == {("G", "A"): -0.1}
-    assert c.dangle_outer_right == {("U", "C"): -0.2}
-    assert c.dangle_hole_left == {("A", "G"): -0.15}
-    assert c.dangle_hole_right == {("C", "U"): -0.25}
-
-    # short-hole caps int keys
-    assert c.short_hole_caps == {1: 2.0, 2: 1.5}
-
 # -------------------- fill_with_costs: call chain smoke --------------------
 
 def test_fill_with_costs_calls_internal_steps_in_expected_order(monkeypatch):
@@ -275,32 +159,3 @@ def test_fill_with_costs_calls_internal_steps_in_expected_order(monkeypatch):
         "_compose_vx",
         "_publish_vx",
     ]
-
-
-# -------------------- quick_energy_harness --------------------
-
-def test_quick_energy_harness_reports_end_cells(monkeypatch):
-    # dummy costs
-    costs = PseudoknotEnergies(
-        q_ss=0.0,
-        P_tilde_out=1.0, P_tilde_hole=1.0,
-        Q_tilde_out=0.0, Q_tilde_hole=0.0,
-        L_tilde=0.0, R_tilde=0.0,
-        M_tilde_yhx=0.0, M_tilde_vhx=0.0, M_tilde_whx=0.0,
-    )
-    cfg = EddyRivasFoldingConfig(costs=costs)
-
-    # Build states
-    n = 4
-    nested = make_fold_state(n)
-    re_state = init_eddy_rivas_fold_state(n)
-
-    # Make fill_with_costs place known values in (0, n-1)
-    def fake_fill(self, seq, nested_arg, re_arg):
-        re_arg.wx_matrix.set(0, n - 1, -1.0)
-        re_arg.vx_matrix.set(0, n - 1, -2.5)
-
-    monkeypatch.setattr(EddyRivasFoldingEngine, "fill_with_costs", fake_fill)
-
-    out = quick_energy_harness("ACGU", cfg, nested, re_state)
-    assert out == {"W(0,n-1)": -1.0, "V(0,n-1)": -2.5}

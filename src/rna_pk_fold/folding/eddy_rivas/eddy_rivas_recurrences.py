@@ -14,7 +14,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBack
 from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
 from rna_pk_fold.utils.iter_utils import iter_spans, iter_inner_holes, iter_holes_pairable
 from rna_pk_fold.utils.matrix_utils import (clear_matrix_caches, get_whx_with_collapse, get_zhx_with_collapse,
-                                            wxI, whx_collapse_with, zhx_collapse_with)
+                                            get_wxi_or_wx, whx_collapse_with, zhx_collapse_with)
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
                                                 dangle_outer_right, coax_pack, short_hole_penalty)
 from rna_pk_fold.folding.eddy_rivas.numba_kernels import (compose_wx_best_over_r_arrays, compose_vx_best_over_r,
@@ -569,7 +569,7 @@ class EddyRivasFoldingEngine:
                     for t in range(lr):
                         r = i + t
                         lv = eddy_rivas_fold_state.whx_matrix.get(i, r, k, l)
-                        rv = wxI(eddy_rivas_fold_state, r + 1, j)
+                        rv = get_wxi_or_wx(eddy_rivas_fold_state, r + 1, j)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
 
@@ -589,7 +589,7 @@ class EddyRivasFoldingEngine:
                     right_vec = np.full(ls, np.inf, dtype=np.float64)
                     for t in range(ls):
                         s2 = i + t
-                        lv = wxI(eddy_rivas_fold_state, i, s2)
+                        lv = get_wxi_or_wx(eddy_rivas_fold_state, i, s2)
                         rv = eddy_rivas_fold_state.whx_matrix.get(s2 + 1, j, k, l)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
@@ -773,7 +773,7 @@ class EddyRivasFoldingEngine:
                         r = i + t
                         lv = get_zhx_with_collapse(eddy_rivas_fold_state.zhx_matrix,
                                                    eddy_rivas_fold_state.vxu_matrix, i, j, r, l)
-                        rv = wxI(eddy_rivas_fold_state, r + 1, k)
+                        rv = get_wxi_or_wx(eddy_rivas_fold_state, r + 1, k)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
 
@@ -795,7 +795,7 @@ class EddyRivasFoldingEngine:
                         s2 = (l + 1) + t
                         lv = get_zhx_with_collapse(eddy_rivas_fold_state.zhx_matrix,
                                                    eddy_rivas_fold_state.vxu_matrix, i, j, k, s2)
-                        rv = wxI(eddy_rivas_fold_state, l, s2 - 1)
+                        rv = get_wxi_or_wx(eddy_rivas_fold_state, l, s2 - 1)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
 
@@ -991,7 +991,7 @@ class EddyRivasFoldingEngine:
                     for t in range(lr):
                         r = i + t
                         lv = eddy_rivas_fold_state.zhx_matrix.get(i, j, r, l)
-                        rv = wxI(eddy_rivas_fold_state, r + 1, k)
+                        rv = get_wxi_or_wx(eddy_rivas_fold_state, r + 1, k)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
                     cand_split, t_star = best_sum(left_vec, right_vec)
@@ -1011,7 +1011,7 @@ class EddyRivasFoldingEngine:
                     for t in range(ls):
                         s2 = (l + 1) + t
                         lv = eddy_rivas_fold_state.zhx_matrix.get(i, j, k, s2)
-                        rv = wxI(eddy_rivas_fold_state, l, s2 - 1)
+                        rv = get_wxi_or_wx(eddy_rivas_fold_state, l, s2 - 1)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
                     cand_split, t_star = best_sum(left_vec, right_vec)
@@ -1224,7 +1224,7 @@ class EddyRivasFoldingEngine:
                     for t in range(lr):
                         r = i + t
                         lv = eddy_rivas_fold_state.yhx_matrix.get(i, r, k, l)
-                        rv = wxI(eddy_rivas_fold_state, r + 1, j)
+                        rv = get_wxi_or_wx(eddy_rivas_fold_state, r + 1, j)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
                     cand_split, t_star = best_sum(left_vec, right_vec)
@@ -1243,7 +1243,7 @@ class EddyRivasFoldingEngine:
                     right_vec = np.full(ls, np.inf, dtype=np.float64)
                     for t in range(ls):
                         s2 = i + t
-                        lv = wxI(eddy_rivas_fold_state, i, s2)
+                        lv = get_wxi_or_wx(eddy_rivas_fold_state, i, s2)
                         rv = eddy_rivas_fold_state.yhx_matrix.get(s2 + 1, j, k, l)
                         if math.isfinite(lv): left_vec[t] = lv
                         if math.isfinite(rv): right_vec[t] = rv
@@ -1515,7 +1515,7 @@ class EddyRivasFoldingEngine:
             # This section handles a different class of pseudoknots where two YHX structures overlap.
             if self.cfg.enable_wx_overlap and g_wh_wx != 0.0:
                 # Iterate through a different set of inner holes and split points.
-                for (k2, l2) in iter_inner_holes(i, j, min_hole=self.cfg.min_hole_width):
+                for (k2, l2) in iter_inner_holes(i, j, min_hole_width=self.cfg.min_hole_width):
                     for r2 in range(i, j):
                         left_yv = eddy_rivas_fold_state.yhx_matrix.get(i, r2, k2, l2)
                         right_yv = eddy_rivas_fold_state.yhx_matrix.get(r2 + 1, j, k2, l2)

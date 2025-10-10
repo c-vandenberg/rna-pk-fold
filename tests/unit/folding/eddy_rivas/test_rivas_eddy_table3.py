@@ -57,8 +57,8 @@ def test_iter_complementary_tuples_order_and_bounds_small_window():
 
 def test_iter_inner_holes_min_hole_enforced():
     i, j = 0, 5
-    holes0 = list(iter_inner_holes(i, j, min_hole=0))
-    holes2 = list(iter_inner_holes(i, j, min_hole=2))
+    holes0 = list(iter_inner_holes(i, j, min_hole_width=0))
+    holes2 = list(iter_inner_holes(i, j, min_hole_width=2))
     assert all(l >= k + 1 for k, l in holes0)
     assert all(l >= k + 3 for k, l in holes2)
     assert set(holes2).issubset(set(holes0)) and len(holes2) < len(holes0)
@@ -103,7 +103,7 @@ def test_wxI_prefers_wxi_over_wx():
             self.wx_matrix  = DummyMat(99.0)
 
     # wxI is imported into eddy_rivas_recurrences from utils.matrix_utils
-    assert eddy_rivas_recurrences.wxI(DummyRe(), 0, 0) == 11.0
+    assert eddy_rivas_recurrences.get_wxi_or_wx(DummyRe(), 0, 0) == 11.0
 
 
 # ------------------------

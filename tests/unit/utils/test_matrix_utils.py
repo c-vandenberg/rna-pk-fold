@@ -5,9 +5,7 @@ from rna_pk_fold.utils.matrix_utils import (
     get_zhx_with_collapse,
     get_yhx_with_collapse,
     get_vhx_with_collapse,
-    wxI,
-    whx_collapse_first,
-    zhx_collapse_first,
+    get_wxi_or_wx,
     whx_collapse_with,
     zhx_collapse_with,
 )
@@ -127,41 +125,12 @@ def test_wxI_prefers_wxi_when_present_else_falls_back_to_wx():
     st.wx_matrix.set(i, j, -1.0)
 
     # No wxi → uses wx
-    assert math.isclose(wxI(st, i, j), -1.0, rel_tol=1e-12)
+    assert math.isclose(get_wxi_or_wx(st, i, j), -1.0, rel_tol=1e-12)
 
     # With wxi present → prefers wxi
     st.wxi_matrix = DummyTri()
     st.wxi_matrix.set(i, j, -3.5)
-    assert math.isclose(wxI(st, i, j), -3.5, rel_tol=1e-12)
-
-
-# -------------------------------
-# whx_collapse_first / zhx_collapse_first
-# -------------------------------
-def test_whx_collapse_first_returns_collapsed_when_finite_else_gap_value():
-    st = DummyState()
-    i, j, k = 2, 7, 4
-
-    # Collapse case, wxu has value → returns that
-    st.wxu_matrix.set(i, j, -2.2)
-    assert math.isclose(whx_collapse_first(st, i, j, k, k + 1), -2.2, rel_tol=1e-12)
-
-    # Collapse case, wxu missing (inf) → fallback to whx(i,j,k,l)
-    st = DummyState()
-    st.whx_matrix.set(i, j, k, k + 1, -0.55)  # direct gap value
-    assert math.isclose(whx_collapse_first(st, i, j, k, k + 1), -0.55, rel_tol=1e-12)
-
-
-def test_zhx_collapse_first_returns_collapsed_when_finite_else_gap_value():
-    st = DummyState()
-    i, j, k = 1, 5, 2
-
-    st.vxu_matrix.set(i, j, -4.0)
-    assert math.isclose(zhx_collapse_first(st, i, j, k, k + 1), -4.0, rel_tol=1e-12)
-
-    st = DummyState()
-    st.zhx_matrix.set(i, j, k, k + 1, -0.99)
-    assert math.isclose(zhx_collapse_first(st, i, j, k, k + 1), -0.99, rel_tol=1e-12)
+    assert math.isclose(get_wxi_or_wx(st, i, j), -3.5, rel_tol=1e-12)
 
 
 # -------------------------------

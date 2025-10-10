@@ -5,155 +5,293 @@ from rna_pk_fold.structures.gap_matrix import SparseGapMatrix
 from rna_pk_fold.structures.tri_matrix import EddyRivasTriMatrix
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 
-# Caches for expensive lookups
-_whx_cache: Dict[Tuple[int, int, int, int, bool], float] = {}
-_zhx_cache: Dict[Tuple[int, int, int, int, bool], float] = {}
+# --- Module-level Caches ---
+# These global dictionaries are used for memoization to speed up expensive lookups
+# during the DP composition phase. They are cleared at the start of each new fold.
+_whx_lookup_cache: Dict[Tuple[int, int, int, int, bool], float] = {}
+_zhx_lookup_cache: Dict[Tuple[int, int, int, int, bool], float] = {}
 
 
 def clear_matrix_caches():
-    """Clear all matrix lookup caches. Call at the start of each fold."""
-    global _whx_cache, _zhx_cache
-    _whx_cache = {}
-    _zhx_cache = {}
+    """
+    Resets all module-level caches for matrix lookups.
+
+    This function must be called at the beginning of each folding prediction
+    to ensure that results from previous runs do not interfere with the current
+    calculation.
+    """
+    global _whx_lookup_cache, _zhx_lookup_cache
+    _whx_lookup_cache = {}
+    _zhx_lookup_cache = {}
 
 
-def get_whx_with_collapse(whx: SparseGapMatrix, wx: EddyRivasTriMatrix,
+def get_whx_with_collapse(whx_matrix: SparseGapMatrix, wx_matrix: EddyRivasTriMatrix,
                           i: int, j: int, k: int, l: int) -> float:
     """
-    Collapse identity: whx(i,j : k,k+1) == wx(i,j)
-    Otherwise return whx(i,j:k,l) (default +inf if unset/invalid).
+    Retrieves a value from the WHX matrix, applying the "collapse identity".
+
+    The collapse identity states that `WHX(i, j, k, k+1)` is equivalent to
+    `WX(i, j)`. This occurs when the "hole" `(k, l)` has zero width, effectively
+    reducing the 4D gapped problem to a 2D nested problem.
+
+    Parameters
+    ----------
+    whx_matrix : SparseGapMatrix
+        The sparse WHX energy matrix.
+    wx_matrix : EddyRivasTriMatrix
+        The triangular WX energy matrix to use for the collapse case.
+    i, j : int
+        The indices of the outer span.
+    k, l : int
+        The indices of the inner hole.
+
+    Returns
+    -------
+    float
+        The appropriate energy value, either from `WHX` or `WX`.
     """
+    # If the indices do not form a valid gapped geometry, the energy is infinite.
     if not (i <= k < l <= j):
         return math.inf
 
+    # Check for the collapse condition: a zero-width hole.
     if k + 1 == l:
-        return wx.get(i, j)
+        # If the hole collapses, return the value from the corresponding 2D WX matrix.
+        return wx_matrix.get(i, j)
 
-    return whx.get(i, j, k, l)
+    # Otherwise, perform a standard lookup in the 4D WHX matrix.
+    return whx_matrix.get(i, j, k, l)
 
 
 def get_zhx_with_collapse(
-    zhx: SparseGapMatrix, vx: EddyRivasTriMatrix,
+    zhx_matrix: SparseGapMatrix, vx_matrix: EddyRivasTriMatrix,
     i: int, j: int, k: int, l: int
 ) -> float:
     """
-    Collapse identity: zhx(i,j : k,k+1) == vx(i,j)
-    Otherwise return zhx(i,j:k,l).
+    Retrieves a value from the ZHX matrix, applying the "collapse identity".
+
+    The collapse identity for ZHX states that `ZHX(i, j, k, k+1)` is equivalent
+    to `VX(i, j)`. This is because ZHX requires the outer span `(i, j)` to be
+    paired, and when the hole collapses, it becomes a simple pair-enclosed `VX` problem.
+
+    Parameters
+    ----------
+    zhx_matrix : SparseGapMatrix
+        The sparse ZHX energy matrix.
+    vx_matrix : EddyRivasTriMatrix
+        The triangular VX energy matrix to use for the collapse case.
+    i, j : int
+        The indices of the outer span.
+    k, l : int
+        The indices of the inner hole.
+
+    Returns
+    -------
+    float
+        The appropriate energy value, either from `ZHX` or `VX`.
     """
+    # If the indices do not form a valid gapped geometry, the energy is infinite.
     if not (i <= k < l <= j):
         return math.inf
 
+    # Check for the collapse condition: a zero-width hole.
     if k + 1 == l:
-        return vx.get(i, j)
+        # If the hole collapses, return the value from the corresponding 2D VX matrix.
+        return vx_matrix.get(i, j)
 
-    return zhx.get(i, j, k, l)
+    # Otherwise, perform a standard lookup in the 4D ZHX matrix.
+    return zhx_matrix.get(i, j, k, l)
 
 
 def get_yhx_with_collapse(
-    yhx: SparseGapMatrix,
+    yhx_matrix: SparseGapMatrix,
     i: int, j: int, k: int, l: int,
     *, invalid_value: float = math.inf
 ) -> float:
     """
-    No valid collapse: yhx requires the inner (k,l) to be paired; with l==k+1
-    the hole has zero width, so the inner "paired" object doesn't exist.
-    Return +inf for the collapse case; otherwise return yhx(i,j:k,l).
+    Retrieves a value from the YHX matrix, handling the collapse case.
+
+    The YHX matrix requires the inner hole `(k, l)` to be paired. When the hole
+    collapses (`l == k + 1`), this condition cannot be met. Therefore, the
+    collapse case for YHX is always invalid and returns an infinite energy.
+
+    Parameters
+    ----------
+    yhx_matrix : SparseGapMatrix
+        The sparse YHX energy matrix.
+    i, j, k, l : int
+        The matrix coordinates.
+    invalid_value : float, optional
+        The value to return for the invalid collapse case, by default `math.inf`.
+
+    Returns
+    -------
+    float
+        The energy from `YHX[i, j, k, l]`, or `invalid_value` for the collapse case.
     """
+    # If the hole collapses, the state is invalid by definition.
     if k + 1 == l:
         return invalid_value
-    return yhx.get(i, j, k, l)
+
+    # Otherwise, perform a standard lookup.
+    return yhx_matrix.get(i, j, k, l)
 
 
 def get_vhx_with_collapse(
-    vhx: SparseGapMatrix,
+    vhx_matrix: SparseGapMatrix,
     i: int, j: int, k: int, l: int,
     *, invalid_value: float = math.inf
 ) -> float:
     """
-    No valid collapse: vhx expects both outer and inner paired; the inner
-    disappears when l==k+1. Return +inf in the collapse case; otherwise get().
+    Retrieves a value from the VHX matrix, handling the collapse case.
+
+    The VHX matrix requires both the outer span `(i, j)` and the inner hole
+    `(k, l)` to be paired. When the hole collapses (`l == k + 1`), the inner
+    pair cannot exist. Therefore, the collapse case for VHX is always invalid.
+
+    Parameters
+    ----------
+    vhx_matrix : SparseGapMatrix
+        The sparse VHX energy matrix.
+    i, j, k, l : int
+        The matrix coordinates.
+    invalid_value : float, optional
+        The value to return for the invalid collapse case, by default `math.inf`.
+
+    Returns
+    -------
+    float
+        The energy from `VHX[i, j, k, l]`, or `invalid_value` for the collapse case.
     """
     if k + 1 == l:
         return invalid_value
-    return vhx.get(i, j, k, l)
+    return vhx_matrix.get(i, j, k, l)
 
 
-def wxI(re: EddyRivasFoldState, i: int, j: int) -> float:
-    mat = getattr(re, "wxi_matrix", None)
-    return mat.get(i, j) if mat is not None else re.wx_matrix.get(i, j)
-
-
-def whx_collapse_first(re: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> float:
-    v = get_whx_with_collapse(re.whx_matrix, re.wxu_matrix, i, j, k, l)
-    return v if math.isfinite(v) else re.whx_matrix.get(i, j, k, l)
-
-
-def zhx_collapse_first(re: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> float:
-    v = get_zhx_with_collapse(re.zhx_matrix, re.vxu_matrix, i, j, k, l)
-    return v if math.isfinite(v) else re.zhx_matrix.get(i, j, k, l)
-
-
-def whx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool, can_pair_mask=None) -> float:
+def get_wxi_or_wx(eddy_rivas_state: EddyRivasFoldState, i: int, j: int) -> float:
     """
-    Get WHX value with collapse optimization and caching.
-    Falls back to WXU for zero-width holes OR non-pairable holes.
+    Retrieves a value from the multiloop-specific `wxi_matrix` if it exists,
+    otherwise falls back to the standard `wx_matrix`.
+
+    Parameters
+    ----------
+    eddy_rivas_state : EddyRivasFoldState
+        The state object containing all DP matrices.
+    i, j : int
+        The indices of the span.
+
+    Returns
+    -------
+    float
+        The energy value from the appropriate W matrix.
     """
-    # Check cache first
+    # Safely access the wxi_matrix attribute.
+    wxi_mat  = getattr(eddy_rivas_state, "wxi_matrix", None)
+
+    # If it exists, get the value from it; otherwise, get from the standard wx_matrix.
+    return wxi_mat .get(i, j) if wxi_mat  is not None else eddy_rivas_state.wx_matrix.get(i, j)
+
+
+def whx_collapse_with(eddy_rivas_state: EddyRivasFoldState, i, j, k, l, charged: bool,
+                      can_pair_mask=None) -> float:
+    """
+    A cached lookup for WHX values that handles collapse conditions.
+
+    This function provides a memoized way to get the energy for a WHX subproblem.
+    It correctly falls back to the nested `WXU` energy if the hole is zero-width
+    or if the hole endpoints `(k, l)` cannot form a base pair.
+
+    Parameters
+    ----------
+    eddy_rivas_state : EddyRivasFoldState
+        The state object containing all DP matrices.
+    i, j, k, l : int
+        The coordinates of the WHX subproblem.
+    charged : bool
+        Indicates if this is for a "charged" (pseudoknotted) path. This is part
+        of the cache key to distinguish contexts, though not used in the logic here.
+    can_pair_mask : array-like, optional
+        A boolean matrix to check if `(k, l)` can pair, by default None.
+
+    Returns
+    -------
+    float
+        The optimal energy for the subproblem, retrieved from the cache or
+        calculated.
+    """
+    # Create a unique key for the current request.
     cache_key = (i, j, k, l, charged)
-    if cache_key in _whx_cache:
-        return _whx_cache[cache_key]
+    # Return the cached result immediately if it exists.
+    if cache_key in _whx_lookup_cache:
+        return _whx_lookup_cache[cache_key]
 
-    # Collapse case 1: zero-width hole
+    # --- Collapse Conditions ---
+    # Case 1: The hole has zero width.
     if k + 1 == l:
-        result = re.wxu_matrix.get(i, j)
-        _whx_cache[cache_key] = result
+        result = eddy_rivas_state.wxu_matrix.get(i, j)
+        _whx_lookup_cache[cache_key] = result
         return result
-
-    # Collapse case 2: non-pairable hole (if mask provided)
+    # Case 2: The hole endpoints cannot form a pair.
     if can_pair_mask is not None and not can_pair_mask[k][l]:
-        result = re.wxu_matrix.get(i, j)
-        _whx_cache[cache_key] = result
+        result = eddy_rivas_state.wxu_matrix.get(i, j)
+        _whx_lookup_cache[cache_key] = result
         return result
 
-    # Check sparse matrix (was computed)
-    v = re.whx_matrix.get(i, j, k, l)
-    if math.isfinite(v):
-        _whx_cache[cache_key] = v
-        return v
-
-    # No valid value - return inf
-    _whx_cache[cache_key] = math.inf
-    return math.inf
+    # --- Standard Lookup ---
+    # If not a collapse case, get the value from the sparse WHX matrix.
+    value = eddy_rivas_state.whx_matrix.get(i, j, k, l)
+    # Cache the result before returning.
+    _whx_lookup_cache[cache_key] = value
+    return value
 
 
-def zhx_collapse_with(re: EddyRivasFoldState, i, j, k, l, charged: bool, can_pair_mask=None) -> float:
+def zhx_collapse_with(eddy_rivas_state: EddyRivasFoldState, i, j, k, l, charged: bool,
+                      can_pair_mask=None) -> float:
     """
-    Get ZHX value with collapse optimization and caching.
-    Falls back to VXU for zero-width holes OR non-pairable holes.
+    A cached lookup for ZHX values that handles collapse conditions.
+
+    This function provides a memoized way to get the energy for a ZHX subproblem.
+    It correctly falls back to the nested `VXU` energy if the hole is zero-width
+    or if the hole endpoints `(k, l)` cannot form a base pair.
+
+    Parameters
+    ----------
+    eddy_rivas_state : EddyRivasFoldState
+        The state object containing all DP matrices.
+    i, j, k, l : int
+        The coordinates of the ZHX subproblem.
+    charged : bool
+        Indicates if this is for a "charged" path (used in cache key).
+    can_pair_mask : array-like, optional
+        A boolean matrix to check if `(k, l)` can pair, by default None.
+
+    Returns
+    -------
+    float
+        The optimal energy for the subproblem, retrieved from the cache or
+        calculated.
     """
-    # Check cache first
+    # Create a unique key for the current request.
     cache_key = (i, j, k, l, charged)
-    if cache_key in _zhx_cache:
-        return _zhx_cache[cache_key]
+    # Return the cached result immediately if it exists.
+    if cache_key in _zhx_lookup_cache:
+        return _zhx_lookup_cache[cache_key]
 
-    # Collapse case 1: zero-width hole
+    # --- Collapse Conditions ---
+    # Case 1: The hole has zero width. Fall back to the nested, uncharged VX value.
     if k + 1 == l:
-        result = re.vxu_matrix.get(i, j)  # Always use uncharged for collapse
-        _zhx_cache[cache_key] = result
+        result = eddy_rivas_state.vxu_matrix.get(i, j)
+        _zhx_lookup_cache[cache_key] = result
         return result
-
-    # Collapse case 2: non-pairable hole (if mask provided)
+    # Case 2: The hole endpoints cannot form a pair.
     if can_pair_mask is not None and not can_pair_mask[k][l]:
-        result = re.vxu_matrix.get(i, j)
-        _zhx_cache[cache_key] = result
+        result = eddy_rivas_state.vxu_matrix.get(i, j)
+        _zhx_lookup_cache[cache_key] = result
         return result
 
-    # Check sparse matrix (was computed)
-    v = re.zhx_matrix.get(i, j, k, l)
-    if math.isfinite(v):
-        _zhx_cache[cache_key] = v
-        return v
-
-    # No valid value - return inf
-    _zhx_cache[cache_key] = math.inf
-    return math.inf
+    # --- Standard Lookup ---
+    # If not a collapse case, get the value from the sparse ZHX matrix.
+    value = eddy_rivas_state.zhx_matrix.get(i, j, k, l)
+    # Cache the result before returning.
+    _zhx_lookup_cache[cache_key] = value
+    return value

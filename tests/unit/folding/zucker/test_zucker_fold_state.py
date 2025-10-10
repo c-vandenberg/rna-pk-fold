@@ -1,7 +1,7 @@
 import math
 
-from rna_pk_fold.folding.fold_state import ZuckerFoldState, make_fold_state
-from rna_pk_fold.folding.back_pointer import BackPointer, BacktrackOp
+from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState, make_fold_state
+from rna_pk_fold.folding.zucker.zucker_back_pointer import ZuckerBackPointer, ZuckerBacktrackOp
 
 
 def test_make_fold_state_shapes_and_defaults():
@@ -48,9 +48,9 @@ def test_make_fold_state_shapes_and_defaults():
             bp_w = fold_state.w_back_ptr.get(i, j)
             bp_v = fold_state.v_back_ptr.get(i, j)
             bp_wm = fold_state.wm_back_ptr.get(i, j)
-            assert isinstance(bp_w, BackPointer) and bp_w.operation is BacktrackOp.NONE
-            assert isinstance(bp_v, BackPointer) and bp_v.operation is BacktrackOp.NONE
-            assert isinstance(bp_wm, BackPointer) and bp_wm.operation is BacktrackOp.NONE
+            assert isinstance(bp_w, ZuckerBackPointer) and bp_w.operation is ZuckerBacktrackOp.NONE
+            assert isinstance(bp_v, ZuckerBackPointer) and bp_v.operation is ZuckerBacktrackOp.NONE
+            assert isinstance(bp_wm, ZuckerBackPointer) and bp_wm.operation is ZuckerBacktrackOp.NONE
 
 
 def test_fold_state_set_get_energy_and_backpointer():
@@ -71,9 +71,9 @@ def test_fold_state_set_get_energy_and_backpointer():
     fold_state.wm_matrix.set(0, 4, 7.0)
 
     # Set back-pointers
-    bp_w = BackPointer(operation=BacktrackOp.UNPAIRED_LEFT, note="left unpaired")
-    bp_v = BackPointer(operation=BacktrackOp.STACK, inner=(3, 6))
-    bp_wm = BackPointer(operation=BacktrackOp.MULTI_ATTACH, split_k=2)
+    bp_w = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_LEFT, note="left unpaired")
+    bp_v = ZuckerBackPointer(operation=ZuckerBacktrackOp.STACK, inner=(3, 6))
+    bp_wm = ZuckerBackPointer(operation=ZuckerBacktrackOp.MULTI_ATTACH, split_k=2)
 
     fold_state.w_back_ptr.set(1, 4, bp_w)
     fold_state.v_back_ptr.set(2, 3, bp_v)

@@ -1,8 +1,8 @@
 import pytest
 
-from rna_pk_fold.folding import make_fold_state
-from rna_pk_fold.folding.recurrences import SecondaryStructureFoldingEngine, RecurrenceConfig
-from rna_pk_fold.folding.traceback import traceback_nested
+from rna_pk_fold.folding.zucker.zucker_fold_state import make_fold_state
+from rna_pk_fold.folding.zucker.zucker_recurrences import ZuckerFoldingEngine, ZuckerFoldingConfig
+from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.energies import SecondaryStructureEnergies
 
@@ -38,7 +38,7 @@ def minimal_energies():
 def fake_energy_model_factory(minimal_energies):
     """
     Factory for a configurable fake energy model that matches the protocol surface
-    used by SecondaryStructureFoldingEngine.
+    used by ZuckerFoldingEngine.
     """
     class FakeEnergyModel:
         def __init__(self, params, hairpin_fn, stack_fn, internal_fn, multiloop_fn, temp_k=310.15):
@@ -89,7 +89,7 @@ def test_traceback_empty_sequence(fake_energy_model_factory):
         multiloop=lambda branches, unpaired: float("inf"),
     )
 
-    folding_eng = SecondaryStructureFoldingEngine(energy_model=energy_model, config=RecurrenceConfig())
+    folding_eng = ZuckerFoldingEngine(energy_model=energy_model, config=ZuckerFoldingConfig())
     folding_eng.fill_all_matrices(seq, fold_state)
 
     result = traceback_nested(seq, fold_state)
@@ -111,7 +111,7 @@ def test_traceback_simple_hairpin(fake_energy_model_factory):
         multiloop=lambda branches, unpaired: float("inf"),
     )
 
-    folding_eng = SecondaryStructureFoldingEngine(energy_model=energy_model, config=RecurrenceConfig())
+    folding_eng = ZuckerFoldingEngine(energy_model=energy_model, config=ZuckerFoldingConfig())
     folding_eng.fill_all_matrices(seq, fold_state)
 
     result = traceback_nested(seq, fold_state)
@@ -143,7 +143,7 @@ def test_traceback_stacked_helix_len2(fake_energy_model_factory):
         multiloop=lambda branches, unpaired: float("inf"),
     )
 
-    folding_eng = SecondaryStructureFoldingEngine(energy_model=energy_model, config=RecurrenceConfig())
+    folding_eng = ZuckerFoldingEngine(energy_model=energy_model, config=ZuckerFoldingConfig())
     folding_eng.fill_all_matrices(seq, fold_state)
 
     result = traceback_nested(seq, fold_state)
@@ -167,7 +167,7 @@ def test_traceback_no_pairs_all_unpaired(fake_energy_model_factory):
         multiloop=lambda branches, unpaired: float("inf"),
     )
 
-    folding_eng = SecondaryStructureFoldingEngine(energy_model=energy_model, config=RecurrenceConfig())
+    folding_eng = ZuckerFoldingEngine(energy_model=energy_model, config=ZuckerFoldingConfig())
     folding_eng.fill_all_matrices(seq, fold_state)
 
     result = traceback_nested(seq, fold_state)

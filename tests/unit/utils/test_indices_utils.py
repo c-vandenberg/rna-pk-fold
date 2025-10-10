@@ -1,11 +1,10 @@
-# tests/unit/utils/test_indices_utils.py
 import pytest
 
 from rna_pk_fold.utils.indices_utils import (
     safe_base,
     canonical_pair,
-    interval_ok,
-    split_default,
+    is_interval_valid,
+    get_default_split_point,
 )
 
 
@@ -60,7 +59,7 @@ def test_canonical_pair_orders_non_decreasing(i, j, expected):
     ],
 )
 def test_interval_ok_various(i, j, n, ok):
-    assert interval_ok(i, j, n) is ok
+    assert is_interval_valid(i, j, n) is ok
 
 
 # ------------------------------
@@ -68,17 +67,17 @@ def test_interval_ok_various(i, j, n, ok):
 # ------------------------------
 def test_split_default_midpoint_no_fallback():
     # Even span
-    assert split_default(0, 4) == 2
+    assert get_default_split_point(0, 4) == 2
     # Odd span floors toward lower
-    assert split_default(1, 4) == 2
+    assert get_default_split_point(1, 4) == 2
     # In general, midpoint must be within [i, j]
     i, j = 5, 11
-    m = split_default(i, j)
+    m = get_default_split_point(i, j)
     assert i <= m <= j
 
 
 def test_split_default_respects_fallback():
     # Should ignore midpoint if fallback is provided
-    assert split_default(0, 100, fallback=7) == 7
+    assert get_default_split_point(0, 100, fallback=7) == 7
     # Fallback can be outside [i, j]; function does not clamp
-    assert split_default(10, 20, fallback=-3) == -3
+    assert get_default_split_point(10, 20, fallback=-3) == -3

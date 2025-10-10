@@ -56,9 +56,9 @@ def test_merge_nested_interval_collects_unique_pairs_and_applies_layer(monkeypat
         i=0,
         j=5,
         layer=3,
-        collect_fn=collect_fn,
+        collect_pairs_fn=collect_fn,
         pairs=pairs,
-        pair_layer=pair_layer,
+        pair_layer_map=pair_layer,
     )
 
     # Unique pairs captured
@@ -86,9 +86,9 @@ def test_merge_nested_interval_does_not_change_existing_layer_for_prepopulated_p
         i=0,
         j=7,
         layer=9,  # different layer requested
-        collect_fn=collect_fn,
+        collect_pairs_fn=collect_fn,
         pairs=pairs,
-        pair_layer=pair_layer,
+        pair_layer_map=pair_layer,
     )
 
     # Pair still present, and its original layer preserved
