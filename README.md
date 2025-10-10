@@ -69,7 +69,7 @@ The energy model combines standard nearest-neighbor rules (e.g., Turner 2004 par
 
 ### 2.3 Algorithm Performance Evaluation
 
-The Rivas & Eddy algorithm is known for its computational intensity.
+The complexity of our Rivas & Eddy algorithm implementation was measured using the `algorithm_performance.py` script.
 
 | Metric | Theoretical Complexity | Practical Bottleneck | 
  | ----- | ----- | ----- | 
