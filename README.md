@@ -4,6 +4,19 @@
 
 This project implements the dynamic programming algorithm for RNA secondary structure prediction including **pseudoknots**, as described by Rivas & Eddy (1999). This method extends the conventional Zuker approach to handle non-nested base pairings using multi-dimensional gap matrices, aiming to find the globally optimal minimum free energy structure.
 
+## Contents
+1. [Installation](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#1-installation)
+   1.1. [Prerequisites](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#11-prerequisites)
+   1.2.[Installation (From Source)](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#12-installation-from-source)
+   1.3. [Usage](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#13-usage)
+2. [Discussion](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#2-discussion)
+   2.1. [Core Dynamic Programming Approach](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#21-core-dynamic-programming-approach)
+   2.2. [Optimization Techniques](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#22-optimization-techniques)
+   2.3. [Algorithm Performance Evaluation](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#23-algorithm-performance-evaluation)
+   2.4. 
+   
+   
+
 ## 1. Installation
 
 ### 1.1. Prerequisites
@@ -163,7 +176,7 @@ The complexity of our Rivas & Eddy algorithm implementation was measured using t
 | **Time (Speed)** | O(N^6) composition + O(N^4) gap filling | **O(N^4.48)** | Vectorized kernels and sparse matrices provide 1.34× speedup vs. theoretical worst-case. Gap filling dominates for N ≤ 70; composition would dominate for N > 100. |
 | **Space (Memory)** | O(N^4) dense storage | **O(N^3.8)** sparse storage | Custom sparse matrix implementation stores only ~1-5% of theoretical entries. For N=70: ~50 MB actual vs. ~770 MB theoretical dense storage. |
 
-This is illustrated in *Fig 1.$.
+The primary limiting factor for scalability is the $O(N^4)$ memory requirement. For practical use on larger RNA molecules, constraints (like restricting loop sizes or maximum pseudoknot spans) are required, or the use of high-memory computing clusters. The Numba optimizations successfully mitigate the **time** complexity, allowing folding of sequences in the 70–100 nt range within reasonable timeframes, but the **memory** cost remains the hard limit (*Fig 1.*).
 
 <br>
   <div align="center">
@@ -174,9 +187,7 @@ This is illustrated in *Fig 1.$.
   </div>
 <br>
 
-The primary limiting factor for scalability is the $O(N^4)$ memory requirement. For practical use on larger RNA molecules, constraints (like restricting loop sizes or maximum pseudoknot spans) are required, or the use of high-memory computing clusters. The Numba optimizations successfully mitigate the **time** complexity, allowing folding of sequences in the 70–100 nt range within reasonable timeframes, but the **memory** cost remains the hard limit.
-
-### 2.3. Test RNA Sequences Predictions
+### 2.4. Test RNA Sequences Predictions
 All test RNA predictions were carried out using the `turner2004_eddyrivas1999_min.yaml` configuration file. This configuration combined energy data and parameters from both ViennaRNA<sup>1</sup> for the core Zucker (nested) algorithm, and the paper by Eddy & Rivas<sup>2</sup> for the pseudoknot algorithm. The output was then compared to the predicted structure for [IPknot](https://ws.sato-lab.org/rtips/ipknot/) and ViennaRNA.
 
 ### Non-Psuedoknot RNA Sequences
@@ -233,7 +244,7 @@ All test RNA predictions were carried out using the `turner2004_eddyrivas1999_mi
 | UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC | (((((.......(((.....))).)))))((((.....))))(((((....(((...))).))))).... | -33.06 | ❌ |
 | AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU | (((((...)))))((((((.....))))))............. | -9.81 | ❌ |
 
-### 2.4. Pseudoknot Prediction: Known Issues and Debugging Analysis
+### 2.5. Pseudoknot Prediction: Known Issues and Debugging Analysis
 ### Problem Statement
 The Eddy-Rivas pseudoknot prediction algorithm currently fails to predict pseudoknot structures for sequences where other tools (e.g., IPknot) successfully identify H-type pseudoknots. For example, for the test sequence:
 ```
@@ -359,7 +370,7 @@ But fails to:<br>
 5. Consider selective gap filling: compute non-pairable holes only when composition requests them (lazy evaluation)
 6. Refactoring of larger, monolithic modules (in particular the DP modules `eddy_rivas_recurrences.py` and `zucker_recurrences.py`) once algorithm is successfully handling pseudoknots.
 
-### 2.4. Computational Generation of Optimized RNA Sequences
+### 2.6. Computational Generation of Optimized RNA Sequences
 ### Approach: Simulated Annealing with Structure-Based Fitness
 **Method:**
 * Start with random sequence of desired length
