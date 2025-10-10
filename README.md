@@ -5,15 +5,18 @@
 This project implements the dynamic programming algorithm for RNA secondary structure prediction including **pseudoknots**, as described by Rivas & Eddy (1999). This method extends the conventional Zuker approach to handle non-nested base pairings using multi-dimensional gap matrices, aiming to find the globally optimal minimum free energy structure.
 
 ## Contents
-1. [Installation](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#1-installation)
-   1.1. [Prerequisites](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#11-prerequisites)
-   1.2.[Installation (From Source)](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#12-installation-from-source)
-   1.3. [Usage](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#13-usage)
-2. [Discussion](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#2-discussion)
-   2.1. [Core Dynamic Programming Approach](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#21-core-dynamic-programming-approach)
-   2.2. [Optimization Techniques](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#22-optimization-techniques)
-   2.3. [Algorithm Performance Evaluation](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#23-algorithm-performance-evaluation)
-   2.4. 
+1. [Installation](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#1-installation)<br>
+   1.1. [Prerequisites](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#11-prerequisites)<br>
+   1.2. [Installation (From Source)](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#12-installation-from-source)<br>
+   1.3. [Usage](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#13-usage)<br>
+2. [Discussion](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#2-discussion)<br>
+   2.1. [Core Dynamic Programming Approach](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#21-core-dynamic-programming-approach)<br>
+   2.2. [Optimization Techniques](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#22-optimization-techniques)<br>
+   2.3. [Algorithm Performance Evaluation](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#23-algorithm-performance-evaluation)<br>
+   2.4. [Test RNA Sequences Predictions](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#24-test-rna-sequences-predictions)<br>
+   2.5. [Pseudoknot Prediction: Known Issues and Debugging Analysis](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#25-pseudoknot-prediction-known-issues-and-debugging-analysis)<br>
+   2.6. [Computational Generation of Optimized RNA Sequences](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#26-computational-generation-of-optimized-rna-sequences)<br>
+3. [References](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#3-references)<br>
    
    
 
