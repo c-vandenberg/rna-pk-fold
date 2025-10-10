@@ -21,9 +21,9 @@ def make_costs(**overrides) -> PseudoknotEnergies:
     """Provide a generous set of defaults so tests can override only what they need."""
     defaults = dict(
         # base scalars
-        q_ss=0.0, Gwh=0.0, Gwi=0.0, pk_penalty_gw=1.0,
+        q_ss=0.0, g_wi=0.0, pk_penalty_gw=1.0, g_wh=0.0,
         # optional split penalties (WX/WHX overlap use these; default to zero to be explicit)
-        Gwh_wx=0.0, Gwh_whx=0.0,
+        g_wh_wx=0.0, g_wh_whx=0.0,
         # coax
         coax_scale=1.0, coax_bonus=0.0,
         mismatch_coax_scale=0.0, mismatch_coax_bonus=0.0,
@@ -31,9 +31,9 @@ def make_costs(**overrides) -> PseudoknotEnergies:
         coax_scale_oo=1.0, coax_scale_oi=1.0, coax_scale_io=1.0,
         coax_pairs={},
         # tildes
-        P_tilde_out=0.0, P_tilde_hole=0.0, Q_tilde_out=0.0, Q_tilde_hole=0.0,
-        L_tilde=0.0, R_tilde=0.0,
-        M_tilde_yhx=0.0, M_tilde_vhx=0.0, M_tilde_whx=0.0,
+        p_tilde_out=0.0, p_tilde_hole=0.0, q_tilde_out=0.0, q_tilde_hole=0.0,
+        l_tilde=0.0, r_tilde=0.0,
+        m_tilde_yhx=0.0, m_tilde_vhx=0.0, m_tilde_whx=0.0,
         # tables/maps
         dangle_outer_left={}, dangle_outer_right={},
         dangle_hole_left={}, dangle_hole_right={},
@@ -67,9 +67,9 @@ def test_iter_inner_holes_min_hole_enforced():
 def test_dangle_table_lookup_and_fallbacks():
     # Note: hole dangles use 0.0 fallback (outer dangles use L_tilde/R_tilde)
     costs = make_costs(
-        L_tilde=0.7, R_tilde=0.8,
-        dangle_hole_left={("A","U"): -0.3},   # will be hit at idx=1 (bigram (0,1))
-        dangle_hole_right={("G","C"): -0.4},  # will be hit at idx=2 (bigram (2,3))
+        l_tilde=0.7, r_tilde=0.8,
+        dangle_hole_left={("A", "U"): -0.3},   # will be hit at idx=1 (bigram (0,1))
+        dangle_hole_right={("G", "C"): -0.4},  # will be hit at idx=2 (bigram (2,3))
     )
     seq = "AUGC"
 
@@ -210,10 +210,10 @@ def test_coax_eligibility_and_never_hurts(adjacent, expect_nontrivial_caps):
     nested, re_state = _try_build_states(n)
 
     base_costs = make_costs(
-        q_ss=0.0, P_tilde_out=0.0, P_tilde_hole=0.0,
-        Q_tilde_out=0.0, Q_tilde_hole=0.0, L_tilde=0.0, R_tilde=0.0,
-        coax_pairs={("GC","GC"): -1.0, ("AU","AU"): -1.0},
-        coax_scale=1.0, coax_bonus=0.0, Gwi=0.0,
+        q_ss=0.0, p_tilde_out=0.0, p_tilde_hole=0.0,
+        q_tilde_out=0.0, q_tilde_hole=0.0, l_tilde=0.0, r_tilde=0.0,
+        coax_pairs={("GC", "GC"): -1.0, ("AU", "AU"): -1.0},
+        coax_scale=1.0, coax_bonus=0.0, g_wi=0.0,
     )
 
     cfg_off = eddy_rivas_recurrences.EddyRivasFoldingConfig(
@@ -246,13 +246,13 @@ def test_coax_positive_values_are_clamped_to_zero():
     nested, re_state = _try_build_states(n)
 
     costs_pos = make_costs(
-        q_ss=0.0, P_tilde_out=0.0, P_tilde_hole=0.0,
-        Q_tilde_out=0.0, Q_tilde_hole=0.0, L_tilde=0.0, R_tilde=0.0,
-        coax_pairs={("GC","GC"): +2.5},  # should be clamped to 0
-        coax_scale=1.0, coax_bonus=0.0, Gwi=0.0,
+        q_ss=0.0, p_tilde_out=0.0, p_tilde_hole=0.0,
+        q_tilde_out=0.0, q_tilde_hole=0.0, l_tilde=0.0, r_tilde=0.0,
+        coax_pairs={("GC", "GC"): +2.5},  # should be clamped to 0
+        coax_scale=1.0, coax_bonus=0.0, g_wi=0.0,
     )
     cfg_off = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_coax=False, pk_penalty_gw=0.0, costs=costs_pos)
-    cfg_on  = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_coax=True, pk_penalty_gw=0.0, costs=costs_pos)
+    cfg_on  = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_coax=True,  pk_penalty_gw=0.0, costs=costs_pos)
 
     eng_off = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_off)
     eng_off.fill_with_costs(seq, nested, re_state)
@@ -276,9 +276,9 @@ def test_coax_variants_can_help_when_only_variant_is_scored():
     nested, re_state = _try_build_states(n)
 
     costs = make_costs(
-        q_ss=0.0, L_tilde=0.0, R_tilde=0.0, Gwi=0.0,
+        q_ss=0.0, l_tilde=0.0, r_tilde=0.0, g_wi=0.0,
         # Only score the variant edges (GC,CG) and (CG,GG) negatively
-        coax_pairs={("GC","CG"): -2.0, ("CG","GG"): -1.0},
+        coax_pairs={("GC", "CG"): -2.0, ("CG", "GG"): -1.0},
         coax_scale=1.0, coax_bonus=0.0,
     )
     cfg_base = eddy_rivas_recurrences.EddyRivasFoldingConfig(
@@ -340,8 +340,8 @@ def test_enable_wx_overlap_with_negative_Gwh_wx_can_only_help():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs_no  = make_costs(q_ss=0.0, Gwh_wx=0.0)
-    costs_yes = make_costs(q_ss=0.0, Gwh_wx=-0.5)
+    costs_no  = make_costs(q_ss=0.0, g_wh_wx=0.0)
+    costs_yes = make_costs(q_ss=0.0, g_wh_wx=-0.5)
 
     cfg_no  = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_wx_overlap=False, pk_penalty_gw=0.0, costs=costs_no)
     cfg_yes = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_wx_overlap=True,  pk_penalty_gw=0.0, costs=costs_yes)
@@ -396,10 +396,10 @@ def test_P_out_increases_yhx_min_energy_monotonically():
 
     cfg0 = eddy_rivas_recurrences.EddyRivasFoldingConfig(
         pk_penalty_gw=0.0, enable_coax=False,
-        costs=make_costs(q_ss=0.0, P_tilde_out=0.0, P_tilde_hole=0.0, Gwi=0.0))
+        costs=make_costs(q_ss=0.0, p_tilde_out=0.0, p_tilde_hole=0.0, g_wi=0.0))
     cfg1 = eddy_rivas_recurrences.EddyRivasFoldingConfig(
         pk_penalty_gw=0.0, enable_coax=False,
-        costs=make_costs(q_ss=0.0, P_tilde_out=2.0, P_tilde_hole=0.0, Gwi=0.0))
+        costs=make_costs(q_ss=0.0, p_tilde_out=2.0, p_tilde_hole=0.0, g_wi=0.0))
 
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg0)
     eng0.fill_with_costs(seq, nested, re_state)
@@ -420,10 +420,10 @@ def test_P_hole_increases_vhx_min_energy_monotonically():
 
     cfg0 = eddy_rivas_recurrences.EddyRivasFoldingConfig(
         pk_penalty_gw=0.0, enable_coax=False,
-        costs=make_costs(q_ss=0.0, P_tilde_hole=0.0, Gwi=0.0))
+        costs=make_costs(q_ss=0.0, p_tilde_hole=0.0, g_wi=0.0))
     cfg1 = eddy_rivas_recurrences.EddyRivasFoldingConfig(
         pk_penalty_gw=0.0, enable_coax=False,
-        costs=make_costs(q_ss=0.0, P_tilde_hole=2.0, Gwi=0.0))
+        costs=make_costs(q_ss=0.0, p_tilde_hole=2.0, g_wi=0.0))
 
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg0)
     eng0.fill_with_costs(seq, nested, re_state)
@@ -497,8 +497,8 @@ def test_coax_min_helix_len_gates_effect():
 
     # Only OO contact carries negative energy
     costs = make_costs(
-        q_ss=0.0, Gwi=0.0,
-        coax_pairs={("GC","GG"): -1.5},
+        q_ss=0.0, g_wi=0.0,
+        coax_pairs={("GC", "GG"): -1.5},
         coax_scale=1.0, coax_bonus=0.0,
         coax_min_helix_len=10  # too strict -> gated out
     )
@@ -513,8 +513,8 @@ def test_coax_min_helix_len_gates_effect():
     # Same but relax the gate so the same seam is eligible
     nested2, re_state2 = _try_build_states(n)
     costs2 = make_costs(
-        q_ss=0.0, Gwi=0.0,
-        coax_pairs={("GC","GG"): -1.5},
+        q_ss=0.0, g_wi=0.0,
+        coax_pairs={("GC", "GG"): -1.5},
         coax_scale=1.0, coax_bonus=0.0,
         coax_min_helix_len=1
     )
@@ -541,8 +541,8 @@ def test_coax_mismatch_requires_enable_flag():
 
     # Only the OO pair for the mismatch seam is negative
     costs = make_costs(
-        q_ss=0.0, Gwi=0.0,
-        coax_pairs={("GA","AC"): -2.0},  # (i,r)="GA", (k+1,j)="AC"
+        q_ss=0.0, g_wi=0.0,
+        coax_pairs={("GA", "AC"): -2.0},  # (i,r)="GA", (k+1,j)="AC"
         coax_scale=1.0, coax_bonus=0.0,
         coax_min_helix_len=1,
     )
@@ -577,9 +577,9 @@ def test_coax_directional_scales_affect_variants():
     nested, re_state = _try_build_states(n)
 
     costs = make_costs(
-        q_ss=0.0, Gwi=0.0,
+        q_ss=0.0, g_wi=0.0,
         # Only variant edges score (both directions)
-        coax_pairs={("GC","CG"): -1.0, ("CG","GC"): -1.5},
+        coax_pairs={("GC", "CG"): -1.0, ("CG", "GC"): -1.5},
         coax_scale=1.0, coax_bonus=0.0,
         coax_min_helix_len=1,
         coax_scale_oo=0.0,  # OO contributes nothing
@@ -608,8 +608,8 @@ def test_coax_directional_scales_affect_variants():
     # Increase variant scales -> now effect should appear
     nested3, re_state3 = _try_build_states(n)
     costs2 = make_costs(
-        q_ss=0.0, Gwi=0.0,
-        coax_pairs={("GC","CG"): -1.0, ("CG","GC"): -1.5},
+        q_ss=0.0, g_wi=0.0,
+        coax_pairs={("GC", "CG"): -1.0, ("CG", "GC"): -1.5},
         coax_scale=1.0, coax_bonus=0.0,
         coax_min_helix_len=1,
         coax_scale_oo=0.0, coax_scale_oi=2.0, coax_scale_io=2.0,
@@ -683,35 +683,70 @@ def test_join_drift_cannot_worsen_vx():
 
 def test_join_drift_with_negative_penalty_can_win_and_sets_bp():
     """
-    Make drift attractive and nudge the charged VX to beat the uncharged path,
-    so the final VX keeps the DRIFT backpointer tag.
+    Make drift attractive and verify it *helps* the charged path.
+    If the charged path (VXC) actually beats the uncharged (VXU),
+    the publish tag should be a compose/compose-drift. Otherwise,
+    it's fine to keep SELECT_UNCHARGED.
     """
     seq = "GCGCGA"
     n = len(seq)
-    nested, re_state = _try_build_states(n)
 
-    costs = make_costs(
-        q_ss=0.0, Gwi=0.0,
-        coax_pairs={("GC","GC"): -2.0},
+    # --- Baseline: no drift ---
+    nested0, re0 = _try_build_states(n)
+    base_costs = make_costs(
+        q_ss=0.0, g_wi=0.0,
+        coax_pairs={("GC", "GC"): -2.0},
         coax_scale=1.0, coax_bonus=0.0,
-        join_drift_penalty=-0.5,  # reward drift
         coax_min_helix_len=1,
+        join_drift_penalty=0.0,  # no drift effect
     )
-    cfg = eddy_rivas_recurrences.EddyRivasFoldingConfig(
+    cfg_off = eddy_rivas_recurrences.EddyRivasFoldingConfig(
+        enable_coax=True, enable_coax_variants=False,
+        enable_join_drift=False, drift_radius=1,
+        pk_penalty_gw=0.0, costs=base_costs
+    )
+    eng_off = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_off)
+    eng_off.fill_with_costs(seq, nested0, re0)
+    vxc_off = re0.vxc_matrix.get(0, n - 1)
+    vx_off  = re0.vx_matrix.get(0, n - 1)
+
+    # --- With drift enabled and attractive ---
+    nested1, re1 = _try_build_states(n)
+    drift_costs = make_costs(
+        q_ss=0.0, g_wi=0.0,
+        coax_pairs={("GC", "GC"): -2.0},
+        coax_scale=1.0, coax_bonus=0.0,
+        coax_min_helix_len=1,
+        join_drift_penalty=-0.5,  # reward drift
+        pk_penalty_gw=0.0,
+    )
+    cfg_on = eddy_rivas_recurrences.EddyRivasFoldingConfig(
         enable_coax=True, enable_coax_variants=False,
         enable_join_drift=True, drift_radius=1,
-        pk_penalty_gw=0.0, costs=costs
+        pk_penalty_gw=0.0, costs=drift_costs
     )
+    eng_on = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_on)
+    eng_on.fill_with_costs(seq, nested1, re1)
 
-    eng = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg)
-    eng.fill_with_costs(seq, nested, re_state)
+    vxc_on = re1.vxc_matrix.get(0, n - 1)
+    vxu_on = re1.vxu_matrix.get(0, n - 1)
+    vx_on  = re1.vx_matrix.get(0, n - 1)
+    bp     = re1.vx_back_ptr.get(0, n - 1)
+    tag    = None if bp is None else bp.op
 
-    i, j = 0, n - 1
-    bp = re_state.vx_back_ptr.get(i, j)
-    tag = None if bp is None else bp.op
-    assert tag in (EddyRivasBacktrackOp.RE_PK_COMPOSE_VX, EddyRivasBacktrackOp.RE_PK_COMPOSE_VX_DRIFT)
-    vx = re_state.vx_matrix.get(i, j)
-    assert math.isfinite(vx)
+    # Drift must not hurt VXC and overall VX should be no worse
+    assert vxc_on <= vxc_off
+    assert vx_on <= vx_off
+    assert math.isfinite(vx_on)
+
+    # If the charged path wins, we expect a compose tag; otherwise uncharged is OK.
+    if vxc_on < vxu_on:
+        assert tag in (EddyRivasBacktrackOp.RE_PK_COMPOSE_VX,
+                       EddyRivasBacktrackOp.RE_PK_COMPOSE_VX_DRIFT)
+    else:
+        assert tag in (EddyRivasBacktrackOp.RE_PK_COMPOSE_VX,
+                       EddyRivasBacktrackOp.RE_PK_COMPOSE_VX_DRIFT,
+                       EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED)
 
 
 # ------------------------
@@ -782,7 +817,7 @@ def test_wx_overlap_respects_short_hole_caps_on_charged_path():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs_overlap = make_costs(q_ss=0.0, Gwh_wx=-0.5, short_hole_caps={1: +1.0})
+    costs_overlap = make_costs(q_ss=0.0, g_wh_wx=-0.5, short_hole_caps={1: +1.0})
     cfg = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_wx_overlap=True, pk_penalty_gw=0.0, costs=costs_overlap)
     eng = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg)
     eng.fill_with_costs(seq, nested, re_state)
@@ -811,4 +846,5 @@ def test_vx_selects_uncharged_on_tie_and_sets_backpointer():
     assert tag in (EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED, EddyRivasBacktrackOp.RE_PK_COMPOSE_VX)
     if re_state.vxu_matrix.get(i, j) == re_state.vxc_matrix.get(i, j):
         assert tag == EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED
+
 

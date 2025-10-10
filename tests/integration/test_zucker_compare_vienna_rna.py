@@ -251,7 +251,9 @@ def nested_engine(energy_model: SecondaryStructureEnergyModel) -> ZuckerFoldingE
         config=ZuckerFoldingConfig()
     )
 
-
+# ------------------------
+# Test Sequences
+# ------------------------
 # A comprehensive list of pseudoknot-free test sequences with varied properties.
 TEST_SEQUENCES = [
     "GCGC",
