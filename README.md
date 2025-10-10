@@ -201,14 +201,14 @@ It should be noted that this will affect:
 The above has been implemented, but the issue has persisted. further testing is required to ensure that logic elsewhere is not filtering non-pariable holes.
 
 ### Current Status (10/10/2025)
-✅ Performs O(N⁶) composition with proper energy calculations\n
-✅ Identifies pseudoknot holes with favorable free energies
-✅ Handles backpointer creation and traceback mechanics
+✅ Performs O(N⁶) composition with proper energy calculations<br>
+✅ Identifies pseudoknot holes with favorable free energies<br>
+✅ Handles backpointer creation and traceback mechanics<br>
 
 But fails to:
-❌ Compute gap matrices for holes with non-pairable endpoints
-❌ Form true crossing structures (always collapses to nested baseline)
-❌ Match predictions from specialized pseudoknot tools like IPknot
+❌ Compute gap matrices for holes with non-pairable endpoints<br>
+❌ Form true crossing structures (always collapses to nested baseline)<br>
+❌ Match predictions from specialized pseudoknot tools like IPknot<br>
 
 ### Recommendations for Future Work
 1. Validate that pairability constraint is not present elsewhere, and if it is, remove it and re-test.
