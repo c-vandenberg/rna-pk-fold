@@ -15,25 +15,13 @@ T = TypeVar("T")
 
 class ZuckerTriMatrix(Generic[T]):
     """
-    Upper-triangular matrix with O(N^2/2) storage.
+    A memory-efficient, upper-triangular matrix for Zuker-style DP tables.
 
-    Stores entries only for i <= j (or i < j if you prefer).
-    We index with (i, j) in 0-based coordinates and map to a compact row layout:
-      row i has length N - i; column j is at offset (j - i).
-
-    Parameters
-    ----------
-    seq_len : int
-        Sequence length N.
-    fill : T
-        Initial fill value for every valid cell.
-
-    Notes
-    -----
-    - By construction, only (i, j) with i <= j are addressable.
-      If you want strictly paired spans, you can enforce i < j at call sites.
+    This class provides a 2D matrix-like interface but only allocates storage
+    for the upper triangle (where `i <= j`), saving nearly half the memory
+    compared to a full square matrix. It maps 2D `(i, j)` coordinates to a
+    compact 1D list-of-lists representation.
     """
-
     __slots__ = ("_seq_len", "_rows")
 
     def __init__(self, seq_len: int, fill: T):
@@ -42,21 +30,36 @@ class ZuckerTriMatrix(Generic[T]):
 
     @property
     def size(self) -> int:
-        """Return the underlying sequence length N."""
+        """Returns the sequence length N that defines the matrix dimensions."""
         return self._seq_len
 
     @property
     def shape(self) -> Tuple[int, int]:
-        """Matrix shape as (N, N)."""
+        """Returns the matrix shape as a tuple `(N, N)`."""
         return self._seq_len, self._seq_len
 
     def _offset(self, base_i: int, base_j: int) -> int:
+        """Calculates the column offset within a row and validates indices."""
         if base_i < 0 or base_j < 0 or base_i >= self._seq_len or base_j >= self._seq_len or base_j < base_i:
             raise IndexError(f"TriMatrix invalid index: (i={base_i}, j={base_j}) for N={self._seq_len}")
         return base_j - base_i
 
     def get(self, base_i: int, base_j: int) -> T:
-        """Get cell value at (i, j)."""
+        """
+        Retrieves the value at cell `(i, j)`.
+
+        Parameters
+        ----------
+        i : int
+            The row index (0-based).
+        j : int
+            The column index (0-based).
+
+        Returns
+        -------
+        T
+            The value stored at the specified cell.
+        """
         return self._rows[base_i][self._offset(base_i, base_j)]
 
     def set(self, base_i: int, base_j: int, value: T) -> None:

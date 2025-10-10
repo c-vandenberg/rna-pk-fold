@@ -20,26 +20,39 @@ Kind = Literal["RNA"]
 
 
 class SecondaryStructureEnergyLoader:
+    """
+    Loads and parses thermodynamic energy parameters from a YAML file.
+
+    This class is responsible for reading a specially formatted YAML file
+    containing thermodynamic parameters (ΔH and ΔS) for various RNA
+    secondary structure motifs and parsing them into a structured,
+    immutable `SecondaryStructureEnergies` object.
+    """
     def load(self, kind: Kind = "RNA", yaml_path: str | Path | None = None) -> SecondaryStructureEnergies:
         """
-        Load the secondary structure thermodynamic energy bundle for a given
-        nucleic acid class.
+        Loads the thermodynamic energy parameter bundle for a given nucleic acid.
 
-        Current implementation only supports RNA secondary structure energies.
-        However, the design is open to extension for DNA.
+        This is the main entry point for the loader. It validates the requested
+        nucleic acid type and dispatches to the appropriate builder method.
 
         Parameters
         ----------
         kind : {"RNA"}, optional
-            Parameter set to load. The current implementation only supports
-            RNA secondary structure energies. The design is open to
-            extension for DNA.
+            The type of parameter set to load. Currently, only "RNA" is
+            supported, by default "RNA".
+        yaml_path : str | Path | None
+            The file path to the YAML file containing the energy parameters.
 
         Returns
         -------
         SecondaryStructureEnergies
-            Immutable container with nearest-neighbor, loop, dangling,
-            and multiloop coefficients used by the DP layer.
+            An immutable data object containing all the parsed thermodynamic
+            parameter tables required by the folding engines.
+
+        Raises
+        ------
+        ValueError
+            If a `kind` other than "RNA" is specified or if `yaml_path` is not provided.
 
         Notes
         -----
@@ -49,17 +62,26 @@ class SecondaryStructureEnergyLoader:
         """
         if kind.upper() != "RNA":
             raise ValueError("Only 'RNA' is supported for now.")
+
         return self._build_rna(yaml_path)
 
     def _build_rna(self, yaml_path: str | Path | None = None) -> SecondaryStructureEnergies:
         """
-        Construct RNA thermodynamic tables (starter subset).
+        Constructs the RNA thermodynamic parameter tables from a YAML file.
+
+        This method reads the specified YAML file and uses a series of specialized
+        parsers to extract and structure the data for each type of thermodynamic
+        parameter (e.g., stacking, loops, dangles).
+
+        Parameters
+        ----------
+        yaml_path : str | Path | None
+            The file path to the energy parameter YAML file.
 
         Returns
         -------
         SecondaryStructureEnergies
-            Immutable collection of RNA parameter tables suitable for driving
-            the base Zuker-style DP (and extensions).
+            An immutable collection of RNA parameter tables.
 
         References
         ----------
@@ -73,12 +95,14 @@ class SecondaryStructureEnergyLoader:
         if yaml_path is None:
             raise ValueError("yaml_path is required.")
 
+        # Read the raw dictionary data from the YAML file.
         data = read_yaml(yaml_path)
         temp_k = get_temperature_kelvin(data)
 
+        # --- Parse Nested Structure Parameters ---
+        # Each function call here is responsible for a specific section of the YAML file.
         complements = parse_complements(data)
         validate_rna_complements(complements)
-
         multiloop = parse_multiloop(data)
         nn_stack = parse_stacks_matrix(data, temp_k)
         dangles = parse_dangles(data, temp_k)
@@ -90,6 +114,8 @@ class SecondaryStructureEnergyLoader:
         hairpin_mm = parse_mismatch(data, "hairpin_mismatches", temp_k)
         multi_mm = parse_mismatch(data, "multi_mismatch", temp_k)
         special_hairpin = parse_special_hairpins(data, temp_k)
+
+        # --- Parse Pseudoknot-Specific Parameters ---
         pseudoknots = self._parse_pseudoknot_block(data)
 
         return SecondaryStructureEnergies(
@@ -110,51 +136,67 @@ class SecondaryStructureEnergyLoader:
 
     @staticmethod
     def _parse_pseudoknot_block(data: Dict[str, Any]) -> Optional[PseudoknotEnergies]:
+        """
+        Parses the 'pseudoknot' section of the YAML data.
+
+        This static method extracts all parameters specific to the Eddy-Rivas
+        pseudoknot folding algorithm from the raw data dictionary.
+
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            The raw dictionary data loaded from the YAML file.
+
+        Returns
+        -------
+        Optional[PseudoknotEnergies]
+            An immutable data object with the pseudoknot parameters, or None if
+            the 'pseudoknot' section is not present in the YAML file.
+        """
         node = data.get("pseudoknot")
         if not node:
             return None
 
+        # Use helper functions to parse each specific parameter from the node,
+        # providing a default value if the key is missing.
         return PseudoknotEnergies(
-            # scalars
+            # Scalar energy penalties and bonuses.
             q_ss=get_float(node, "q_ss", 0.2),
-            P_tilde_out=get_float(node, "P_tilde_out", 1.0),
-            P_tilde_hole=get_float(node, "P_tilde_hole", 1.0),
-            Q_tilde_out=get_float(node, "Q_tilde_out", 0.2),
-            Q_tilde_hole=get_float(node, "Q_tilde_hole", 0.2),
-            L_tilde=get_float(node, "L_tilde", 0.0),
-            R_tilde=get_float(node, "R_tilde", 0.0),
-            M_tilde_yhx=get_float(node, "M_tilde_yhx", 0.0),
-            M_tilde_vhx=get_float(node, "M_tilde_vhx", 0.0),
-            M_tilde_whx=get_float(node, "M_tilde_whx", 0.0),
+            p_tilde_out=get_float(node, "P_tilde_out", 1.0),
+            p_tilde_hole=get_float(node, "P_tilde_hole", 1.0),
+            q_tilde_out=get_float(node, "Q_tilde_out", 0.2),
+            q_tilde_hole=get_float(node, "Q_tilde_hole", 0.2),
+            l_tilde=get_float(node, "L_tilde", 0.0),
+            r_tilde=get_float(node, "R_tilde", 0.0),
+            m_tilde_yhx=get_float(node, "M_tilde_yhx", 0.0),
+            m_tilde_vhx=get_float(node, "M_tilde_vhx", 0.0),
+            m_tilde_whx=get_float(node, "M_tilde_whx", 0.0),
 
-            # maps
+            # Sequence-dependent energy maps.
             dangle_hole_left=(parse_bigram_float_map(node, "dangle_hole_left") or None),
             dangle_hole_right=(parse_bigram_float_map(node, "dangle_hole_right") or None),
             dangle_outer_left=(parse_bigram_float_map(node, "dangle_outer_left") or None),
             dangle_outer_right=(parse_bigram_float_map(node, "dangle_outer_right") or None),
             coax_pairs=(parse_coax_pairs_map(node, "coax_pairs") or None),
 
-            # coax controls
+            # Coaxial stacking control parameters.
             coax_bonus=get_float(node, "coax_bonus", 0.0),
             coax_scale_oo=get_float(node, "coax_scale_oo", 1.0),
             coax_scale_oi=get_float(node, "coax_scale_oi", 1.0),
             coax_scale_io=get_float(node, "coax_scale_io", 1.0),
             coax_min_helix_len=get_int(node, "coax_min_helix_len", 1),
             coax_scale=get_float(node, "coax_scale", 1.0),
-
             mismatch_coax_scale=get_float(node, "mismatch_coax_scale", 0.5),
             mismatch_coax_bonus=get_float(node, "mismatch_coax_bonus", 0.0),
 
-            # composition variants / penalties
+            # Penalties for specific pseudoknot compositions.
             join_drift_penalty=get_float(node, "join_drift_penalty", 0.0),
             short_hole_caps=(parse_int_float_map(node, "short_hole_caps") or None),
 
-            # composition offsets
-            Gwh=get_float(node, "Gwh", 0.0),
-            Gwi=get_float(node, "Gwi", 0.0),
-            Gwh_wx=get_float(node, "Gwh_wx", 0.0),
-            Gwh_whx=get_float(node, "Gwh_whx", 0.0),
-
-            # optional global PK penalty scaling (if you included this in the dataclass)
+            # Global penalties for initiating pseudoknots or overlaps.
+            g_wh=get_float(node, "Gwh", 0.0),
+            g_wi=get_float(node, "Gwi", 0.0),
+            g_wh_wx=get_float(node, "Gwh_wx", 0.0),
+            g_wh_whx=get_float(node, "Gwh_whx", 0.0),
             pk_penalty_gw=get_float(node, "pk_penalty_gw", 1.0),
         )

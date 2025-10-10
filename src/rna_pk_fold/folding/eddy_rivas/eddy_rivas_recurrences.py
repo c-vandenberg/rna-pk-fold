@@ -2,7 +2,7 @@ import math
 import time
 import logging
 from dataclasses import dataclass
-from typing import Tuple, Dict, Optional, Any, Callable
+from typing import Tuple, Optional, Any, Callable
 
 import numpy as np
 from tqdm import tqdm
@@ -297,7 +297,7 @@ class EddyRivasFoldingEngine:
         q_ss = self.cfg.costs.q_ss
         g_w = self.cfg.pk_penalty_gw
         g_wh = getattr(self.cfg.costs, "Gwh", 0.0)
-        g_wi = self.cfg.costs.Gwi
+        g_wi = self.cfg.costs.g_wi
         g_wh_wx = getattr(self.cfg.costs, "Gwh_wx", 0.0)
         g_wh_whx = getattr(self.cfg.costs, "Gwh_whx", 0.0)
         tables = getattr(self.cfg, "tables", None)

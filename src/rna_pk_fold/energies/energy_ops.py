@@ -17,85 +17,71 @@ def hairpin_energy(
     temp_k: float = DEFAULT_T_K
 ) -> float:
     """
-    Hairpin loop ΔG for a putative closing pair (i, j).
+    Calculates the free energy (ΔG) of a hairpin loop.
 
-    Computes:
-    1. Length baseline from energies.HAIRPIN at loop length L = j - i - 1
-       (returns +∞ if L < MIN_HAIRPIN_UNPAIRED or missing)
-    2. Terminal-mismatch term at the closing pair using flattened key.
-       key = `f"{L_nt}{X}/{Y}{R_nt}"`, where:
-         - `X` = `seq[i]`
-         - `Y` = seq[j]
-         - `L_nt` = `seq[i+1]`  (left loop neighbor)
-         - `R_nt` = `seq[j-1] ` (right loop neighbor)
-    3. Preferentially uses `energies.HAIRPIN_MISMATCH first`; if missing, falls
-        back to `energies.TERMINAL_MISMATCH`.
-    4. (Optional) sequence-specific hairpin term via energies.SPECIAL_HAIRPINS
-       using the loop sequence seq[i+1:j] if present.
+    This function computes the total free energy for a hairpin loop closed by
+    the base pair `(base_i, base_j)`. The calculation includes a length-dependent
+    baseline energy, a terminal mismatch penalty for the closing pair, and
+    bonuses for special stable hairpins (e.g., tetraloops).
 
     Parameters
     ----------
-    base_i, base_j : int
-        0-based indices with i < j.
+    base_i : int
+        The 0-based 5' index of the closing base pair.
+    base_j : int
+        The 0-based 3' index of the closing base pair.
     seq : str
-        RNA sequence (case-insensitive; T is treated as U).
+        The RNA sequence.
     energies : SecondaryStructureEnergies
-        Parameter bundle.
+        An object containing the thermodynamic parameter tables.
     temp_k : float, optional
-        Temperature in Kelvin (default 310.15 ≈ 37 °C).
+        The temperature in Kelvin for the free energy calculation, by default
+        `DEFAULT_TEMP_K`.
 
     Returns
     -------
     float
-        Free energy ΔG (kcal/mol) of the hairpin loop baseline
-        (+∞ if invalid).
+        The calculated free energy (ΔG) of the hairpin loop in kcal/mol.
+        Returns positive infinity if the loop geometry is invalid.
     """
+    # --- 1. Validate Geometry ---
+    # Ensure indices are within bounds and the loop is large enough to form.
     if base_i < 0 or base_j >= len(seq) or base_i >= base_j:
         return float("inf")
-
     hairpin_len = base_j - base_i - 1
     if hairpin_len < MIN_HAIRPIN_UNPAIRED:
         return float("inf")
 
-    # 1. Baseline hairpin energies by length
-    base_hp_energies = lookup_loop_baseline_js(energies.HAIRPIN, hairpin_len)
-    if base_hp_energies is None:
+    # --- 2. Baseline Energy ---
+    # Look up the length-dependent baseline ΔH and ΔS values.
+    base_hp_dh_ds = lookup_loop_baseline_js(energies.HAIRPIN, hairpin_len)
+    if base_hp_dh_ds is None:
         return float("inf")
+    # Convert (ΔH, ΔS) to ΔG at the specified temperature.
+    delta_g = calculate_delta_g(base_hp_dh_ds, temp_k)
 
-    delta_g = calculate_delta_g(base_hp_energies, temp_k)
-
-    # 2. Terminal mismatch at the closing pair
+    # --- 3. Terminal Mismatch Penalty ---
+    # Get the bases of the closing pair and their immediate neighbors inside the loop.
     base_x = normalize_base(seq[base_i])
     base_y = normalize_base(seq[base_j])
-    left_neighbour = normalize_base(seq[base_i + 1]) if (base_i + 1) < base_j else "E"
-    right_neighbour = normalize_base(seq[base_j - 1]) if (base_j - 1) > base_i else "E"
+    left_neighbor = normalize_base(seq[base_i + 1])
+    right_neighbor = normalize_base(seq[base_j - 1])
 
-    # Flattened key: "LX/YR"
-    mm_key = f"{left_neighbour}{base_x}/{base_y}{right_neighbour}"
+    # Construct the key for the mismatch lookup table (e.g., "CA/GU").
+    mismatch_key = f"{left_neighbor}{base_x}/{base_y}{right_neighbor}"
 
-    # 3. Preferentially use hairpin-specific mismatches; Fall back to terminal
-    #    mismatches if `energies.HAIRPIN_MISMATCH` is missing.
-    hairpin_mm = energies.HAIRPIN_MISMATCH.get(mm_key)
-    if hairpin_mm is not None:
-        delta_h, delta_s = hairpin_mm
-        delta_g += SecondaryStructureEnergies.delta_g(delta_h, delta_s, temp_k)
+    # Preferentially use hairpin-specific mismatch parameters if available.
+    hairpin_mismatch_dh_ds = energies.HAIRPIN_MISMATCH.get(mismatch_key)
+    if hairpin_mismatch_dh_ds is not None:
+        delta_g += calculate_delta_g(hairpin_mismatch_dh_ds, temp_k)
     else:
-        terminal_mm_energies = energies.TERMINAL_MISMATCH.get(mm_key)
-        if terminal_mm_energies is not None:
-            delta_h, delta_s = terminal_mm_energies
-            delta_g += SecondaryStructureEnergies.delta_g(delta_h, delta_s, temp_k)
+        # Otherwise, fall back to the general terminal mismatch parameters.
+        terminal_mismatch_dh_ds = energies.TERMINAL_MISMATCH.get(mismatch_key)
+        if terminal_mismatch_dh_ds is not None:
+            delta_g += calculate_delta_g(terminal_mismatch_dh_ds, temp_k)
 
-    # 4. AU/GU end penalty (temporary until it is added in YAML file)
-    #   - Because AU and GU pairs are weaker at helix ends and the Turner models
-    #     compensate for that with a small terminal penalty (≈ +0.5 kcal/mol at 37 °C).
-    #   - If this penalty isn't included, short stems closed by AU/GU get over-stabilized,
-    #     and hairpins that shouldn't be paired will be predicted.
-    #   - Why this penalty exists:
-    #       * End Effects: A helix end is missing one stacking neighbor, so the closing pair
-    #         is less stabilized than a pair in the interior.
-    #       * Pair Strength: GC (3 H-bonds) is intrinsically stronger than AU/GU wobble pair (2 H-bonds).
-    #         Therefore, the “missing” outside stack hurts AU/GU ends more. We therefore add a small
-    #         destabilizing term when the terminal closing pair is AU/UA/GU/UG.
+    # --- 4. Terminal AU/GU Penalty ---
+    # Add a destabilizing penalty for weaker AU or GU closing pairs.
     delta_g += _terminal_au_penalty(base_x, base_y)
 
     return delta_g
@@ -111,46 +97,50 @@ def stack_energy(
     temp_k: float = DEFAULT_T_K
 ) -> float:
     """
-    Stacking ΔG for adjacent base pairs (i, j) and (k, l)
-    where typically k = i+1, l = j-1.
+    Calculates the stacking free energy (ΔG) between two adjacent base pairs.
 
-    Uses nearest-neighbor table E.NN with key "XY/ZW" where:
-    - X=seq[i], Y=seq[i+1] (left 5'->3')
-    - Z=seq[j], W=seq[j-1] (right 3'->5')
-
-    Notes
-    -----
-    This function returns only the stack term. Terminal mismatches
-    and dangles are handled elsewhere (or in a more complete variant).
+    This function looks up the nearest-neighbor thermodynamic parameters for
+    the stacking of an outer pair `(base_i, base_j)` on an inner pair `(base_k, base_l)`.
 
     Parameters
     ----------
-    base_i, base_j, base_k, base_l : int
-        Indices with i < k <= l < j in a stacked geometry
-        (commonly k=i+1, l=j-1).
+    base_i : int
+        The 5' index of the outer base pair.
+    base_j : int
+        The 3' index of the outer base pair.
+    base_k : int
+        The 5' index of the inner base pair (typically `base_i + 1`).
+    base_l : int
+        The 3' index of the inner base pair (typically `base_j - 1`).
     seq : str
-        RNA sequence.
+        The RNA sequence.
     energies : SecondaryStructureEnergies
-        Parameter bundle.
+        An object containing the thermodynamic parameter tables.
     temp_k : float, optional
-        Temperature in Kelvin (default 310.15).
+        The temperature in Kelvin for the free energy calculation, by default
+        `DEFAULT_TEMP_K`.
 
     Returns
     -------
     float
-        Free energy ΔG (kcal/mol) for the stack
-        (+∞ if unavailable/invalid).
+        The calculated stacking energy (ΔG) in kcal/mol. Returns positive
+        infinity if the geometry is invalid or parameters are not found.
     """
-    # Basic sanity for a stack geometry
+    # --- 1. Validate Geometry ---
+    # Ensure the indices represent a valid stacked pair geometry.
     if not (0 <= base_i < base_k <= base_l < base_j < len(seq)):
         return float("inf")
 
+    # --- 2. Look up Parameters ---
+    # Construct the key for the nearest-neighbor stacking table (e.g., "GA/UC").
     key = dimer_key(seq, base_i, base_j)
     if key is None:
         return float("inf")
-
+    # Retrieve the (ΔH, ΔS) tuple for this stacking interaction.
     dh_ds = energies.NN_STACK.get(key)
 
+    # --- 3. Calculate ΔG ---
+    # Convert (ΔH, ΔS) to free energy at the specified temperature.
     return calculate_delta_g(dh_ds, temp_k)
 
 
@@ -164,93 +154,87 @@ def internal_loop_energy(
     temp_k: float = DEFAULT_T_K
 ) -> float:
     """
-    Internal or bulge loop ΔG for closing pair (i, j) with inner pair (k, l).
+    Calculates the free energy (ΔG) of an internal loop or bulge.
 
-    Let:
-        a = k - i - 1  # unpaired on the left strand
-        b = j - l - 1  # unpaired on the right strand
-
-    Cases
-    -----
-    - Bulge: one of a or b is 0
-        size = a + b
-        baseline from SecondaryStructureEnergies.BULGE[size] (clamped to last anchor).
-        (Typical refinements like adding the adjacent stack when size==1
-        can be added later.)
-
-    - Internal loop: a > 0 and b > 0
-        size = a + b
-        baseline from SecondaryStructureEnergies.INTERNAL[size] (clamped).
-        Special 1×1 mismatch: if a==b==1, try E.INTERNAL_MM key using the
-        2-nt motifs adjacent to the closing pair (if present).
+    This function determines whether the loop is a bulge (unpaired bases on one
+    side) or an internal loop (unpaired bases on both sides) and calculates
+    the corresponding free energy.
 
     Parameters
     ----------
-    base_i, base_j, base_k, base_l : int
-        Indices with i < k <= l < j; (i, j) closes the loop and (k, l) is
-        the inner pair.
+    base_i : int
+        The 5' index of the outer closing pair.
+    base_j : int
+        The 3' index of the outer closing pair.
+    base_k : int
+        The 5' index of the inner closing pair.
+    base_l : int
+        The 3' index of the inner closing pair.
     seq : str
-        RNA sequence (T treated as U).
+        The RNA sequence.
     energies : SecondaryStructureEnergies
-        Parameter bundle.
+        An object containing the thermodynamic parameter tables.
     temp_k : float, optional
-        Temperature in Kelvin.
+        The temperature in Kelvin for the free energy calculation, by default
+        `DEFAULT_TEMP_K`.
 
     Returns
     -------
     float
-        Free energy ΔG (kcal/mol) for the bulge or internal loop
-        (+∞ on invalid geometry or missing data).
+        The calculated loop energy (ΔG) in kcal/mol. Returns positive infinity
+        if the geometry is invalid.
     """
-    seq_len = len(seq)
-    if not (0 <=  base_i < base_k <= base_l < base_j < seq_len):
+    # --- 1. Validate Geometry and Calculate Loop Sizes ---
+    if not (0 <= base_i < base_k <= base_l < base_j < len(seq)):
         return float("inf")
 
-    loop_open_base = base_k - base_i - 1
-    loop_close_base = base_j - base_l - 1
+    # The number of unpaired bases on the 5' strand of the loop.
+    unpaired_len_5 = base_k - base_i - 1
+    # The number of unpaired bases on the 3' strand of the loop.
+    unpaired_len_3 = base_j - base_l - 1
 
-    # Bulge
-    if (loop_open_base == 0) ^ (loop_close_base == 0):
-        size = loop_open_base + loop_close_base
-        base = lookup_loop_baseline_js(energies.BULGE, size)
-        delta_g = calculate_delta_g(base, temp_k)
+    # --- 2. Bulge Loop Case ---
+    # A bulge occurs if one side has unpaired bases and the other has none.
+    if (unpaired_len_5 == 0) != (unpaired_len_3 == 0):
+        bulge_size = unpaired_len_5 + unpaired_len_3
+        # Look up the length-dependent baseline energy for the bulge.
+        base_dh_ds = lookup_loop_baseline_js(energies.BULGE, bulge_size)
+        delta_g = calculate_delta_g(base_dh_ds, temp_k)
 
-        # Terminal AU/GU penalty for BOTH closing and inner pairs
+        # Apply terminal AU/GU penalties to both the outer and inner closing pairs.
         delta_g += _terminal_au_penalty(normalize_base(seq[base_i]), normalize_base(seq[base_j]))
         delta_g += _terminal_au_penalty(normalize_base(seq[base_k]), normalize_base(seq[base_l]))
-
         return delta_g
 
-    # Internal loop (including 1x1)
-    if loop_open_base > 0 and loop_close_base > 0:
-        size = loop_open_base + loop_close_base
+    # --- 3. Internal Loop Case ---
+    # An internal loop has unpaired bases on both sides.
+    if unpaired_len_5 > 0 and unpaired_len_3 > 0:
+        loop_size = unpaired_len_5 + unpaired_len_3
 
-        # Special 1×1 internal mismatch if we have the motif:
-        if loop_open_base == 1 and loop_close_base == 1:
-            # Build a key like "XY/ZW" using the two unpaired nucleotides
-            # adjacent to the inner pair. A simple representative:
-            # left-unpaired next to i -> seq[i+1], right-unpaired next to j -> seq[j-1]
-            # combined with inner-pair flank nucleotides: seq[k-1], seq[l+1] if valid.
+        # For a 1x1 internal loop, there are special mismatch parameters.
+        if unpaired_len_5 == 1 and unpaired_len_3 == 1:
             try:
-                left = normalize_base(seq[base_i + 1]) + normalize_base(seq[base_k - 1])
-                right = normalize_base(seq[base_j - 1]) + normalize_base(seq[base_l + 1])
-                key = f"{left}/{right}"
+                # Construct the key for the 1x1 internal mismatch table.
+                left_motif = normalize_base(seq[base_i + 1]) + normalize_base(seq[base_k - 1])
+                right_motif = normalize_base(seq[base_j - 1]) + normalize_base(seq[base_l + 1])
+                key = f"{left_motif}/{right_motif}"
+                # If special parameters exist, use them directly.
                 if key in energies.INTERNAL_MISMATCH:
                     return calculate_delta_g(energies.INTERNAL_MISMATCH[key], temp_k)
             except IndexError:
-                # fall back to baseline if neighbors not available
+                # Fall through to the general internal loop calculation if indices are out of bounds.
                 pass
 
-        base = lookup_loop_baseline_js(energies.INTERNAL, size)
-        delta_g = calculate_delta_g(base, temp_k)
+        # For all other internal loops, use the general length-dependent baseline.
+        base_dh_ds = lookup_loop_baseline_js(energies.INTERNAL, loop_size)
+        delta_g = calculate_delta_g(base_dh_ds, temp_k)
 
-        # Terminal AU/GU penalty for BOTH closing and inner pairs
+        # Apply terminal AU/GU penalties to both closing pairs.
         delta_g += _terminal_au_penalty(normalize_base(seq[base_i]), normalize_base(seq[base_j]))
         delta_g += _terminal_au_penalty(normalize_base(seq[base_k]), normalize_base(seq[base_l]))
-
         return delta_g
 
-    # Not an internal/bulge geometry.
+    # If the geometry doesn't match a bulge or internal loop (e.g., a simple stack), return infinity.
     return float("inf")
 
 
@@ -260,36 +244,31 @@ def multiloop_linear_energy(
     energies: SecondaryStructureEnergies
 ) -> float:
     """
-    Linear multiloop model ΔG using SecondaryStructureEnergies.MULTILOOP
-    coefficients (a, b, c, d).
+    Calculates the free energy (ΔG) of a multiloop using a linear model.
 
-    Model (seqfold-style)
-    ---------------------
-    ΔG = a + b * branches + c * unpaired + (d if unpaired == 0 else 0)
-
-    Notes
-    -----
-    - SecondaryStructureEnergies.MULTILOOP coefficients are treated as
-      free-energy terms (ΔG) rather than (ΔH, ΔS) pairs. Temperature is ignored here.
-    - This matches the common "linear multiloop" surrogate used in practice.
+    The energy is a function of a fixed penalty `a`, a penalty per branching
+    helix `b`, and a penalty per unpaired nucleotide `c`.
 
     Parameters
     ----------
     branches : int
-        Number of entering helices in the multiloop.
+        The number of helices branching from the multiloop.
     unpaired_bases : int
-        Number of unpaired nucleotides inside the multiloop.
+        The number of unpaired nucleotides inside the multiloop.
     energies : SecondaryStructureEnergies
-        Parameter bundle.
+        An object containing the thermodynamic parameter tables.
 
     Returns
     -------
     float
-        Free energy ΔG (kcal/mol) for the multiloop.
+        The calculated multiloop energy (ΔG) in kcal/mol.
     """
     coeff_a, coeff_b, coeff_c, coeff_d = energies.MULTILOOP
+
+    # The 'd' coefficient is a special bonus applied only if there are zero unpaired bases.
     bonus = coeff_d if unpaired_bases == 0 else 0.0
 
+    # Apply the linear model: ΔG = a + b*branches + c*unpaired + bonus.
     return coeff_a + coeff_b * branches + coeff_c * unpaired_bases + bonus
 
 
@@ -301,27 +280,52 @@ def exterior_end_bonus(
     temp_k: float
 ) -> float:
     """
-    Vienna --dangles=2 behavior (simplified):
-    choose best (most negative) among: terminal mismatch at exterior,
-    5' dangle, 3' dangle, or 5'+3' dangles together.
+    Calculates the most favorable end bonus for an exterior helix.
+
+    This function models the behavior of dangling ends or terminal mismatches
+    on a helix that is part of the exterior loop. It computes the energy for
+    a 5' dangle, a 3' dangle, a combined 5'+3' dangle, and a terminal mismatch,
+    and returns the most stabilizing (most negative) of these options.
+
+    Parameters
+    ----------
+    seq : str
+        The RNA sequence.
+    base_i : int
+        The 5' index of the exterior helix's closing pair.
+    base_j : int
+        The 3' index of the exterior helix's closing pair.
+    energies : SecondaryStructureEnergies
+        An object containing the thermodynamic parameter tables.
+    temp_k : float
+        The temperature in Kelvin.
+
+    Returns
+    -------
+    float
+        The most stabilizing bonus energy (a negative value or 0.0) in kcal/mol.
     """
     seq_len = len(seq)
+    # Get the closing pair as a string (e.g., "GC").
     xy_pair = pair_str(seq, base_i, base_j)
-    left_base = normalize_base(seq[base_i - 1]) if base_i - 1 >= 0 else "N"
-    right_base = normalize_base(seq[base_j + 1]) if base_j + 1 < seq_len else "N"
+    # Get the neighboring bases in the exterior loop.
+    left_base = normalize_base(seq[base_i - 1]) if base_i > 0 else "N"
+    right_base = normalize_base(seq[base_j + 1]) if base_j < seq_len - 1 else "N"
 
-    # terminal mismatch at exterior (if available)
-    mm_key = f"{left_base}{xy_pair[0]}/{xy_pair[1]}{right_base}"
-    delta_g_mm = calculate_delta_g((energies.TERMINAL_MISMATCH or {}).get(mm_key), temp_k)
+    # --- Calculate Energy for Each Possible End Configuration ---
+    # 1. Terminal mismatch energy.
+    mismatch_key = f"{left_base}{xy_pair[0]}/{xy_pair[1]}{right_base}"
+    delta_g_mismatch = calculate_delta_g((energies.TERMINAL_MISMATCH or {}).get(mismatch_key), temp_k)
 
-    # dangles
-    delta_g_d5 = calculate_delta_g(energies.DANGLES.get(dangle5_key(left_base, xy_pair)), temp_k)
-    delta_g_d3 = calculate_delta_g(energies.DANGLES.get(dangle3_key(xy_pair, right_base)), temp_k)
+    # 2. 5' and 3' dangle energies.
+    delta_g_dangle5 = calculate_delta_g(energies.DANGLES.get(dangle5_key(left_base, xy_pair)), temp_k)
+    delta_g_dangle3 = calculate_delta_g(energies.DANGLES.get(dangle3_key(xy_pair, right_base)), temp_k)
 
-    # pick the most stabilizing option (min ΔG)
-    best = min(delta_g_mm, delta_g_d5 + delta_g_d3, delta_g_d5, delta_g_d3, 0.0)
+    # --- Determine the Best Option ---
+    # Find the minimum (most stabilizing) energy among all options, including doing nothing (0.0).
+    best_bonus = min(delta_g_mismatch, delta_g_dangle5 + delta_g_dangle3, delta_g_dangle5, delta_g_dangle3, 0.0)
 
-    return best if best != float("inf") else 0.0
+    return best_bonus if best_bonus != float("inf") else 0.0
 
 
 def multiloop_close_bonus(
@@ -332,18 +336,40 @@ def multiloop_close_bonus(
     temp_k: float
 ) -> float:
     """
-    When (i,j) closes a multiloop, apply multi_mismatch with loop-adjacent
-    nucleotides L=seq[i+1], R=seq[j-1]. If missing, 0.
+    Calculates the terminal mismatch bonus for a pair closing a multiloop.
+
+    Parameters
+    ----------
+    seq : str
+        The RNA sequence.
+    base_i : int
+        The 5' index of the multiloop's closing pair.
+    base_j : int
+        The 3' index of the multiloop's closing pair.
+    energies : SecondaryStructureEnergies
+        An object containing the thermodynamic parameter tables.
+    temp_k : float
+        The temperature in Kelvin.
+
+    Returns
+    -------
+    float
+        The terminal mismatch energy bonus in kcal/mol, or 0.0 if not applicable.
     """
-    if base_i+1 >= base_j or not energies.MULTI_MISMATCH:
+    # The bonus is not applicable if there are no internal bases or no mismatch parameters.
+    if base_i + 1 >= base_j or not energies.MULTI_MISMATCH:
         return 0.0
+
+    # Get the closing pair and its adjacent internal bases.
     xy_pair = pair_str(seq, base_i, base_j)
     left_base = normalize_base(seq[base_i + 1])
     right_base = normalize_base(seq[base_j - 1])
-    mm_key = f"{left_base}{xy_pair[0]}/{xy_pair[1]}{right_base}"
-    g = calculate_delta_g(energies.MULTI_MISMATCH.get(mm_key), temp_k)
 
-    return 0.0 if g == float("inf") else g
+    # Construct the key and look up the energy.
+    mismatch_key = f"{left_base}{xy_pair[0]}/{xy_pair[1]}{right_base}"
+    delta_g = calculate_delta_g(energies.MULTI_MISMATCH.get(mismatch_key), temp_k)
+
+    return 0.0 if delta_g == float("inf") else delta_g
 
 
 def best_multiloop_end_bonus(
@@ -354,67 +380,90 @@ def best_multiloop_end_bonus(
     temp_k: float
 ) -> float:
     """
-    Return the BEST single end-scheme for the helix (i,k) inside a multiloop:
-      - use 2-sided mismatch_multi if both inner neighbors exist,
-      - else use dangle5 and/or dangle3 (sum of the two single-sides),
-      - else 0.
-    Never combine a two-sided mismatch with single dangles.
-    Neighbors here are *inside* the multiloop: L = seq[i+1], R = seq[k-1].
-    """
-    if not energies.MULTI_MISMATCH:
-        return 0.0
+    Calculates the most favorable end bonus for a helix branching into a multiloop.
 
-    base_x = normalize_base(seq[base_i])
-    base_y = normalize_base(seq[base_k])
-
-    left_base = normalize_base(seq[base_i + 1]) if (base_i + 1) < base_k else "E"
-    right_base = normalize_base(seq[base_k - 1]) if (base_k - 1) > base_i else "E"
-
-    # Two-sided multiloop mismatch (preferred when both sides exist)
-    mm_key = f"{left_base}{base_x}/{base_y}{right_base}"
-    dg_mm = calculate_delta_g(energies.MULTI_MISMATCH.get(mm_key), temp_k)
-
-    # Single-side dangles
-    # Keys consistent with your loader docs:
-    #   dangle5: "<Nuc>./<Pair>"  e.g. "A./CG"
-    #   dangle3: "<Pair>/.<Nuc>"  e.g. "CG/.A"
-    d5_key = f"{left_base}./{base_x}{base_y}"
-    d3_key = f"{base_x}{base_y}/.{right_base}"
-
-    delta_g_d5 = calculate_delta_g(energies.DANGLES.get(d5_key), temp_k)
-    delta_g_d3 = calculate_delta_g(energies.DANGLES.get(d3_key), temp_k)
-
-    both = (delta_g_d5 + delta_g_d3) if (math.isfinite(delta_g_d5) and math.isfinite(delta_g_d3)) else float("inf")
-    best = min(
-        0.0,
-        dg_mm if math.isfinite(dg_mm) else float("inf"),
-        delta_g_d5 if math.isfinite(delta_g_d5) else float("inf"),
-        delta_g_d3 if math.isfinite(delta_g_d3) else float("inf"),
-        both
-    )
-
-    return 0.0 if best == float("inf") else best
-
-
-def _terminal_au_penalty(base_x: str, base_y: str) -> float:
-    """
-    Terminal AU/GU penalty (~0.45 kcal/mol at 37°C).
-
-    Applied when a helix END is closed by AU/UA/GU/UG.
-    These pairs are weaker (2 H-bonds) than GC (3 H-bonds),
-    so the missing outside stack hurts more.
+    This function considers a two-sided terminal mismatch, a 5' dangle, a 3'
+    dangle, and a combined 5'+3' dangle, returning the most stabilizing
+    (most negative) energy among these options.
 
     Parameters
     ----------
-    base_x, base_y : str
-        Normalized bases forming a pair.
+    base_i : int
+        The 5' index of the branching helix's closing pair.
+    base_k : int
+        The 3' index of the branching helix's closing pair.
+    seq : str
+        The RNA sequence.
+    energies : SecondaryStructureEnergies
+        An object containing the thermodynamic parameter tables.
+    temp_k : float
+        The temperature in Kelvin.
 
     Returns
     -------
     float
-        Penalty in kcal/mol (0.45 for AU/GU, 0.0 for GC).
+        The most stabilizing bonus energy in kcal/mol, or 0.0.
     """
+    if not energies.MULTI_MISMATCH:
+        return 0.0
+
+    # Get the closing pair and its adjacent bases within the multiloop.
+    base_x = normalize_base(seq[base_i])
+    base_y = normalize_base(seq[base_k])
+    left_base = normalize_base(seq[base_i + 1]) if (base_i + 1) < base_k else "E"
+    right_base = normalize_base(seq[base_k - 1]) if (base_k - 1) > base_i else "E"
+
+    # --- Calculate Energy for Each Possible End Configuration ---
+    # 1. Two-sided multiloop mismatch energy.
+    mismatch_key = f"{left_base}{base_x}/{base_y}{right_base}"
+    delta_g_mismatch = calculate_delta_g(energies.MULTI_MISMATCH.get(mismatch_key), temp_k)
+
+    # 2. Single-sided 5' and 3' dangle energies.
+    dangle_5_key = f"{left_base}./{base_x}{base_y}"
+    dangle_3_key = f"{base_x}{base_y}/.{right_base}"
+    delta_g_dangle5 = calculate_delta_g(energies.DANGLES.get(dangle_5_key), temp_k)
+    delta_g_dangle3 = calculate_delta_g(energies.DANGLES.get(dangle_3_key), temp_k)
+
+    # 3. Combined 5' and 3' dangle energy.
+    both_dangles = (delta_g_dangle5 + delta_g_dangle3) if (math.isfinite(delta_g_dangle5) and math.isfinite(delta_g_dangle3)) else float("inf")
+
+    # --- Determine the Best Option ---
+    # Find the minimum among all options, including doing nothing (0.0).
+    best_bonus = min(
+        0.0,
+        delta_g_mismatch if math.isfinite(delta_g_mismatch) else float("inf"),
+        delta_g_dangle5 if math.isfinite(delta_g_dangle5) else float("inf"),
+        delta_g_dangle3 if math.isfinite(delta_g_dangle3) else float("inf"),
+        both_dangles
+    )
+
+    return 0.0 if best_bonus == float("inf") else best_bonus
+
+
+def _terminal_au_penalty(base_x: str, base_y: str) -> float:
+    """
+    Returns a small destabilizing penalty for terminal AU and GU pairs.
+
+    This penalty accounts for the reduced stability of helix ends closed by
+    weaker pairs (AU, GU) compared to stronger GC pairs.
+
+    Parameters
+    ----------
+    base_x : str
+        The normalized 5' base of the pair.
+    base_y : str
+        The normalized 3' base of the pair.
+
+    Returns
+    -------
+    float
+        The penalty in kcal/mol (0.45 for AU/GU pairs, 0.0 otherwise).
+    """
+    # Combine the bases to form a pair string (e.g., "AU", "GC").
     pair = base_x + base_y
+
+    # Return the penalty if the pair is one of the weaker types.
     if pair in ("AU", "UA", "GU", "UG"):
         return 0.45
+
     return 0.0
