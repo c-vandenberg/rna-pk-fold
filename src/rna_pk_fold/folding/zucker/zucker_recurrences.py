@@ -92,7 +92,7 @@ class ZuckerFoldingEngine:
                 # ---------- 2. Fill V matrix cell ----------
                 # V calculates energies for subsequences closed by a pair (i,j).
                 # A hairpin requires a minimum length to form.
-                if d >= 4:
+                if i < j:
                     self._fill_v_cell(seq, i, j, state, a)
 
                 # ---------- 3. Fill W matrix cell ----------
@@ -252,12 +252,6 @@ class ZuckerFoldingEngine:
         # Get references to the required matrices.
         v_matrix = state.v_matrix
         v_back_ptr = state.v_back_ptr
-
-        # A hairpin loop requires a minimum number of unpaired bases.
-        if j - i < 4:  # Need at least 3 unpaired bases for a hairpin
-            v_matrix.set(i, j, math.inf)
-            v_back_ptr.set(i, j, ZuckerBackPointer())
-            return
 
         # V(i,j) is only defined if 'i' and 'j' can form a base pair.
         if not can_pair(seq[i], seq[j]):
