@@ -153,20 +153,25 @@ def traceback_with_pk(
                     k_l, l_l = bp.hole_left
                     k_r, l_r = bp.hole_right
                 else:
-                    k_l, l_l = k, l
-                    k_r, l_r = (r + 1, r + 1)
+                    k_l, l_l = k, r
+                    k_r, l_r = r + 1, l
 
                 # Both subproblems are WHX and are considered part of the base nested layer.
-                stack.append(("WHX", i, r, k_l, l_l, 0))
-                stack.append(("WHX", r, j, k_r, l_r, 0))
+                stack.append(("WHX", i, l_l, k_l, l_l, 0))
+                stack.append(("WHX", k_r, j, k_r, l_r, 0))
                 continue
 
             # 1.3. Handle WX composition from two YHX subproblems.
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX:
-                # Left: uses (i, r, k, l)
-                # Right: uses YHX(k+1, j, l-1, r+1) → test expects inner pair (3,3) in the example
-                stack.append(("YHX", i, r, k, l, layer + 1))
-                stack.append(("YHX", k + 1, j, l - 1, r + 1, layer + 2))
+                if bp.hole_left and bp.hole_right:
+                    k_l, l_l = bp.hole_left
+                    k_r, l_r = bp.hole_right
+                else:
+                    k_l, l_l = k, r
+                    k_r, l_r = r + 1, l
+
+                stack.append(("YHX", i, l_l, k_l, l_l, layer + 1))
+                stack.append(("YHX", k_r, j, k_r, l_r, layer + 2))
                 continue
 
             # 1.4. Handle WX composition from two overlapping YHX subproblems.
@@ -178,14 +183,29 @@ def traceback_with_pk(
 
             # 1.5. Handle WX composition from a YHX (crossing) and a WHX (nested) subproblem.
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX:
-                stack.append(("YHX", i, r, k, l, layer + 1))
-                stack.append(("WHX", r + 1, j, r + 1, l - 1, 0))
+                if bp.hole_left and bp.hole_right:
+                    k_l, l_l = bp.hole_left
+                    k_r, l_r = bp.hole_right
+                else:
+                    k_l, l_l = k, r
+                    k_r, l_r = r + 1, l
+
+                stack.append(("YHX", i, l_l, k_l, l_l, layer + 1))
+                stack.append(("WHX", k_r, j, k_r, l_r, 0))
                 continue
 
             # 1.6. Handle WX composition from a WHX (nested) and a YHX (crossing) subproblem.
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX:
-                stack.append(("WHX", i, r, k, l, 0))
-                stack.append(("YHX", k + 1, j, l - 1, r + 1, layer + 1))
+                if bp.hole_left and bp.hole_right:
+                    k_l, l_l = bp.hole_left
+                    k_r, l_r = bp.hole_right
+                else:
+                    k_l, l_l = k, r
+                    k_r, l_r = r + 1, l
+
+                stack.append(("WHX", i, l_l, k_l, l_l, 0))
+                print(f"[DEBUG] Pushing YHX: k_r={k_r}, j={j}, l_r={l_r}, layer={layer + 1}", flush=True)
+                stack.append(("YHX", k_r, j, k_r, l_r, layer + 1))
                 continue
 
             # 1.6. Fallback for any other WX operation: treat as a simple nested interval.

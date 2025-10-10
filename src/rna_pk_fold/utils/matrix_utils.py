@@ -256,7 +256,7 @@ def whx_collapse_with(eddy_rivas_state: EddyRivasFoldState, i, j, k, l, charged:
 
     # If a collapse condition is met, get the energy from the appropriate 2D WX matrix.
     if collapse:
-        result = eddy_rivas_state.wxc_matrix.get(i, j) if charged else eddy_rivas_state.wxu_matrix.get(i, j)
+        result = eddy_rivas_state.wxu_matrix.get(i, j)
         if math.isfinite(result):
             _whx_lookup_cache[cache_key] = result
             return result
@@ -312,7 +312,7 @@ def zhx_collapse_with(eddy_rivas_state: EddyRivasFoldState, i, j, k, l, charged:
 
     # If a collapse condition is met, get the energy from the appropriate 2D VX matrix.
     if collapse:
-        result = eddy_rivas_state.vxc_matrix.get(i, j) if charged else eddy_rivas_state.vxu_matrix.get(i, j)
+        result = eddy_rivas_state.vxu_matrix.get(i, j)
         if math.isfinite(result):
             _zhx_lookup_cache[cache_key] = result
             return result

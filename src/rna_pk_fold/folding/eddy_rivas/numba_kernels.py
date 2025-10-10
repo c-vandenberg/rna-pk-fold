@@ -77,7 +77,7 @@ def compose_wx_best_over_r_arrays(
         # --- Case Group 1: Compositions involving WHX subproblems ---
         # Calculate the four energy combinations for WHX(left) + WHX(right),
         # considering both charged (c) and uncharged (u) subproblems.
-        cand_uu = gw_penalty + l_u[t] + r_u[t] + cap_penalty  # uncharged + uncharged
+        cand_uu = l_u[t] + r_u[t] + cap_penalty  # uncharged + uncharged
         cand_cu = l_c[t] + r_u[t] + cap_penalty  # charged + uncharged
         cand_uc = l_u[t] + r_c[t] + cap_penalty  # uncharged + charged
         cand_cc = l_c[t] + r_c[t] + cap_penalty  # charged + charged
@@ -91,7 +91,6 @@ def compose_wx_best_over_r_arrays(
             best_case = which
 
         # --- Case Group 2: Compositions involving YHX subproblems ---
-        # Case 4: YHX(left) + YHX(right)
         if np.isfinite(left_y[t]) and np.isfinite(right_y[t]):
             cand = gw_penalty + left_y[t] + right_y[t] + cap_penalty
             if cand < best:
@@ -99,7 +98,7 @@ def compose_wx_best_over_r_arrays(
                 best_idx = t
                 best_case = 4
 
-        # Case 5 & 6: YHX(left) + WHX(right)
+        # --- Case 3 & 4: YHX(left) + WHX(right) ---
         if np.isfinite(left_y[t]):
             # YHX(left) + WHX(right, uncharged)
             cand = gw_penalty + left_y[t] + r_u[t] + cap_penalty
@@ -114,7 +113,7 @@ def compose_wx_best_over_r_arrays(
                 best_idx = t
                 best_case = 6
 
-        # Case 7 & 8: WHX(left) + YHX(right)
+        # --- Case 5 & 6: WHX(left) + YHX(right) ---
         if np.isfinite(right_y[t]):
             # WHX(left, uncharged) + YHX(right)
             cand = gw_penalty + right_y[t] + l_u[t] + cap_penalty
@@ -191,7 +190,7 @@ def compose_vx_best_over_r(
     for t in range(num_splits):
         # Calculate the four energy combinations for ZHX(left) + ZHX(right),
         # considering both charged (c) and uncharged (u) subproblems.
-        cand_uu = gw_penalty + l_u[t] + r_u[t] + cap_penalty
+        cand_uu = l_u[t] + r_u[t] + cap_penalty
         cand_cu = l_c[t] + r_u[t] + cap_penalty
         cand_uc = l_u[t] + r_c[t] + cap_penalty
         cand_cc = l_c[t] + r_c[t] + cap_penalty

@@ -639,6 +639,8 @@ class EddyRivasFoldingEngine:
                                         best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_IS2_INNER_YHX,
                                                                        outer=(i, j), hole=(k, l), bridge=(r2, s2))
 
+                if (i, j, k, l) == (0, 28, 23, 28) or (i, j, k, l) == (29, 69, 29, 31):
+                    print(f"[WHX FILL] ({i},{j}:{k},{l}) = {best:.2f}, bp={best_bp.op if best_bp else None}")
                 eddy_rivas_fold_state.whx_matrix.set(i, j, k, l, best)
                 eddy_rivas_fold_state.whx_back_ptr.set(i, j, k, l, best_bp)
 
@@ -1372,11 +1374,11 @@ class EddyRivasFoldingEngine:
                     # 'charged=False' (u) gets the nested baseline; 'charged=True' (c) gets the pseudoknotted energy.
                     l_u[t] = whx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=False,
                                                can_pair_mask=can_pair_mask)
-                    r_u[t] = whx_collapse_with(eddy_rivas_fold_state, k + 1, j, r + 1, l, charged=False,
+                    r_u[t] = whx_collapse_with(eddy_rivas_fold_state, r + 1, j, r + 1, l, charged=False,
                                                can_pair_mask=can_pair_mask)
                     l_c[t] = whx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=True,
                                                can_pair_mask=can_pair_mask)
-                    r_c[t] = whx_collapse_with(eddy_rivas_fold_state, k + 1, j, r + 1, l, charged=True,
+                    r_c[t] = whx_collapse_with(eddy_rivas_fold_state, r + 1, j, r + 1, l, charged=True,
                                                can_pair_mask=can_pair_mask)
 
                     # Get energies from the YHX matrix as an alternative subproblem type.
@@ -1385,12 +1387,12 @@ class EddyRivasFoldingEngine:
                         if math.isfinite(ly): left_y[t] = ly
 
                     if can_pair_mask[r + 1][l]:
-                        ry = eddy_rivas_fold_state.yhx_matrix.get(k + 1, j, r + 1, l)
+                        ry = eddy_rivas_fold_state.yhx_matrix.get(r + 1, j, r + 1, l)
                         if math.isfinite(ry): right_y[t] = ry
 
                     # YHX terms (left and right).
                     ly = eddy_rivas_fold_state.yhx_matrix.get(i, r, k, r)
-                    ry = eddy_rivas_fold_state.yhx_matrix.get(k + 1, j, r + 1, l)
+                    ry = eddy_rivas_fold_state.yhx_matrix.get(r + 1, j, r + 1, l)
                     if math.isfinite(ly): left_y[t] = ly
                     if math.isfinite(ry): right_y[t] = ry
 
@@ -1404,48 +1406,6 @@ class EddyRivasFoldingEngine:
                     l_u, r_u, l_c, r_c, left_y, right_y, float(pseudoknot_penalty), float(cap_pen)
                 )
 
-                # --- Debugging Block ---
-                # This block prints detailed information for a specific, hardcoded case to aid in debugging.
-                if i == 0 and j == eddy_rivas_fold_state.seq_len - 1 and (k, l) == (28, 59):
-                    print(f"\n[HOLE (28,59) EVAL]", flush=True)
-                    print(f"  Built vectors for L={base_l}", flush=True)
-                    finite_Lu = np.sum(np.isfinite(l_u))
-                    finite_Ru = np.sum(np.isfinite(r_u))
-                    finite_ly = np.sum(np.isfinite(left_y))
-                    finite_ry = np.sum(np.isfinite(right_y))
-                    print(f"  Finite: Lu={finite_Lu}/{base_l}, Ru={finite_Ru}/{base_l}, ly={finite_ly}/{base_l}, "
-                          f"ry={finite_ry}/{base_l}", flush=True)
-
-                    # Check specific split point positions for debugging.
-                    for test_r in [28, 35, 43, 51, 54, 58]:
-                        t = test_r - k
-                        if 0 <= t < base_l:
-                            print(
-                                f"  r={test_r}: Lu={l_u[t]:.2f}, Ru={r_u[t]:.2f}, ly={left_y[t]:.2f}, "
-                                f"ry={right_y[t]:.2f}", flush=True)
-
-                if i == 0 and j == eddy_rivas_fold_state.seq_len - 1 and (k, l) == (28, 59):
-                    r_star = k + t_star if t_star >= 0 else -1
-                    print(f"  Kernel: cand={cand:.2f}, r={r_star}, case={case_id}", flush=True)
-                    if cand < best_c:
-                        print(f"  ✓ NEW WINNER! (beats current best {best_c:.2f})", flush=True)
-                    else:
-                        print(f"  ✗ LOSES to current best {best_c:.2f}", flush=True)
-
-                    if r_star >= 0:
-                        whx_l = eddy_rivas_fold_state.whx_matrix.get(i, r_star, k, r_star)
-                        whx_r = eddy_rivas_fold_state.whx_matrix.get(r_star + 1, j, r_star + 1, l)
-                        yhx_l = eddy_rivas_fold_state.yhx_matrix.get(i, r_star, k, r_star)
-                        yhx_r = eddy_rivas_fold_state.yhx_matrix.get(r_star + 1, j, r_star + 1, l)
-                        print(
-                            f"  At r={r_star}: WHX_L={whx_l:.2f}, WHX_R={whx_r:.2f}, YHX_L={yhx_l:.2f}, YHX_R={yhx_r:.2f}",
-                            flush=True)
-
-                        left_ok = math.isfinite(whx_l) or math.isfinite(yhx_l)
-                        right_ok = math.isfinite(whx_r) or math.isfinite(yhx_r)
-                        if not (left_ok and right_ok):
-                            print(f"  ✗ WILL BE FILTERED! (left_ok={left_ok}, right_ok={right_ok})", flush=True)
-
                 # --- Update Step ---
                 # If the candidate energy from the kernel is better than the best found so far...
                 if cand < best_c:
@@ -1453,23 +1413,52 @@ class EddyRivasFoldingEngine:
 
                     # Proceed only if the kernel returned a valid split point.
                     if r_star >= 0:
-                        # Retrieve the sparse matrix values for a final check.
-                        whx_l_sparse = eddy_rivas_fold_state.whx_matrix.get(i, r_star, k, r_star)
-                        whx_r_sparse = eddy_rivas_fold_state.whx_matrix.get(r_star + 1, j, r_star + 1, l)
-                        yhx_l_sparse = eddy_rivas_fold_state.yhx_matrix.get(i, r_star, k, r_star)
-                        yhx_r_sparse = eddy_rivas_fold_state.yhx_matrix.get(r_star + 1, j, r_star + 1, l)
+                        t = r_star - k
 
+                        if i == 0 and j == eddy_rivas_fold_state.seq_len - 1:
+                            print(f"  [UPDATE best_c] hole=({k},{l}) r={r_star} case={case_id} cand={cand:.2f}",
+                                  flush=True)
+                            print(f"    Lu[{t_star}]={l_u[t_star]:.2f} Ru[{t_star}]={r_u[t_star]:.2f}", flush=True)
+                            print(f"    Lc[{t_star}]={l_c[t_star]:.2f} Rc[{t_star}]={r_c[t_star]:.2f}", flush=True)
+                            print(f"    cap_penalty={cap_pen:.2f}", flush=True)
+
+                        # Determine which vectors contributed based on case_id
                         # This is a critical filter: ensure that both the left and right sub-fragments
                         # have a defined gapped structure. This prevents selecting combinations where
                         # one side has simply collapsed to a nested structure, which wouldn't form a true pseudoknot.
-                        left_has_structure = math.isfinite(whx_l_sparse) or math.isfinite(yhx_l_sparse)
-                        right_has_structure = math.isfinite(whx_r_sparse) or math.isfinite(yhx_r_sparse)
+                        # Which vectors contributed is determined based on case_id
+                        if case_id == 0:  # Lu + Ru (uncharged + uncharged)
+                            left_has_structure = (t < len(l_u) and math.isfinite(l_u[t]))
+                            right_has_structure = (t < len(r_u) and math.isfinite(r_u[t]))
+                        elif case_id == 1:  # Lu + Rc (uncharged + charged)
+                            left_has_structure = (t < len(l_u) and math.isfinite(l_u[t]))
+                            right_has_structure = (t < len(r_c) and math.isfinite(r_c[t]))
+                        elif case_id == 2:  # Lc + Ru (charged + uncharged)
+                            left_has_structure = (t < len(l_c) and math.isfinite(l_c[t]))
+                            right_has_structure = (t < len(r_u) and math.isfinite(r_u[t]))
+                        elif case_id == 3:  # Lc + Rc (charged + charged)
+                            left_has_structure = (t < len(l_c) and math.isfinite(l_c[t]))
+                            right_has_structure = (t < len(r_c) and math.isfinite(r_c[t]))
+                        elif case_id == 4:  # YHX + YHX
+                            left_has_structure = (t < len(left_y) and math.isfinite(left_y[t]))
+                            right_has_structure = (t < len(right_y) and math.isfinite(right_y[t]))
+                        elif case_id in (5, 6):  # YHX + WHX
+                            left_has_structure = (t < len(left_y) and math.isfinite(left_y[t]))
+                            right_has_structure = (t < len(r_u if case_id == 5 else r_c) and math.isfinite(
+                                (r_u if case_id == 5 else r_c)[t]))
+                        else:  # case 7, 8: WHX + YHX
+                            left_has_structure = (t < len(l_u if case_id == 7 else l_c) and math.isfinite(
+                                (l_u if case_id == 7 else l_c)[t]))
+                            right_has_structure = (t < len(right_y) and math.isfinite(right_y[t]))
 
                         if not (left_has_structure and right_has_structure):
-                            continue  # Skip if it's not a true pseudoknot.
+                            if i == 0 and j == eddy_rivas_fold_state.seq_len - 1:
+                                print(
+                                    f"  [FILTER REJECT] hole=({k},{l}) r={r_star} case={case_id} left_ok={left_has_structure} right_ok={right_has_structure}",
+                                    flush=True)
+                            continue # Skip if it's not a true pseudoknot.
 
                     # If all checks pass, this is a valid, new best pseudoknot candidate.
-                    best_c = cand
                     r_star = k + t_star # Recalculate best split point.
 
                     # Decode the 'case_id' from the kernel to determine the backtrack operation.
@@ -1511,6 +1500,12 @@ class EddyRivasFoldingEngine:
                         charged=True,
                     )
 
+                    best_c = cand
+
+                    # After the final best_bp assignment:
+                    if i == 0 and j == eddy_rivas_fold_state.seq_len - 1 and best_bp:
+                        print(f"  [ACCEPTED] hole={best_bp.hole} split={best_bp.split} energy={best_c:.2f}", flush=True)
+
             # --- Optional Overlap Path ---
             # This section handles a different class of pseudoknots where two YHX structures overlap.
             if self.cfg.enable_wx_overlap and g_wh_wx != 0.0:
@@ -1535,6 +1530,10 @@ class EddyRivasFoldingEngine:
                                     split=r2,
                                     charged=True,
                                 )
+
+            if i == 0 and j == eddy_rivas_fold_state.seq_len - 1:
+                wxu_val = eddy_rivas_fold_state.wxu_matrix.get(i, j)
+                print(f"[COMPOSE END] WXU={wxu_val:.2f}, best_c={best_c:.2f}, best_bp={best_bp}", flush=True)
 
             # After checking all holes (k,l) for the current span (i,j), commit the best result.
             eddy_rivas_fold_state.wxc_matrix.set(i, j, best_c)
@@ -1598,6 +1597,9 @@ class EddyRivasFoldingEngine:
             # Retrieve the optimal energy for any pseudoknotted structure for this span.
             # This 'charged' energy was calculated in the _compose_wx step.
             wxc = eddy_rivas_fold_state.wxc_matrix.get(i, j)
+
+            if i == 0 and j == eddy_rivas_fold_state.seq_len - 1:
+                print(f"[PUBLISH] WXU={wxu:.2f} WXC={wxc:.2f}", flush=True)
 
             # This is a fallback mechanism. If the overlap feature is enabled but no
             # finite-energy pseudoknot was found (wxc is infinity), we consider the
@@ -1699,11 +1701,11 @@ class EddyRivasFoldingEngine:
                     # 'zhx_collapse_with' gets the energy, handling cases where the subproblem's hole is empty.
                     l_u[t] = zhx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=False,
                                                can_pair_mask=can_pair_mask)
-                    r_u[t] = zhx_collapse_with(eddy_rivas_fold_state, k + 1, j, r + 1, l, charged=False,
+                    r_u[t] = zhx_collapse_with(eddy_rivas_fold_state, r + 1, j, r + 1, l, charged=False,
                                                can_pair_mask=can_pair_mask)
                     l_c[t] = zhx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=True,
                                                can_pair_mask=can_pair_mask)
-                    r_c[t] = zhx_collapse_with(eddy_rivas_fold_state, k + 1, j, r + 1, l, charged=True,
+                    r_c[t] = zhx_collapse_with(eddy_rivas_fold_state, r + 1, j, r + 1, l, charged=True,
                                                can_pair_mask=can_pair_mask)
 
                     # Calculate the coaxial stacking energy bonus for this specific split point 'r'.
