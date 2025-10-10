@@ -346,7 +346,7 @@ The above has been implemented, but the issue has persisted. further testing is 
 ✅ Identifies pseudoknot holes with favorable free energies<br>
 ✅ Handles backpointer creation and traceback mechanics<br>
 
-But fails to:
+But fails to:<br>
 ❌ Compute gap matrices for holes with non-pairable endpoints<br>
 ❌ Form true crossing structures (always collapses to nested baseline)<br>
 ❌ Match predictions from specialized pseudoknot tools like IPknot<br>
@@ -381,4 +381,8 @@ for temperature in annealing_schedule:
 
 **Tools:** Python, NumPy, existing ZuckerFoldingEngine from this project
 **Complexity (Estimated):** O(iterations × N³) where N³ is folding cost per evaluation
+
+### 3. References
+[1] Mathews, D. H., Sabina, J., Zuker, M., & Turner, D. H. (1999). Expanded sequence dependence of thermodynamic parameters provides robust prediction of RNA secondary structure. J. Mol. Biol., 288(5), 911–94<br>
+[2] Rivas, E. and Eddy, S.R. (1999) ‘A dynamic programming algorithm for RNA structure prediction including Pseudoknots’, Journal of Molecular Biology, 285(5), pp. 2053–2068.<br>
 
