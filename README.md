@@ -90,3 +90,22 @@ Sequence : GCCCGGGGC
 Dot-Bracket Notation: (((...)))
 ΔG (kcal/mol): -3.10
 ```
+
+## 4. Discussion
+### 4.1. Pseudoknot Prediction: Known Issues and Debugging Analysis
+### Problem Statement
+The Eddy-Rivas pseudoknot prediction algorithm currently fails to predict pseudoknot structures for sequences where other tools (e.g., IPknot) successfully identify H-type pseudoknots. For example, for the test sequence:
+```
+UUCUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC
+```
+**Expected Structure (IPknot Prediction)**
+```
+................(((.(((((((....[[[[[[.))))))).))).............]]]]]]..
+```
+This contains a pseudoknot with crossing stems at positions 31-36 paired with 63-68.
+
+**Actual Output (rna-pk-knot Prediction)**
+```
+(((((.......(((.....))).)))))((((.....))))(((((....(((...))).)))))....
+```
+This is predicted structure is purely nested (no crossings). Similar issues have been observed with other pseudoknot test sequences
