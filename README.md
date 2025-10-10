@@ -4,59 +4,15 @@
 
 This project implements the dynamic programming algorithm for RNA secondary structure prediction including **pseudoknots**, as described by Rivas & Eddy (1999). This method extends the conventional Zuker approach to handle non-nested base pairings using multi-dimensional gap matrices, aiming to find the globally optimal minimum free energy structure.
 
-## 1. Approach and Optimization Techniques
+## 1. Installation
 
-### Core Dynamic Programming Approach
-
-The implementation strictly follows the recursive relations laid out in the Rivas & Eddy (1999) paper (Equations 8, 9, 11, 12, 13, and 15). The algorithm utilizes five main dynamic programming matrices to track optimal folding energies:
-
-* **2D Matrices:**
-
-  * $W(i, j)$: Minimum free energy (MFE) for the subsequence $i..j$ (unconstrained).
-
-  * $V(i, j)$: MFE for $i..j$, given that $i$ and $j$ are paired.
-
-* **4D Gap Matrices (for Pseudoknots):**
-
-  * $WHX(i, j: k, l)$: General optimal fold over segments $[i, k]$ and $[l, j]$.
-
-  * $ZHX(i, j: k, l)$: $i$ and $j$ are paired; $k$ and $l$ are paired (stem-stem interaction).
-
-  * $YHX(i, j: k, l)$: $i$ and $j$ are paired; $k$ and $l$ are unpaired/unconstrained.
-
-The energy model combines standard nearest-neighbor rules (e.g., Turner 2004 parameters) for nested structures with explicit parameters for coaxial stacking and pseudoknot initiation/extension (following Rivas & Eddy Table 3 heuristics).
-
-### Optimization Techniques
-
-1. **High-Performance Kernels (Numba):** The calculation of the recurrence relations is the critical performance bottleneck ($O(N^6)$ time complexity). Python functions for calculating the core DP loops (`eddy_rivas_recurrences.py`, specifically iterators over matrix dimensions) are compiled using **Numba's Just-In-Time (JIT) compilation** (`@numba.njit`). This achieves native C/Fortran performance, drastically reducing the effective runtime compared to standard Python loops.
-
-2. **Specialized Data Structures:** Custom data structures are used for the memory-intensive matrices. The **Gap Matrices ($WHX, ZHX, YHX$)** are implemented using specialized data types and indexing schemes optimized for sparse storage where possible, although the underlying complexity remains $O(N^4)$.
-
-## 2. Algorithm Performance Evaluation
-
-The Rivas & Eddy algorithm is known for its computational intensity.
-
-| Metric | Theoretical Complexity | Practical Bottleneck | 
- | ----- | ----- | ----- | 
-| **Time (Speed)** | $O(N^{6})$ | Despite Numba optimization, runtime still scales steeply. Max sequence length is severely constrained (typically $N < 150$). | 
-| **Space (Memory)** | $O(N^{4})$ | Primarily dictated by the three 4D gap matrices. This quickly exhausts standard memory resources for $N \gtrsim 100$ nucleotides. | 
-
-The primary limiting factor for scalability is the $O(N^4)$ memory requirement. For practical use on larger RNA molecules, constraints (like restricting loop sizes or maximum pseudoknot spans) are required, or the use of high-memory computing clusters. The Numba optimizations successfully mitigate the **time** complexity, allowing folding of sequences in the 70–100 nt range within reasonable timeframes, but the **memory** cost remains the hard limit.
-
-## 3. Installation and Usage
-
-### Prerequisites
-
+### 1.1. Prerequisites
 * Python (3.8+)
-
 * NumPy
-
 * Numba
-
 * PyYAML
 
-### Installation (From Source)
-
+### 1.2. Installation (From Source)
 1. **Clone the repository:**
 ```
 git clone https://github.com/c-vandenberg/rna-pk-fold.git
@@ -67,11 +23,10 @@ cd rna-pk-fold
 pip install -e .
 ```
 
-### Usage
-
+### 1.3. Usage
 The folding routine can be run using the primary prediction script within the project root:
 ```
-rna-pk-fold "GCCCGGGGC"
+rna-pk-fold GCGCGCGCGCAUUGCGCGCGCGC
 ```
 
 The following arguments can be passed to the script:
@@ -85,14 +40,103 @@ usage: rna-pk-fold [-h] [--engine {auto,zucker,eddy_rivas}] [--yaml YAML] [--tem
 **Example Output:**
 ```
 Engine : eddy_rivas
-Sequence Length : 9
-Sequence : GCCCGGGGC
-Dot-Bracket Notation: (((...)))
-ΔG (kcal/mol): -3.10
+Sequence Length : 23
+Sequence : GCGCGCGCGCAUUGCGCGCGCGC
+Dot-Bracket Notation: ((((((((((...))))))))))
+ΔG (kcal/mol): -23.00
 ```
 
-## 4. Discussion
-### 4.1. Pseudoknot Prediction: Known Issues and Debugging Analysis
+## 2. Discussion
+### 2.1 Core Dynamic Programming Approach
+
+The implementation strictly follows the recursive relations laid out in the Rivas & Eddy (1999) paper (Equations 8, 9, 11, 12, 13, and 15). The algorithm utilizes five main dynamic programming matrices to track optimal folding energies:
+
+* **2D Matrices:**
+  * $W(i, j)$: Minimum free energy (MFE) for the subsequence $i..j$ (unconstrained).
+  * $V(i, j)$: MFE for $i..j$, given that $i$ and $j$ are paired.
+* **4D Gap Matrices (for Pseudoknots):**
+  * $WHX(i, j: k, l)$: General optimal fold over segments $[i, k]$ and $[l, j]$.
+  * $ZHX(i, j: k, l)$: $i$ and $j$ are paired; $k$ and $l$ are paired (stem-stem interaction).
+  * $YHX(i, j: k, l)$: $i$ and $j$ are paired; $k$ and $l$ are unpaired/unconstrained.
+
+The energy model combines standard nearest-neighbor rules (e.g., Turner 2004 parameters) for nested structures with explicit parameters for coaxial stacking and pseudoknot initiation/extension (following Rivas & Eddy Table 3 heuristics).
+
+### 2.2. Optimization Techniques
+
+1. **High-Performance Kernels (Numba):** The calculation of the recurrence relations is the critical performance bottleneck ($O(N^6)$ time complexity). Python functions for calculating the core DP loops (`eddy_rivas_recurrences.py`, specifically iterators over matrix dimensions) are compiled using **Numba's Just-In-Time (JIT) compilation** (`@numba.njit`). This achieves native C/Fortran performance, drastically reducing the effective runtime compared to standard Python loops.
+
+2. **Specialized Data Structures:** Custom data structures are used for the memory-intensive matrices. The **Gap Matrices ($WHX, ZHX, YHX$)** are implemented using specialized data types and indexing schemes optimized for sparse storage where possible, although the underlying complexity remains $O(N^4)$.
+
+### 2.3 Algorithm Performance Evaluation
+
+The Rivas & Eddy algorithm is known for its computational intensity.
+
+| Metric | Theoretical Complexity | Practical Bottleneck | 
+ | ----- | ----- | ----- | 
+| **Time (Speed)** | $O(N^{6})$ | Despite Numba optimization, runtime still scales steeply. Max sequence length is severely constrained (typically $N < 150$). | 
+| **Space (Memory)** | $O(N^{4})$ | Primarily dictated by the three 4D gap matrices. This quickly exhausts standard memory resources for $N \gtrsim 100$ nucleotides. | 
+
+The primary limiting factor for scalability is the $O(N^4)$ memory requirement. For practical use on larger RNA molecules, constraints (like restricting loop sizes or maximum pseudoknot spans) are required, or the use of high-memory computing clusters. The Numba optimizations successfully mitigate the **time** complexity, allowing folding of sequences in the 70–100 nt range within reasonable timeframes, but the **memory** cost remains the hard limit.
+
+### 2.3. Test RNA Sequences Predictions
+All test RNA predictions were carried out using the `turner2004_eddyrivas1999_min.yaml` configuration file. This configuration combined energy data and parameters from both ViennaRNA**<sup>1</sup>** for the core Zucker (nested) algorithm, and the paper by Eddy & Rivas**<sup>2</sup>** for the pseudoknot algorithm. The output was then compared to the predicted structure for [IPknot](https://ws.sato-lab.org/rtips/ipknot/) and ViennaRNA.
+
+### Non-Psuedoknot RNA Sequences
+| Sequence | Predicted Dot-Bracket Notation | Predicted $\Delta G$ (kcal/mol) | IPknot Prediction Match |
+| :--- | :--- | :--- | :--- |
+| GCGC | | | |
+| GCAUCUAUGC | | | |
+| GGGAAAUCCC | | | |
+| AUGCUAGCUAUGC | | | |
+| AUAUAUAUAU | | | |
+| GCAAAGC | | | |
+| GCAAAAGC | | | |
+| GCAAAAAGC | | | |
+| AUGGGAU | | | |
+| AUGGGGAU | | | |
+| GUAAAAGU | | | |
+| UGAAAUG | | | |
+| GCGCAAGC | | | |
+| GCUUCGGC | | | |
+| GCGGAGGC | | | |
+| GGCGAACGCC | | | |
+| GGCGAAUGCC | | | |
+| GGCAAUUGCC | | | |
+| GGCACAUUGCC | | | |
+| GGCAAAUUGCC | | | |
+| GGGAAACCCAAAGGGUUUCCC | | | |
+| GCGAAUCCGAUUGGCUAAGCG | | | |
+| GGAUCCGAAGGCUCGAUCC | | | |
+| GGGAAAUCCAUUGGAUCCCUCC | | | |
+| GCCGAUACGUAUCGGCGAU | | | |
+| GCGCGCGCGCAUUGCGCGCGCGC | | | |
+| GGGGCCCCGGGGCCCC | | | |
+| GUGUGUGUACACACAC | | | |
+| UGUGUGAAACACACA | | | |
+| GUGUAAUUGUGU | | | |
+| AUAUAUAUAU | | | |
+| AAUAAAUAAAUAA | | | |
+| AUAUAAUAUAUAUAU | | | |
+| GCGCGCAGCGCGC | | | |
+| GGCGCCGCGGCC | | | |
+| GCAUCUAUGC | | | |
+| AUGCUAGCUAUGC | | | |
+| GGGAAAUCCC | | | |
+| GCGC | | | |
+| GGAUACGUACCU | | | |
+| CGAUGCAGCUAG | | | |
+| AAAAUAAAAUAAAAUAAAA | | | |
+| UUUUUAAAUUUUUAAAUUUU | | | |
+| AUCCCUA | | | |
+| GUCCUGU | | | |
+
+## Pseudoknot RNA Sequences
+| Sequence | Predicted Dot-Bracket Notation | Predicted $\Delta G$ (kcal/mol) | IPknot Prediction Match |
+| :--- | :--- | :--- | :--- |
+| UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC | | | |
+| AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU | | | |
+
+### 2.4. Pseudoknot Prediction: Known Issues and Debugging Analysis
 ### Problem Statement
 The Eddy-Rivas pseudoknot prediction algorithm currently fails to predict pseudoknot structures for sequences where other tools (e.g., IPknot) successfully identify H-type pseudoknots. For example, for the test sequence:
 ```
@@ -216,3 +260,28 @@ But fails to:
 3. Add sparse matrix optimization to handle increased entry count
 4. Validate against [CRW database](https://crw2-comparative-rna-web.org/16s-rrnas/) of known pseudoknots
 5. Consider selective gap filling: compute non-pairable holes only when composition requests them (lazy evaluation)
+6. Refactoring of larger, monolithic modules (in particular the DP modules `eddy_rivas_recurrences.py` and `zucker_recurrences.py`) once algorithm is successfully handling pseudoknots.
+
+### 2.4. Computational Generation of Optimized RNA Sequences
+### Approach: Simulated Annealing with Structure-Based Fitness
+**Method:**
+* Start with random sequence of desired length
+* Use **simulated annealing** to explore sequence space via single-nucleotide mutations
+* Evaluate fitness using existing Zucker DP implementation (returns number of base pairs and ΔG)
+
+**Objective Functions:**
+* **More pairings:** Minimize ΔG (more stable structure = more pairs)
+* **Fewer pairings:** Maximize ΔG or minimize pair_count directly
+
+**Implementation (Python Pseudocode):**
+```
+for temperature in annealing_schedule:
+    mutated_seq = random_mutation(current_seq)
+    new_energy = zucker_fold(mutated_seq).energy
+    if accept_move(new_energy, old_energy, temperature):
+        current_seq = mutated_seq
+```
+
+**Tools:** Python, NumPy, existing ZuckerFoldingEngine from this project
+**Complexity (Estimated):** O(iterations × N³) where N³ is folding cost per evaluation
+
