@@ -201,7 +201,7 @@ It should be noted that this will affect:
 The above has been implemented, but the issue has persisted. further testing is required to ensure that logic elsewhere is not filtering non-pariable holes.
 
 ### Current Status (10/10/2025)
-✅ Performs O(N⁶) composition with proper energy calculations
+✅ Performs O(N⁶) composition with proper energy calculations\n
 ✅ Identifies pseudoknot holes with favorable free energies
 ✅ Handles backpointer creation and traceback mechanics
 
