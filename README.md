@@ -365,14 +365,6 @@ But fails to:<br>
 ❌ Form true crossing structures (always collapses to nested baseline)<br>
 ❌ Match predictions from specialized pseudoknot tools like IPknot<br>
 
-### Recommendations for Future Work
-1. Validate that pairability constraint is not present elsewhere, and if it is, remove it and re-test.
-2. Profile performance impact of computing all holes vs. pairable-only
-3. Add sparse matrix optimization to handle increased entry count
-4. Validate against [CRW database](https://crw2-comparative-rna-web.org/16s-rrnas/) of known pseudoknots
-5. Consider selective gap filling: compute non-pairable holes only when composition requests them (lazy evaluation)
-6. Refactoring of larger, monolithic modules (in particular the DP modules `eddy_rivas_recurrences.py` and `zucker_recurrences.py`) once algorithm is successfully handling pseudoknots.
-
 ### 2.6. Computational Generation of Optimized RNA Sequences
 ### Approach: Simulated Annealing with Structure-Based Fitness
 **Method:**
@@ -395,6 +387,14 @@ for temperature in annealing_schedule:
 
 **Tools:** Python, NumPy, existing ZuckerFoldingEngine from this project
 **Complexity (Estimated):** O(iterations × N³) where N³ is folding cost per evaluation
+
+### 2.7. Conclusions & Future Work
+1. Validate that pairability constraint is not present elsewhere, and if it is, remove it and re-test.
+2. Profile performance impact of computing all holes vs. pairable-only
+3. Add sparse matrix optimization to handle increased entry count
+4. Validate against [CRW database](https://crw2-comparative-rna-web.org/16s-rrnas/) of known pseudoknots
+5. Consider selective gap filling: compute non-pairable holes only when composition requests them (lazy evaluation)
+6. Refactoring of larger, monolithic modules (in particular the DP modules `eddy_rivas_recurrences.py` and `zucker_recurrences.py`) once algorithm is successfully handling pseudoknots.
 
 ### 3. References
 [1] Mathews, D. H., Sabina, J., Zuker, M., & Turner, D. H. (1999). Expanded sequence dependence of thermodynamic parameters provides robust prediction of RNA secondary structure. J. Mol. Biol., 288(5), 911–94<br>
