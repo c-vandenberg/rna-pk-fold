@@ -49,27 +49,115 @@ Dot-Bracket Notation: ((((((((((...))))))))))
 ## 2. Discussion
 ### 2.1 Core Dynamic Programming Approach
 
-The implementation strictly follows the recursive relations laid out in the Rivas & Eddy (1999) paper (Equations 8, 9, 11, 12, 13, and 15). The algorithm utilizes five main dynamic programming matrices to track optimal folding energies:
+The implementation strictly follows the recursive relations laid out in the Rivas & Eddy (1999) paper (Equations 8, 9, 11, 12, 13, and 15). The algorithm operates in two distinct phases:
 
-* **2D Matrices:**
-  * $W(i, j)$: Minimum free energy (MFE) for the subsequence $i..j$ (unconstrained).
-  * $V(i, j)$: MFE for $i..j$, given that $i$ and $j$ are paired.
-* **4D Gap Matrices (for Pseudoknots):**
-  * $WHX(i, j: k, l)$: General optimal fold over segments $[i, k]$ and $[l, j]$.
-  * $ZHX(i, j: k, l)$: $i$ and $j$ are paired; $k$ and $l$ are paired (stem-stem interaction).
-  * $YHX(i, j: k, l)$: $i$ and $j$ are paired; $k$ and $l$ are unpaired/unconstrained.
+### Phase 1: Nested Structure Baseline (Zucker Algorithm)
+* Computes optimal nested-only structures using 2D dynamic programming.
+* Fill matrices $W(i, j)$ (unconstrained MFE) and V(i, j)$ (constrained with $i-j$ pairing).
+* Provides baseline energies for pseudoknot composition phase.
 
-The energy model combines standard nearest-neighbor rules (e.g., Turner 2004 parameters) for nested structures with explicit parameters for coaxial stacking and pseudoknot initiation/extension (following Rivas & Eddy Table 3 heuristics).
+### Phase 2: Pseudoknot Extension (Eddy-Rivas Algorithm)
+The algorithm utilizes five main dynamic programming matrices to track optimal folding energies including pseudoknots:
+
+* **2D Composition Matrices**
+  * $WX(i, j)$: MFE for subsequence $i..j$ allowing pseudoknots (uncharged + charged compositions)
+  * $VX(i, j)$: MFE with $i$ and $j$ paired, allowing pseudoknots
+  
+* **4D Gap Matrices (Pseudoknot Building Blocks)**
+  * $WHX(i, j: k, l)$: General optimal fold over segments $[i, k]$ and $[l, j]$ with hole $(k, l)$
+  * $ZHX(i, j: k, l)$: Inner helix context where both stems are anchored
+  * $YHX(i, j: k, l)$: Outer helix context allowing varied stem configurations
+  * $VHX(i, j: k, l)$: Inner helix extension matrix
+
+**Gap Matrix Filling ($O(N^4)$)** 
+For each outer span $(i, j)$ and hole $(k, l)$ where bases $k$ and $l$ can form Watson-Crick pairs, compute optimal substructure energies using:
+- Single-stranded penalties for unpaired bases
+- Helix extension/initiation costs
+- Dangles and coaxial stacking terms (when enabled)
+- Splits over intermediate positions $r$ to build composite structures
+
+**Composition Phase ($O(N^6)$)**
+For each span $(i, j)$ and pairable hole $(k, l)$:
+1. Precompute energy vectors over all split positions $r \in [k, l-1]$
+2. Query gap matrices for left ($WHX[i, r: k, r]$) and right ($WHX[r+1, j: r+1, l]$) components
+3. If gap entries are undefined (infinity), collapse to nested baseline from Phase 1
+4. Use vectorized NumPy kernel to find optimal $r^*$ minimizing total energy
+5. Store winning configuration with backpointer for traceback
+
+The energy model combines standard nearest-neighbor rules (Turner 2004 parameters from ViennaRNA) for nested structures with explicit pseudoknot penalties and coaxial stacking terms following Rivas & Eddy heuristics.
 
 ### 2.2. Optimization Techniques
+### 1. Sparse Matrix Storage
+The 4D gap matrices ($WHX, ZHX, YHX, VHX$) theoretically require $O(N^4)$ memory. However, most entries remain unpopulated because:
+- Only pairable holes $(k, l)$ are computed (Watson-Crick complementary)
+- Many configurations have infinite energy (invalid or energetically forbidden)
+- Strict complement ordering constraints ($i < k \leq r < l \leq j$) eliminate invalid states
 
-1. **High-Performance Kernels (Numba):** The calculation of the recurrence relations is the critical performance bottleneck ($O(N^6)$ time complexity). Python functions for calculating the core DP loops (`eddy_rivas_recurrences.py`, specifically iterators over matrix dimensions) are compiled using **Numba's Just-In-Time (JIT) compilation** (`@numba.njit`). This achieves native C/Fortran performance, drastically reducing the effective runtime compared to standard Python loops.
+**Implementation:** Custom `GapMatrix4D` class uses nested dictionaries mapping `(i, j, k, l)` tuples only for finite entries. Uninitialized entries implicitly return infinity, dramatically reducing memory footprint compared to dense $N^4$ arrays.
 
-2. **Specialized Data Structures:** Custom data structures are used for the memory-intensive matrices. The **Gap Matrices ($WHX, ZHX, YHX$)** are implemented using specialized data types and indexing schemes optimized for sparse storage where possible, although the underlying complexity remains $O(N^4)$.
+**Measured Sparsity:** For typical sequences of length $N=70$, only ~1-5% of theoretical matrix entries are stored, reducing memory from ~770 MB (dense) to ~10-40 MB (sparse).
+
+### 2. Vectorized Composition Kernels (NumPy + Numba)
+The composition phase requires finding optimal split position $r$ for each hole, traditionally requiring nested loops:
+```python
+# Naive O(N^6) approach
+for i, j in all_spans:
+    for k, l in holes:
+        for r in range(k, l):
+            energy = WHX[i,r,k,r] + WHX[r+1,j,r+1,l] + penalties
+            # Track minimum
+```
+**Optimization:** Precompute energy component vectors over all $r$ values, then use NumPy's vectorized operations:
+```
+# Vectorized approach
+Lu = np.array([WHX[i,r,k,r] for r in range(k,l)])  # Left energies
+Ru = np.array([WHX[r+1,j,r+1,l] for r in range(k,l)])  # Right energies
+r_star = np.argmin(Lu + Ru + penalties)  # Single vectorized operation
+```
+**Numba JIT Compilation:** The innermost kernel (`compose_wx_best_over_r_arrays`) is compiled with `@numba.njit` for near-C performance, eliminating Python interpreter overhead on the critical hot path (i.e. sections containing significant Python interations over matrix dimensions).
+
+### 3. Pairability Filtering
+Gap matrices only compute holes $(k,l)$ where bases can form Watson-Crick pairs (A-U, G-C, G-U). This reduces the search space by ~75% compared to evaluating all possible (k,l)(k, l)
+$(k,l)$ combinations.
+
+**Implementation:** Pre-computed boolean mask can_pair_mask[k][l] gates iteration:
+```
+for k, l in iter_holes_pairable(i, j, can_pair_mask):
+    # Only process valid holes
+```
+**Limitation:** This optimization proves too aggressive for certain pseudoknots where hole endpoints don't pair directly (see Section 2.3).
+
+### 4. Configurable Hole Width Constraints
+Users can specify minimum/maximum hole widths to prune energetically unlikely configurations:
+* `min_hole_width`: Skip narrow holes unlikely to contain meaningful structure
+* `max_hole_width`: Skip very wide holes with excessive penalties
+
+**Typical Settings:** min_hole_width=0 (no minimum), max_hole_width=0 (unlimited) for maximum accuracy.
+
+### 5. Optional Beam Pruning
+An experimental beam_v_threshold parameter allows skipping holes $(k,l)$ where the nested inner helix $V(k,l)$ exceeds an energy threshold:
+```
+if V_nested[k,l] > threshold:
+    skip_hole  # Inner helix too weak, unlikely to form stable PK
+```
+**Status:** Disabled by default (threshold=0.0) to ensure completeness.
+
+### 6. Baseline Collapse with Memoization
+When gap matrices lack entries for a queried configuration, the algorithm falls back to nested baseline energies from Phase 1. A helper function whx_collapse_with() performs this logic with implicit memoization through the sparse matrix structure.
+
+### 7. Two-Phase Seeding
+By running the complete Zucker algorithm first, the Eddy-Rivas phase:
+* Inherits optimal nested energies as starting points ($WXU \leftarrow W,VXU \leftarrow V$)
+* Only pays $O(N^6)$ cost when evaluating true pseudoknot candidates
+* Falls back to nested solutions when pseudoknots aren't favorable
+
+This "nested-first" strategy ensures the algorithm never performs worse than Zucker alone.
 
 ### 2.3 Algorithm Performance Evaluation
 
 The complexity of our Rivas & Eddy algorithm implementation was measured using the `algorithm_performance.py` script.
+
+**Empirical Complexity:** Benchmarking on sequences of length $N \in [20, 70]$ reveals:
 
 | Metric | Theoretical Complexity | Practical Bottleneck | 
  | ----- | ----- | ----- | 
