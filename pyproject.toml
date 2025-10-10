@@ -1,5 +1,3 @@
-# pyproject.toml
-
 [build-system]
 requires = [
     "setuptools>=61.0",
@@ -9,27 +7,32 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rna-pk-fold"
-version = "0.0.1"
-description = "<you-pypi-package-description>"
+version = "1.0.0"
+description = "Optimal RNA Secondary Structure Prediction with Pseudoknots using the Rivas & Eddy Dynamic Programming Algorithm"
 readme = "README.md"
 license = { text = "MIT License" }
 authors = [
     { name = "Christopher van den Berg", email = "cvandenberg1105@googlemail.com" }
 ]
-keywords = []
+keywords = ["rna", "pseudoknots", "dynamic-programming", "bioinformatics", "folding"]
 classifiers = [
     "Programming Language :: Python :: 3.10",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 requires-python = ">=3.10"
 dependencies = [
+    "numpy>=1.26.0, <2.3.0",
+    "numba>=0.62.1, <1.0",
+    "PyYAML>=6.0.3, <7.0",
+    "tqdm>=4.67.1, <5.0",
 ]
 
 [project.urls]
-Repository = "https://github.com/your-username/your-package-name"
-"Bug Tracker" = "https://github.com/your-username/your-package-name/issues"
+Repository = "https://github.com/c-vandenberg/rna-pk-fold"
+"Bug Tracker" = "https://github.com/c-vandenberg/rna-pk-fold/issues"
 
 [project.scripts]
 rna-pk-fold = "rna_pk_fold.scripts.predict_rna:main"
