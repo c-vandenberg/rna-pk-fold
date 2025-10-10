@@ -129,6 +129,9 @@ def get_yhx_with_collapse(
     float
         The energy from `YHX[i, j, k, l]`, or `invalid_value` for the collapse case.
     """
+    if not (i <= j) or not (i <= k < l <= j):
+        return math.inf
+
     # If the hole collapses, the state is invalid by definition.
     if k + 1 == l:
         return invalid_value
@@ -163,6 +166,9 @@ def get_vhx_with_collapse(
     float
         The energy from `VHX[i, j, k, l]`, or `invalid_value` for the collapse case.
     """
+    if not (i <= j) or not (i <= k < l <= j):
+        return math.inf
+
     if k + 1 == l:
         return invalid_value
     return vhx_matrix.get(i, j, k, l)
@@ -189,7 +195,7 @@ def get_wxi_or_wx(eddy_rivas_state: EddyRivasFoldState, i: int, j: int) -> float
     wxi_mat  = getattr(eddy_rivas_state, "wxi_matrix", None)
 
     # If it exists, get the value from it; otherwise, get from the standard wx_matrix.
-    return wxi_mat .get(i, j) if wxi_mat  is not None else eddy_rivas_state.wx_matrix.get(i, j)
+    return wxi_mat .get(i, j) if wxi_mat is not None else eddy_rivas_state.wx_matrix.get(i, j)
 
 
 def whx_collapse_with(eddy_rivas_state: EddyRivasFoldState, i, j, k, l, charged: bool,
@@ -225,15 +231,25 @@ def whx_collapse_with(eddy_rivas_state: EddyRivasFoldState, i, j, k, l, charged:
     if cache_key in _whx_lookup_cache:
         return _whx_lookup_cache[cache_key]
 
+    # basic geometry guard
+    if not (i <= j) or not (i <= k < l <= j):
+        return math.inf
+
+    collapse = (k + 1 == l)
+    if (can_pair_mask is not None) and not collapse:
+        # treat unpairable endpoints like a collapse to outer WX
+        if not can_pair_mask[k][l]:
+            collapse = True
+
     # --- Collapse Conditions ---
     # Case 1: The hole has zero width.
-    if k + 1 == l:
-        result = eddy_rivas_state.wxu_matrix.get(i, j)
-        _whx_lookup_cache[cache_key] = result
-        return result
-    # Case 2: The hole endpoints cannot form a pair.
-    if can_pair_mask is not None and not can_pair_mask[k][l]:
-        result = eddy_rivas_state.wxu_matrix.get(i, j)
+    if collapse:
+        result = eddy_rivas_state.wxc_matrix.get(i, j) if charged else eddy_rivas_state.wxu_matrix.get(i, j)
+        if math.isfinite(result):
+            _whx_lookup_cache[cache_key] = result
+            return result
+
+        result = eddy_rivas_state.whx_matrix.get(i, j, k, l)
         _whx_lookup_cache[cache_key] = result
         return result
 
@@ -273,19 +289,28 @@ def zhx_collapse_with(eddy_rivas_state: EddyRivasFoldState, i, j, k, l, charged:
     """
     # Create a unique key for the current request.
     cache_key = (i, j, k, l, charged)
+
     # Return the cached result immediately if it exists.
     if cache_key in _zhx_lookup_cache:
         return _zhx_lookup_cache[cache_key]
 
+    if not (i <= j) or not (i <= k < l <= j):
+        return math.inf
+
+    collapse = (k + 1 == l)
+    if (can_pair_mask is not None) and not collapse:
+        if not can_pair_mask[k][l]:
+            collapse = True
+
     # --- Collapse Conditions ---
     # Case 1: The hole has zero width. Fall back to the nested, uncharged VX value.
-    if k + 1 == l:
-        result = eddy_rivas_state.vxu_matrix.get(i, j)
-        _zhx_lookup_cache[cache_key] = result
-        return result
-    # Case 2: The hole endpoints cannot form a pair.
-    if can_pair_mask is not None and not can_pair_mask[k][l]:
-        result = eddy_rivas_state.vxu_matrix.get(i, j)
+    if collapse:
+        result = eddy_rivas_state.vxc_matrix.get(i, j) if charged else eddy_rivas_state.vxu_matrix.get(i, j)
+        if math.isfinite(result):
+            _zhx_lookup_cache[cache_key] = result
+            return result
+
+        result = eddy_rivas_state.zhx_matrix.get(i, j, k, l)
         _zhx_lookup_cache[cache_key] = result
         return result
 
