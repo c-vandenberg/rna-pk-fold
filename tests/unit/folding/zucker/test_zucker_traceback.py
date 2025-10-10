@@ -27,9 +27,9 @@ def minimal_energies():
         HAIRPIN={},
         MULTILOOP=(50.0, 10.0, 10.0, 0.0),
         INTERNAL={},
-        INTERNAL_MM={},
-        NN={},
-        TERMINAL_MM={},
+        INTERNAL_MISMATCH={},
+        TERMINAL_MISMATCH={},
+        NN_STACK={},
         SPECIAL_HAIRPINS=None,
     )
 

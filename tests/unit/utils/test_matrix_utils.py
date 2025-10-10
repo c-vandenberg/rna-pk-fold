@@ -1,6 +1,8 @@
 import math
+import pytest
 
 from rna_pk_fold.utils.matrix_utils import (
+    clear_matrix_caches,
     get_whx_with_collapse,
     get_zhx_with_collapse,
     get_yhx_with_collapse,
@@ -46,6 +48,14 @@ class DummyState:
         # Gap matrices
         self.whx_matrix = DummyGap()
         self.zhx_matrix = DummyGap()
+
+
+@pytest.fixture(autouse=True)
+def auto_clear_matrix_caches():
+    """Auto-clear matrix caches before and after each test."""
+    clear_matrix_caches()
+    yield
+    clear_matrix_caches()
 
 
 # -------------------------------
@@ -154,6 +164,7 @@ def test_whx_collapse_with_switches_between_charged_and_uncharged():
 
 
 def test_zhx_collapse_with_switches_between_charged_and_uncharged():
+    clear_matrix_caches()
     st = DummyState()
     i, j, k = 0, 4, 1
 

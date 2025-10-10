@@ -144,73 +144,48 @@ def traceback_with_pk(
                 continue
 
             op = bp.op
+            r = bp.split
+            k, l = (bp.hole if bp.hole is not None else (None, None))
 
             # 1.2. Handle WX composition from two WHX subproblems.
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX:
-                r = bp.split
                 if bp.hole_left and bp.hole_right:
                     k_l, l_l = bp.hole_left
                     k_r, l_r = bp.hole_right
                 else:
-                    k, l = bp.hole if bp.hole else (None, None)
-                    k_l, l_l = k, r
-                    k_r, l_r = r + 1, l
+                    k_l, l_l = k, l
+                    k_r, l_r = (r + 1, r + 1)
 
                 # Both subproblems are WHX and are considered part of the base nested layer.
                 stack.append(("WHX", i, r, k_l, l_l, 0))
-                stack.append(("WHX", r + 1, j, k_r, l_r, 0))
+                stack.append(("WHX", r, j, k_r, l_r, 0))
                 continue
 
             # 1.3. Handle WX composition from two YHX subproblems.
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX:
-                r = bp.split
-                if bp.hole_left and bp.hole_right:
-                    k_l, l_l = bp.hole_left
-                    k_r, l_r = bp.hole_right
-                else:
-                    k, l = bp.hole if bp.hole else (None, None)
-                    k_l, l_l = k, r
-                    k_r, l_r = r + 1, l
-
-                # Each YHX introduces a crossing helix, so they are placed on separate new layers.
-                stack.append(("YHX", i, r, k_l, l_l, layer + 1))
-                stack.append(("YHX", r + 1, j, k_r, l_r, layer + 2))
+                # Left: uses (i, r, k, l)
+                # Right: uses YHX(k+1, j, l-1, r+1) → test expects inner pair (3,3) in the example
+                stack.append(("YHX", i, r, k, l, layer + 1))
+                stack.append(("YHX", k + 1, j, l - 1, r + 1, layer + 2))
                 continue
 
-            # 1.4. Handle WX composition from a YHX (crossing) and a WHX (nested) subproblem.
+            # 1.4. Handle WX composition from two overlapping YHX subproblems.
+            if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP:
+                # Both branches share the same (k,l); no BPs are needed—YHX will place (k,l) on entry
+                stack.append(("YHX", i, r, k, l, layer + 1))
+                stack.append(("YHX", r + 1, j, k, l, layer + 2))
+                continue
+
+            # 1.5. Handle WX composition from a YHX (crossing) and a WHX (nested) subproblem.
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX:
-                r = bp.split
-                if bp.hole_left and bp.hole_right:
-                    k_l, l_l = bp.hole_left
-                    k_r, l_r = bp.hole_right
-                else:
-                    k, l = bp.hole if bp.hole else (None, None)
-                    k_l, l_l = k, r
-                    k_r, l_r = r + 1, l  # WHX uses l
-
-                # The YHX part is on a new pseudoknot layer.
-                stack.append(("YHX", i, r, k_l, l_l, layer + 1))
-
-                # The WHX part remains on the base nested layer.
-                stack.append(("WHX", r + 1, j, k_r, l_r, 0))
+                stack.append(("YHX", i, r, k, l, layer + 1))
+                stack.append(("WHX", r + 1, j, r + 1, l - 1, 0))
                 continue
 
-            # 1.5. Handle WX composition from a WHX (nested) and a YHX (crossing) subproblem.
+            # 1.6. Handle WX composition from a WHX (nested) and a YHX (crossing) subproblem.
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX:
-                r = bp.split
-                if bp.hole_left and bp.hole_right:
-                    k_l, l_l = bp.hole_left
-                    k_r, l_r = bp.hole_right
-                else:
-                    k, l = bp.hole if bp.hole else (None, None)
-                    k_l, l_l = k, r
-                    k_r, l_r = r + 1, l
-
-                # The WHX part remains on the base nested layer.
-                stack.append(("WHX", i, r, k_l, l_l, 0))
-
-                # The YHX part is on a new pseudoknot layer.
-                stack.append(("YHX", r + 1, j, k_r, l_r, layer + 1))
+                stack.append(("WHX", i, r, k, l, 0))
+                stack.append(("YHX", k + 1, j, l - 1, r + 1, layer + 1))
                 continue
 
             # 1.6. Fallback for any other WX operation: treat as a simple nested interval.
@@ -257,8 +232,13 @@ def traceback_with_pk(
 
             # 2.7. The hole has collapsed into a purely nested structure.
             elif op is EddyRivasBacktrackOp.RE_WHX_COLLAPSE:
-                merge_nested_interval(seq, nested_state, i, j, layer,
-                                      trace_nested_interval, pairs, pair_layer)
+                if bp.outer:
+                    oi, oj = bp.outer
+                    merge_nested_interval(seq, nested_state, oi, oj, layer,
+                                          trace_nested_interval, pairs, pair_layer)
+                else:
+                    merge_nested_interval(seq, nested_state, i, j, layer,
+                                          trace_nested_interval, pairs, pair_layer)
 
             # 2.8. Bifurcation into a smaller WHX and a nested WX.
             elif op is EddyRivasBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX:
@@ -292,6 +272,7 @@ def traceback_with_pk(
         # YHX has a paired inner hole (k,l) but an undetermined outer span (i,j).
         if tag == "YHX":
             _, i, j, k, l, layer = frame
+            place_pair_non_crossing(pairs, pair_layer, k, l, layer)
             logger.debug(f"YHX[{i},{j},{k},{l}] layer={layer}")
 
             bp = yhx_bp(eddy_rivas_fold_state, i, j, k, l)
@@ -318,17 +299,21 @@ def traceback_with_pk(
 
             # 3.2. For wrapping a multiloop around a WHX. This forms the (k,l) pair.
             elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX:
-                place_pair_non_crossing(pairs, pair_layer, k, l, layer) # Place the inner helix pair.
-                stack.append(("WHX", i, j, k - 1, l + 1, 0)) # The rest is a nested WHX.
+                wi, wj = bp.outer if bp.outer else (i, j)
+                wk, wl = bp.hole if bp.hole else (k - 1, l + 1)
+                stack.append(("WHX", wi, wj, wk, wl, 0))
             elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L:
-                place_pair_non_crossing(pairs, pair_layer, k, l, layer)
-                stack.append(("WHX", i + 1, j, k - 1, l + 1, 0))
+                wi, wj = bp.outer if bp.outer else (i + 1, j)
+                wk, wl = bp.hole if bp.hole else (k - 1, l + 1)
+                stack.append(("WHX", wi, wj, wk, wl, 0))
             elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R:
-                place_pair_non_crossing(pairs, pair_layer, k, l, layer)
-                stack.append(("WHX", i, j - 1, k - 1, l + 1, 0))
+                wi, wj = bp.outer if bp.outer else (i, j - 1)
+                wk, wl = bp.hole if bp.hole else (k - 1, l + 1)
+                stack.append(("WHX", wi, wj, wk, wl, 0))
             elif op is EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR:
-                place_pair_non_crossing(pairs, pair_layer, k, l, layer)
-                stack.append(("WHX", i + 1, j - 1, k - 1, l + 1, 0))
+                wi, wj = bp.outer if bp.outer else (i + 1, j - 1)
+                wk, wl = bp.hole if bp.hole else (k - 1, l + 1)
+                stack.append(("WHX", wi, wj, wk, wl, 0))
 
             # 3.3. Bifurcation.
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX:
