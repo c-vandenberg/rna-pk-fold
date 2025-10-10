@@ -1,6 +1,6 @@
 # rna-pk-fold
 
-# RNA-PK-FOLD: Optimal RNA Folding with Pseudoknots
+# RNA PK Fold: Optimal RNA Folding with Pseudoknots
 
 This project implements the dynamic programming algorithm for RNA secondary structure prediction including **pseudoknots**, as described by Rivas & Eddy (1999). This method extends the conventional Zuker approach to handle non-nested base pairings using multi-dimensional gap matrices, aiming to find the globally optimal minimum free energy structure.
 
@@ -158,16 +158,26 @@ This "nested-first" strategy ensures the algorithm never performs worse than Zuc
 The complexity of our Rivas & Eddy algorithm implementation was measured using the `algorithm_performance.py` script.
 
 **Empirical Complexity:** Benchmarking on sequences of length $N \in [20, 70]$ reveals:
+| Metric | Theoretical Complexity | Empirical Complexity | Comment | 
+| ----- | ----- | ----- | ----- |
+| **Time (Speed)** | O(N^6) composition + O(N^4) gap filling | **O(N^4.48)** | Vectorized kernels and sparse matrices provide 1.34× speedup vs. theoretical worst-case. Gap filling dominates for N ≤ 70; composition would dominate for N > 100. |
+| **Space (Memory)** | O(N^4) dense storage | **O(N^3.8)** sparse storage | Custom sparse matrix implementation stores only ~1-5% of theoretical entries. For N=70: ~50 MB actual vs. ~770 MB theoretical dense storage. |
 
-| Metric | Theoretical Complexity | Practical Bottleneck | 
- | ----- | ----- | ----- | 
-| **Time (Speed)** | $O(N^{6})$ | Despite Numba optimization, runtime still scales steeply. Max sequence length is severely constrained (typically $N < 150$). | 
-| **Space (Memory)** | $O(N^{4})$ | Primarily dictated by the three 4D gap matrices. This quickly exhausts standard memory resources for $N \gtrsim 100$ nucleotides. | 
+This is illustrated in *Fig 1.$.
+
+<br>
+  <div align="center">
+    <img src="https://github.com/user-attachments/assets/57841109-f7c7-4c22-94e3-6b253f651eb3", alt="rna-pk-fold-complexity"/>
+    <p>
+      <b>Fig 1</b> Log-log plot for RNA PK Fold runtime performance and memory usage.
+    </p>
+  </div>
+<br>
 
 The primary limiting factor for scalability is the $O(N^4)$ memory requirement. For practical use on larger RNA molecules, constraints (like restricting loop sizes or maximum pseudoknot spans) are required, or the use of high-memory computing clusters. The Numba optimizations successfully mitigate the **time** complexity, allowing folding of sequences in the 70–100 nt range within reasonable timeframes, but the **memory** cost remains the hard limit.
 
 ### 2.3. Test RNA Sequences Predictions
-All test RNA predictions were carried out using the `turner2004_eddyrivas1999_min.yaml` configuration file. This configuration combined energy data and parameters from both ViennaRNA**<sup>1</sup>** for the core Zucker (nested) algorithm, and the paper by Eddy & Rivas**<sup>2</sup>** for the pseudoknot algorithm. The output was then compared to the predicted structure for [IPknot](https://ws.sato-lab.org/rtips/ipknot/) and ViennaRNA.
+All test RNA predictions were carried out using the `turner2004_eddyrivas1999_min.yaml` configuration file. This configuration combined energy data and parameters from both ViennaRNA<sup>1</sup> for the core Zucker (nested) algorithm, and the paper by Eddy & Rivas<sup>2</sup> for the pseudoknot algorithm. The output was then compared to the predicted structure for [IPknot](https://ws.sato-lab.org/rtips/ipknot/) and ViennaRNA.
 
 ### Non-Psuedoknot RNA Sequences
 | Sequence | Predicted Dot-Bracket Notation | Predicted $\Delta G$ (kcal/mol) | IPknot Prediction Match |
@@ -235,7 +245,7 @@ UUCUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC
 ```
 This contains a pseudoknot with crossing stems at positions 31-36 paired with 63-68.
 
-**Actual Output (rna-pk-knot Prediction)**
+**Actual Output (RNA PK Fold Prediction)**
 ```
 (((((.......(((.....))).)))))((((.....))))(((((....(((...))).)))))....
 ```
