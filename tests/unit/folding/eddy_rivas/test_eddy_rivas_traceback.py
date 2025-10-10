@@ -30,7 +30,7 @@ def test_empty_sequence_returns_empty_result():
     res = traceback_with_pk(
         seq="",
         nested_state=object(),
-        re_state=re_state,
+        eddy_rivas_fold_state=re_state,
         trace_nested_interval=make_nested_tracer(),
     )
     assert res.pairs == []
@@ -48,7 +48,7 @@ def test_wx_fallback_to_nested_merges_pairs():
     res = traceback_with_pk(
         seq=seq,
         nested_state=object(),
-        re_state=re_state,
+        eddy_rivas_fold_state=re_state,
         trace_nested_interval=make_nested_tracer(),
     )
 
@@ -92,7 +92,7 @@ def test_wx_compose_whx_two_collapses_yield_two_disjoint_pairs_across_layers():
     res = traceback_with_pk(
         seq=seq,
         nested_state=object(),
-        re_state=re_state,
+        eddy_rivas_fold_state=re_state,
         trace_nested_interval=make_nested_tracer(),
     )
 
@@ -124,7 +124,7 @@ def test_wx_compose_yhx_overlap_adds_inner_pair_once():
     res = traceback_with_pk(
         seq=seq,
         nested_state=object(),
-        re_state=re_state,
+        eddy_rivas_fold_state=re_state,
         trace_nested_interval=make_nested_tracer(),
     )
 
@@ -179,7 +179,7 @@ def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
     res = traceback_with_pk(
         seq=seq,
         nested_state=object(),
-        re_state=re_state,
+        eddy_rivas_fold_state=re_state,
         trace_nested_interval=make_nested_tracer(),
     )
 

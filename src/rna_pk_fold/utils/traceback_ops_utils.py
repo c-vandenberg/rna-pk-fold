@@ -37,3 +37,45 @@ def merge_nested_interval(
     for p in base.pairs:
         print(f"  → ({p.base_i},{p.base_j})")
         add_pair_once(pairs, pair_layer, p.base_i, p.base_j, layer)
+
+
+# --- layer-safe placement (avoids crossings within the same layer) ---
+def _crosses(a: tuple[int,int], b: tuple[int,int]) -> bool:
+    return (a[0] < b[0] < a[1] < b[1]) or (b[0] < a[0] < b[1] < a[1])
+
+
+def place_pair_non_crossing(
+    pairs: set,
+    pair_layer: dict[tuple[int,int], int],
+    i: int,
+    j: int,
+    start_layer: int
+) -> int:
+    """Place (i,j) at the lowest layer ≥ start_layer that doesn't create
+    an intra-layer crossing. Returns the chosen layer."""
+    layer = start_layer
+    while True:
+        conflict = False
+        for (pi, pj), L in pair_layer.items():
+            if L == layer and _crosses((i, j), (pi, pj)):
+                conflict = True
+                break
+        if not conflict:
+            # actually place it
+            add_pair_once(pairs, pair_layer, i, j, layer)
+            print(f"[PAIR] ({i},{j}) -> L{layer}", flush=True)
+            return layer
+        layer += 1
+
+
+def audit_layer_map(pair_layer: dict[tuple[int, int], int]) -> None:
+    by_layer = {}
+    for (i, j), lay in pair_layer.items():
+        by_layer.setdefault(lay, []).append((i, j))
+
+    def crosses(a, b):
+        return (a[0] < b[0] < a[1] < b[1]) or (b[0] < a[0] < b[1] < a[1])
+
+    for lay, ps in sorted(by_layer.items()):
+        c = sum(crosses(ps[u], ps[v]) for u in range(len(ps)) for v in range(u + 1, len(ps)))
+        print(f"[L{lay}] pairs={len(ps)} crossings_within_layer={c}", flush=True)

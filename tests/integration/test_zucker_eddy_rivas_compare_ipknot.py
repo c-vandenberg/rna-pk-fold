@@ -238,7 +238,7 @@ def test_full_vs_ipknot_shape_and_energy(seq: str, energy_model, engines_and_cos
     full_tr = er_traceback_with_pk(
         seq,
         nested_state=z_state,
-        re_state=re_state,
+        eddy_rivas_fold_state=re_state,
         trace_nested_interval=zucker_traceback_interval,
     )
     ours_full_db = full_tr.dot_bracket

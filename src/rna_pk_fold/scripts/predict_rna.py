@@ -258,7 +258,7 @@ def predict_er(
         tr_full = er_traceback_with_pk(
             seq,
             nested_state=z_state,
-            re_state=re_state,
+            eddy_rivas_fold_state=re_state,
             trace_nested_interval=traceback_nested_interval,
         )
         elapsed = time.perf_counter() - start_time
