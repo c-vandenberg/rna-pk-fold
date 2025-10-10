@@ -16,20 +16,54 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class ZuckerFoldingConfig:
+    """
+    Configuration settings for the Zuker folding algorithm.
+
+    Attributes
+    ----------
+    temp_k : float
+        The temperature in Kelvin used for energy calculations. Defaults to 310.15 K (37 °C).
+    verbose : bool
+        If True, enables verbose output, including a progress bar.
+    """
     temp_k: float = 310.15
     verbose: bool = False
 
 
 @dataclass(slots=True)
 class ZuckerFoldingEngine:
+    """
+    Implements the Zuker dynamic programming algorithm for nested RNA folding.
+
+    This class orchestrates the bottom-up filling of the DP matrices (W, V, WM)
+    to find the minimum free energy secondary structure of an RNA sequence,
+    considering only nested (non-pseudoknotted) structures.
+
+    Attributes
+    ----------
+    energy_model : SecondaryStructureEnergyModelProtocol
+        An object that provides methods to calculate the free energy contributions
+        of various structural motifs (hairpins, stacks, etc.).
+    config : ZuckerFoldingConfig
+        A configuration object containing settings for the folding process.
+    """
     energy_model: SecondaryStructureEnergyModelProtocol
     config: ZuckerFoldingConfig
 
     def fill_all_matrices(self, seq: str, state: ZuckerFoldState) -> None:
         """
-        Fill WM and V bottom-up by span. For each span d:
-          1) compute WM[i][j] (uses V on smaller spans)
-          2) compute V[i][j]   (can use WM[i+1][j-1])
+        Executes the main Zuker dynamic programming algorithm.
+
+        This method drives the entire folding process by iterating through all
+        possible subsequence lengths (spans `d`) and filling the `WM`, `V`, and `W`
+        matrices in a bottom-up fashion.
+
+        Parameters
+        ----------
+        seq : str
+            The RNA sequence to fold.
+        state : ZuckerFoldState
+            The state object containing the DP matrices to be filled.
         """
         start_time = time.perf_counter()
         n = len(seq)
@@ -44,19 +78,25 @@ class ZuckerFoldingEngine:
         show_progress = self.config.verbose or logger.isEnabledFor(logging.INFO)
         span_iter = tqdm(range(0, n), desc="Zucker DP", leave=True, disable=not show_progress)
 
-        # d = 0..n-1 for WM; V is defined for d >= 1
+        # The main DP loop: Iterates by subsequence length 'd' (from 0 to N-1).
         for d in span_iter:
+            # Inner loop: iterates by the start index 'i' of the subsequence.
             for i in range(0, n - d):
+                # Calculate the end index 'j'.
                 j = i + d
 
-                # ---------- 1. Matrix WM: Multiloop Accumulator (content between i..j) ----------
+                # ---------- 1. Step 1: Fill WM matrix cell ----------
+                # WM accumulates energies for structures within a multiloop.
                 self._fill_wm_cell(seq, i, j, state, b, c)
 
-                # ---------- 2. Matrix V: Paired Spans (only if length >= 2) ----------
+                # ---------- 2. Fill V matrix cell ----------
+                # V calculates energies for subsequences closed by a pair (i,j).
+                # A hairpin requires a minimum length to form.
                 if d >= 4:
                     self._fill_v_cell(seq, i, j, state, a)
 
-                # ---------- 3. Matrix W: ----------
+                # ---------- 3. Fill W matrix cell ----------
+                # W calculates the overall optimal energy for the subsequence [i,j].
                 self._fill_w_cell(i, j, state, seq)
 
         elapsed = time.perf_counter() - start_time
@@ -75,20 +115,56 @@ class ZuckerFoldingEngine:
         branch_cost_b: float,
         unpaired_cost_c: float
     ) -> None:
+        """
+        Fills a single cell WM[i, j] for the multiloop interior matrix.
+
+        The WM matrix stores the minimum free energy for a subsequence `[i, j]`
+        that is located *inside* a multiloop. The structure within `[i, j]`
+        can consist of one or more helices branching off, interspersed with
+        unpaired bases. This function calculates `WM[i, j]` by taking the
+        minimum over all possible ways to form such a structure.
+
+        Parameters
+        ----------
+        seq : str
+            The RNA sequence.
+        i : int
+            The 5' start index of the subsequence.
+        j : int
+            The 3' end index of the subsequence.
+        state : ZuckerFoldState
+            The state object containing the DP matrices.
+        branch_cost_b : float
+            The thermodynamic penalty for adding a new branching helix to a multiloop.
+        unpaired_cost_c : float
+            The thermodynamic penalty for each unpaired nucleotide within a multiloop.
+
+        Notes
+        -----
+        The value of `WM[i, j]` is the minimum of three cases:
+        1.  `WM[i+1, j] + c`: Base `i` is unpaired.
+        2.  `WM[i, j-1] + c`: Base `j` is unpaired.
+        3.  `min_{i<k<=j} (V[i, k] + b + WM[k+1, j])`: A new helix `(i, k)`
+            branches off, incurring a penalty `b`. The remainder `[k+1, j]`
+            continues the multiloop interior.
+        """
+        # Get references to the required matrices from the state object.
         wm_matrix = state.wm_matrix
         wm_back_ptr = state.wm_back_ptr
         v_matrix = state.v_matrix
 
-        # Base case already initialized in make_fold_state: WM[i][i] = 0.0
+        # The base case for a single nucleotide (i == j) is already initialized to 0.
         if i == j:
             wm_back_ptr.set(i, j, ZuckerBackPointer(operation=ZuckerBacktrackOp.NONE))
             return
 
+        # Initialize the best energy and backpointer for this cell.
         best_energy = math.inf
         best_rank = math.inf
         best_back_ptr = ZuckerBackPointer()
 
-        # Option 1: Leave Left Base Unpaired. (Rank 1).
+        # --- Recurrence Cases for WM ---
+        # Case 1: Add an unpaired base at the 5' end.
         cand_energy = wm_matrix.get(i + 1, j) + unpaired_cost_c
         cand_rank = 1
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_LEFT)
@@ -96,7 +172,7 @@ class ZuckerFoldingEngine:
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
 
-        # Option 2: Leave Right Base Unpaired. (Rank 1).
+        # Case 2: Add an unpaired base at the 3' end.
         cand_energy = wm_matrix.get(i, j - 1) + unpaired_cost_c
         cand_rank = 1
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_RIGHT)
@@ -104,19 +180,26 @@ class ZuckerFoldingEngine:
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
 
-        # Option 3: Attach a helix that starts at i and pairs with k (i < k <= j). Rank 0.
+        # Case 3: Attach a new helix starting at 'i' and closing at 'k'.
         for k in range(i + 1, j + 1):
+            # The helix must be formed by a valid base pair.
             if not can_pair(seq[i], seq[k]):
                 continue
 
+            # Get the energy of the closing helix V(i,k).
             v_ik = v_matrix.get(i, k)
             if math.isinf(v_ik):
                 continue
+
+            # Calculate any bonus for terminal mismatches adjacent to the multiloop.
             end_bonus = 0.0
             if self.energy_model.params.MULTI_MISMATCH is not None:
                 end_bonus = best_multiloop_end_bonus(i, k, seq, self.energy_model.params, self.config.temp_k)
 
+            # Get the energy of the remaining segment of the multiloop.
             tail = 0.0 if k + 1 > j else wm_matrix.get(k + 1, j)
+
+            # Total energy is the sum of the branch penalty, helix energy, bonuses, and tail energy.
             cand_energy = branch_cost_b + v_ik + end_bonus + tail
             cand_rank = 0
             cand_back_ptr = ZuckerBackPointer(
@@ -126,35 +209,70 @@ class ZuckerFoldingEngine:
                 cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
             )
 
+        # Store the optimal energy and backpointer for this cell.
         wm_matrix.set(i, j, best_energy)
         wm_back_ptr.set(i, j, best_back_ptr)
 
-    def _fill_v_cell(self, seq: str, i: int, j: int, state: ZuckerFoldState, multi_close_a: float) -> None:
+    def _fill_v_cell(self, seq: str, i: int, j: int, state: ZuckerFoldState,
+                     multi_close_a: float) -> None:
+        """
+        Fills a single cell V[i, j] for the pair-closed matrix.
+
+        The V matrix stores the minimum free energy for a subsequence `[i, j]`
+        given the constraint that bases `i` and `j` form a pair. This function
+        calculates `V[i, j]` by considering all possible nested structures that
+        can be enclosed by this pair.
+
+        Parameters
+        ----------
+        seq : str
+            The RNA sequence.
+        i : int
+            The 5' start index of the subsequence (forms a pair with j).
+        j : int
+            The 3' end index of the subsequence (forms a pair with i).
+        state : ZuckerFoldState
+            The state object containing the DP matrices.
+        multi_close_a : float
+            The thermodynamic penalty for closing a multiloop.
+
+        Notes
+        -----
+        The value of `V[i, j]` is the minimum of four cases:
+        1.  **Hairpin**: The pair `(i, j)` closes a hairpin loop. The energy is
+            calculated by the energy model.
+        2.  **Stack**: The pair `(i, j)` stacks on an adjacent inner pair
+            `(i+1, j-1)`. The total energy is `stacking_energy + V[i+1, j-1]`.
+        3.  **Internal Loop**: The pair `(i, j)` encloses an inner pair `(k, l)`,
+            forming an internal loop or bulge. The total energy is
+            `internal_loop_energy + V[k, l]`.
+        4.  **Multiloop**: The pair `(i, j)` closes a multiloop. The total
+            energy is `multiloop_penalty + WM[i+1, j-1]`.
+        """
+        # Get references to the required matrices.
         v_matrix = state.v_matrix
         v_back_ptr = state.v_back_ptr
 
+        # A hairpin loop requires a minimum number of unpaired bases.
         if j - i < 4:  # Need at least 3 unpaired bases for a hairpin
             v_matrix.set(i, j, math.inf)
             v_back_ptr.set(i, j, ZuckerBackPointer())
             return
 
-        # If endpoints can't pair, V is +inf
+        # V(i,j) is only defined if 'i' and 'j' can form a base pair.
         if not can_pair(seq[i], seq[j]):
             v_matrix.set(i, j, math.inf)
             v_back_ptr.set(i, j, ZuckerBackPointer())
             return
 
+        # Initialize the best energy and backpointer for this cell.
         best_energy = math.inf
         best_rank = math.inf
         best_back_ptr = ZuckerBackPointer()
 
-        # Case 1: Hairpin. (Rank 3)
+        # --- Recurrence Cases for V ---
+        # Case 1: (i,j) closes a hairpin loop.
         delta_g_hp = self.energy_model.hairpin(base_i=i, base_j=j, seq=seq, temp_k=self.config.temp_k)
-        # DEBUG: Log hairpin energies for specific problematic sequences
-        if len(seq) == 10 and seq == "GCAUCUAUGC" and i == 3 and j == 6:
-            logger.debug(f"V[{i},{j}] hairpin energy: {delta_g_hp:.2f}")
-            logger.debug(f"  Closing pair: {seq[i]}-{seq[j]}")
-            logger.debug(f"  Loop sequence: {seq[i + 1:j]}")
         cand_energy = delta_g_hp
         cand_rank = 3
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.HAIRPIN)
@@ -162,7 +280,7 @@ class ZuckerFoldingEngine:
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
 
-        # Case 2.1: Stack On (i+1, j-1). (Rank 0)
+        # Case 2: (i,j) stacks on an inner pair (i+1, j-1).
         if i + 1 <= j - 1 and can_pair(seq[i + 1], seq[j - 1]):
             delta_g_stk = self.energy_model.stack(
                 base_i=i, base_j=j, base_k=i + 1, base_l=j - 1, seq=seq, temp_k=self.config.temp_k
@@ -176,16 +294,20 @@ class ZuckerFoldingEngine:
                     cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
                 )
 
-        # Case 2.2: Internal/Bulge Loops Via All Inner Pairs (k,l). (Rank 1).
+        # Case 3: (i,j) closes an internal loop or bulge loop.
         for k in range(i + 1, j):
             for l in range(k + 1, j):
                 if not can_pair(seq[k], seq[l]):
                     continue
+
+                # Calculate the energy of the internal loop itself.
                 delta_g_intl = self.energy_model.internal(
                     base_i=i, base_j=j, base_k=k, base_l=l, seq=seq, temp_k=self.config.temp_k
                 )
                 if not math.isfinite(delta_g_intl):
                     continue
+
+                # Total energy is the loop energy plus the energy of the enclosed helix V(k,l).
                 cand_energy = delta_g_intl + v_matrix.get(k, l)
                 cand_rank = 1
                 cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.INTERNAL, inner=(k, l))
@@ -193,9 +315,11 @@ class ZuckerFoldingEngine:
                     cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
                 )
 
-        # Case 3: Close a Multiloop. (Rank 2).
+        # Case 3: (i,j) closes a multiloop.
         if j - i - 1 >= MIN_HAIRPIN_UNPAIRED:
             wm_inside = state.wm_matrix.get(i + 1, j - 1)
+
+            # Total energy is the multiloop closing penalty plus the energy of the interior.
             cand_energy = multi_close_a + wm_inside
             cand_rank = 2
             cand_back_ptr = ZuckerBackPointer(
@@ -205,33 +329,58 @@ class ZuckerFoldingEngine:
                 cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
             )
 
+        # Store the optimal energy and backpointer for this cell.
         v_matrix.set(i, j, best_energy)
         v_back_ptr.set(i, j, best_back_ptr)
 
     def _fill_w_cell(self, i: int, j: int, state: ZuckerFoldState, seq) -> None:
         """
-        Fill W[i][j] = min(
-            W[i+1][j],         # leave i unpaired
-            W[i][j-1],         # leave j unpaired
-            V[i][j],           # pair i..j
-            min_k W[i][k] + W[k+1][j]   # bifurcation
-        )
+        Fills a single cell W[i, j] for the main energy matrix.
+
+        The W matrix stores the overall minimum free energy for the subsequence
+        `[i, j]`, considering all possible valid nested secondary structures.
+        This function calculates `W[i, j]` by taking the minimum over all
+        possible decompositions of the subsequence.
+
+        Parameters
+        ----------
+        i : int
+            The 5' start index of the subsequence.
+        j : int
+            The 3' end index of the subsequence.
+        state : ZuckerFoldState
+            The state object containing the DP matrices.
+        seq : str
+            The RNA sequence (used for debugging output).
+
+        Notes
+        -----
+        The value of `W[i, j]` is the minimum of four cases:
+        1.  `W[i+1, j]`: Base `i` is left unpaired.
+        2.  `W[i, j-1]`: Base `j` is left unpaired.
+        3.  `V[i, j]`: Bases `i` and `j` form a pair, enclosing an optimal
+            substructure.
+        4.  `min_{i<=k<j} (W[i, k] + W[k+1, j])`: The structure is a
+            bifurcation, composed of two independent adjacent substructures.
         """
+        # Get references to the required matrices.
         w_matrix = state.w_matrix
         v_matrix = state.v_matrix
         w_back_ptr = state.w_back_ptr
 
-        # Base case: single cell (i==j) -> nothing to pair; cost 0 by convention
+        # Base case: a single nucleotide has 0 energy and no structure.
         if i == j:
             w_matrix.set(i, j, 0.0)
             w_back_ptr.set(i, j, ZuckerBackPointer(operation=ZuckerBacktrackOp.NONE))
             return
 
+        # Initialize the best energy and backpointer for this cell.
         best_energy = math.inf
         best_rank = math.inf
         best_back_ptr = ZuckerBackPointer()
 
-        # Case 1: Leave `i` Unpaired. (Rank 2).
+        # --- Recurrence Cases for W ---
+        # Case 1: Leave base 'i' unpaired.
         cand_energy = w_matrix.get(i + 1, j)
         cand_rank = 2
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_LEFT)
@@ -239,7 +388,7 @@ class ZuckerFoldingEngine:
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
 
-        # Case 2: Leave `j` Unpaired. (Rank 2).
+        # Case 2: Leave base 'j' unpaired.
         cand_energy = w_matrix.get(i, j - 1)
         cand_rank = 2
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_RIGHT)
@@ -247,7 +396,7 @@ class ZuckerFoldingEngine:
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
 
-        # Case 3: Take V[i][j]. (Rank 0).
+        # Case 3: The pair (i,j) is formed.
         cand_energy = v_matrix.get(i, j)
         cand_rank = 0
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.PAIR)
@@ -255,7 +404,7 @@ class ZuckerFoldingEngine:
             cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
         )
 
-        # Case 4: Bifurcation. (Rank 1).
+        # Case 4: Bifurcation. Split the interval [i,j] into two independent subproblems.
         for k in range(i, j):
             cand_energy = w_matrix.get(i, k) + w_matrix.get(k + 1, j)
             cand_rank = 1
@@ -264,12 +413,14 @@ class ZuckerFoldingEngine:
                 cand_energy, cand_rank, cand_back_ptr, best_energy, best_rank, best_back_ptr
             )
 
-        if i == 0 and j == len(seq) - 1:  # Final cell
+        # This debugging block logs details for the final cell of the matrix.
+        if i == 0 and j == len(seq) - 1:
             logger.debug(f"\n=== W[0,{j}] Final ===")
             logger.debug(f"Best energy: {best_energy:.2f}")
             logger.debug(f"Best operation: {best_back_ptr.operation}")
             logger.debug(f"V[0,{j}]: {v_matrix.get(i, j):.2f}")
 
+        # Store the optimal energy and backpointer for this cell.
         w_matrix.set(i, j, best_energy)
         w_back_ptr.set(i, j, best_back_ptr)
 
@@ -283,8 +434,16 @@ class ZuckerFoldingEngine:
         best_back_ptr: ZuckerBackPointer,
     )-> tuple[float, float, ZuckerBackPointer]:
         """
-        Pick the candidate if it has lower energy, or same energy but lower rank.
-        Returns the (energy, rank, ZuckerBackPointer) triple to keep as 'best'.
+        Selects the best of two candidates based on energy and rank.
+
+        This helper function implements the tie-breaking rule: if two recursion
+        cases produce the same energy, the one with the lower rank is preferred.
+        This helps produce more canonical structures (e.g., smaller loops).
+
+        Returns
+        -------
+        tuple[float, float, ZuckerBackPointer]
+            The winning candidate's (energy, rank, backpointer) tuple.
         """
         if (cand_energy < best_energy) or (cand_energy == best_energy and cand_rank < best_rank):
             return cand_energy, cand_rank, cand_back_ptr

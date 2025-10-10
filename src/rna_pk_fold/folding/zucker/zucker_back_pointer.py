@@ -11,8 +11,14 @@ Interval = Tuple[int, int]
 
 class ZuckerBacktrackOp(Enum):
     """
-    Operation chosen at a matrix cell. This is to be used during traceback to
-    track what recurrence case produced the optimal value at a given cell.
+    Defines all possible backtrack operations for the Zuker algorithm.
+
+    This enumeration provides a set of unique identifiers for each recursion
+    rule used in the Zuker-style dynamic programming algorithm for nested RNA
+    secondary structure prediction. Each member represents a specific way an
+    optimal energy for a subsequence could have been calculated. Storing one
+    of these members in a backpointer allows the traceback process to correctly
+    reconstruct the sequence of decisions that led to the final optimal structure.
 
     NONE            : Not set yet.
     HAIRPIN         : V[i,j] formed a hairpin closed by (i,j).
@@ -39,34 +45,41 @@ class ZuckerBacktrackOp(Enum):
 @dataclass(frozen=True, slots=True)
 class ZuckerBackPointer:
     """
-    Back-pointer describing how a matrix cell's value was derived.
+    Stores the information needed to backtrack a single step in the Zuker DP matrix.
 
-    Parameters
+    This immutable and memory-efficient data structure represents a single
+    decision point in the dynamic programming process. It captures which
+    recursion rule (`operation`) was chosen as optimal for a given matrix cell,
+    along with any coordinates (`split_k`, `inner`) needed to recursively call
+    the traceback on the corresponding subproblems.
+
+    Attributes
     ----------
     operation : ZuckerBacktrackOp
-                The recurrence operation selected for this cell.
-    split_k   : Optional[int]
-                For bifurcations W[i,j] -> W[i,k] + W[k+1,j], record k.
-    inner     : Optional[Tuple[int, int]]
-                For internal/stack cases, the inner paired indices, e.g., (i+1, j-1)
-                for STACK, or (k, l) for INTERNAL loops.
-    inner_2   : the second crossing stem (k,l) (in addition to `inner`)
-    segs      : a tuple/list of up to four W-subintervals to recurse on,
-                e.g. ((i+1,a-1), (a,b-1), (c+1,d-1), (d,j-1))
-    layer     : optional bracket layer hint for rendering (0=(), 1=[], ...)
-    note      : Optional[str]
-                Free-form metadata (e.g., “tri-tetra hairpin”, “multi enter”).
+        The specific DP recursion rule that was chosen as optimal for this cell.
+    split_k : Optional[int]
+        The index `k` used in a `BIFURCATION` rule, where the problem on
+        `[i,j]` was split into `[i,k]` and `[k+1,j]`.
+    inner : Optional[Tuple[int, int]]
+        The coordinates `(k,l)` of the inner base pair for an `INTERNAL` loop,
+        or `(i+1, j-1)` for a `STACK` operation.
+    inner_2 : Optional[Tuple[int, int]]
+        Coordinates for a second inner helix, used for more complex motifs like
+        H-type pseudoknots (not part of the standard Zuker algorithm).
+    segs : Optional[Sequence[Interval]]
+        A sequence of sub-intervals to recurse on, typically for multiloops or
+        pseudoknot decompositions.
+    layer : Optional[int]
+        A hint for rendering multilayer dot-bracket strings, where 0 corresponds
+        to '()', 1 to '[]', etc.
+    note : Optional[str]
+        A free-form string for storing debugging information or metadata about
+        the specific rule variant used (e.g., "triloop", "tetraloop").
     """
     operation: ZuckerBacktrackOp = ZuckerBacktrackOp.NONE
-
-    # Generic fields
     split_k: Optional[int] = None
     inner: Optional[Tuple[int, int]] = None
-
-    # Pseudoknot (H-type) extras
     inner_2: Optional[Tuple[int, int]] = None
     segs: Optional[Sequence[Interval]] = None
     layer: Optional[int] = None
-
-    # Free-form metadata (e.g., “tri-tetra hairpin”, “attach-helix”, “H-type”)
     note: Optional[str] = None
