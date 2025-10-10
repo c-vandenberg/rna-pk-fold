@@ -16,6 +16,7 @@ This project implements the dynamic programming algorithm for RNA secondary stru
    2.4. [Test RNA Sequences Predictions](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#24-test-rna-sequences-predictions)<br>
    2.5. [Pseudoknot Prediction: Known Issues and Debugging Analysis](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#25-pseudoknot-prediction-known-issues-and-debugging-analysis)<br>
    2.6. [Computational Generation of Optimized RNA Sequences](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#26-computational-generation-of-optimized-rna-sequences)<br>
+   2.7. [Conclusions & Future Work](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#27-conclusions--future-work)<br>
 3. [References](https://github.com/c-vandenberg/rna-pk-fold/blob/feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2/README.md#3-references)<br>
    
    
