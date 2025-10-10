@@ -84,57 +84,56 @@ All test RNA predictions were carried out using the `turner2004_eddyrivas1999_mi
 ### Non-Psuedoknot RNA Sequences
 | Sequence | Predicted Dot-Bracket Notation | Predicted $\Delta G$ (kcal/mol) | IPknot Prediction Match |
 | :--- | :--- | :--- | :--- |
-| GCGC | | | |
-| GCAUCUAUGC | | | |
-| GGGAAAUCCC | | | |
-| AUGCUAGCUAUGC | | | |
-| AUAUAUAUAU | | | |
-| GCAAAGC | | | |
-| GCAAAAGC | | | |
-| GCAAAAAGC | | | |
-| AUGGGAU | | | |
-| AUGGGGAU | | | |
-| GUAAAAGU | | | |
-| UGAAAUG | | | |
-| GCGCAAGC | | | |
-| GCUUCGGC | | | |
-| GCGGAGGC | | | |
-| GGCGAACGCC | | | |
-| GGCGAAUGCC | | | |
-| GGCAAUUGCC | | | |
-| GGCACAUUGCC | | | |
-| GGCAAAUUGCC | | | |
-| GGGAAACCCAAAGGGUUUCCC | | | |
-| GCGAAUCCGAUUGGCUAAGCG | | | |
-| GGAUCCGAAGGCUCGAUCC | | | |
-| GGGAAAUCCAUUGGAUCCCUCC | | | |
-| GCCGAUACGUAUCGGCGAU | | | |
-| GCGCGCGCGCAUUGCGCGCGCGC | | | |
-| GGGGCCCCGGGGCCCC | | | |
-| GUGUGUGUACACACAC | | | |
-| UGUGUGAAACACACA | | | |
-| GUGUAAUUGUGU | | | |
-| AUAUAUAUAU | | | |
-| AAUAAAUAAAUAA | | | |
-| AUAUAAUAUAUAUAU | | | |
-| GCGCGCAGCGCGC | | | |
-| GGCGCCGCGGCC | | | |
-| GCAUCUAUGC | | | |
-| AUGCUAGCUAUGC | | | |
-| GGGAAAUCCC | | | |
-| GCGC | | | |
-| GGAUACGUACCU | | | |
-| CGAUGCAGCUAG | | | |
-| AAAAUAAAAUAAAAUAAAA | | | |
-| UUUUUAAAUUUUUAAAUUUU | | | |
-| AUCCCUA | | | |
-| GUCCUGU | | | |
+| GCGC | .... | 0.00 | ✅ |
+| GCAUCUAUGC | (((....))) | -1.80 | ✅ |
+| GGGAAAUCCC | (((....))) | -2.90 | ✅ |
+| AUGCUAGCUAUGC | ......((...)) | -0.10 | ✅ |
+| AUAUAUAUAU | .......... | 0.00 | ✅ |
+| GCAAAGC | ....... | 0.00 | ✅ |
+| GCAAAAGC | ........ | 0.00 | ✅ |
+| GCAAAAAGC | ......... | 0.00 | ✅ |
+| AUGGGAU | ....... | 0.00 | ✅ |
+| AUGGGGAU | ........ | 0.00 | ✅ |
+| GUAAAAGU | ........ | 0.00 | ✅ |
+| UGAAAUG | ....... | 0.00 | ✅ |
+| GCGCAAGC | ((....)) | -0.10 | ✅ |
+| GCUUCGGC | ........ | 0.00 | ✅ |
+| GCGGAGGC | ((....)) | -0.20 | ✅ |
+| GGCGAACGCC | (((....))) | -3.00 | ✅ |
+| GGCGAAUGCC | (((....))) | -3.00 | ✅ |
+| GGCAAUUGCC | (((....))) | -3.00 | ✅ |
+| GGCACAUUGCC | ((((...)))) | -5.20 | ✅ |
+| GGCAAAUUGCC | ((((...)))). | -5.20 | ✅ |
+| GGGAAACCCAAAGGGUUUCCC | (((((((((...))))))))) | -16.01 | ✅ |
+| GCGAAUCCGAUUGGCUAAGCG | ((....((....))....)). | -0.70 | ✅ |
+| GGAUCCGAAGGCUCGAUCC | ....((...))........ | -11.30 | ❌ |
+| GGGAAAUCCAUUGGAUCCCUCC | (((...)))...(((....))) | -14.81 | ❌ |
+| GCCGAUACGUAUCGGCGAU | ((((((....))))))... | -18.90 | ✅ |
+| GCGCGCGCGCAUUGCGCGCGCGC | ((((((((((...)))))))))) | -23.00 | ✅ |
+| GGGGCCCCGGGGCCCC | ((((((....)))))) | -12.91 | ✅ |
+| GUGUGUGUACACACAC | ((((((....)))))). | -7.10 | ✅ |
+| UGUGUGAAACACACA | ((((((...)))))) | -7.10 | ✅ |
+| GUGUAAUUGUGU | ............ | 0.00 | ✅ |
+| AUAUAUAUAU | .......... | 0.00 | ✅ |
+| AAUAAAUAAAUAA | .............. | 0.00 | ✅ |
+| AUAUAAUAUAUAUAU | (((((...))))).. | -1.20 | ❌ |
+| GCGCGCAGCGCGC | (((((...))))) | -8.00 | ✅ |
+| GGCGCCGCGGCC | (((......))) | -3.70 | ✅ |
+| GCAUCUAUGC | (((....))) | -1.80 | ✅ |
+| AUGCUAGCUAUGC | ......((...)) | -0.10 | ✅ |
+| GGGAAAUCCC | (((....))) | -2.90 | ✅ |
+| GGAUACGUACCU | ............ | 0.00 | ✅ |
+| CGAUGCAGCUAG | ............ | 0.00 | ✅ |
+| AAAAUAAAAUAAAAUAAAA | ................... | 0.00 | ✅ |
+| UUUUUAAAUUUUUAAAUUUU | ..(((((....))))).... | -0.30 | ❌ |
+| AUCCCUA | ....... | 0.00 | ✅ |
+| GUCCUGU | ....... | 0.00 | ✅ |
 
 ## Pseudoknot RNA Sequences
 | Sequence | Predicted Dot-Bracket Notation | Predicted $\Delta G$ (kcal/mol) | IPknot Prediction Match |
 | :--- | :--- | :--- | :--- |
-| UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC | | | |
-| AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU | | | |
+| UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC | (((((.......(((.....))).)))))((((.....))))(((((....(((...))).))))).... | -33.06 | ❌ |
+| AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU | (((((...)))))((((((.....))))))............. | -9.81 | ❌ |
 
 ### 2.4. Pseudoknot Prediction: Known Issues and Debugging Analysis
 ### Problem Statement
