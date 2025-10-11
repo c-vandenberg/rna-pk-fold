@@ -62,6 +62,9 @@ def traceback_with_pk(
 
     logger.info(f"Starting traceback for sequence length N={seq_len}")
 
+    initial_bp = wx_bp(eddy_rivas_fold_state, 0, seq_len - 1)
+    print(f"[TB START] WX[0,{seq_len - 1}] BP: {initial_bp}", flush=True)
+
     # --- State Initialization ---
     # The `stack` holds "frames" representing subproblems to be solved.
     # Each frame is a tuple: (TAG, *coordinates, layer).
@@ -136,12 +139,22 @@ def traceback_with_pk(
             _, i, j, layer = frame
             bp = wx_bp(eddy_rivas_fold_state, i, j)
 
+            if i == 0 and j == seq_len - 1:
+                print(f"[WX PROCESS] bp={bp}", flush=True)
+                if bp:
+                    print(f"  op={bp.op}", flush=True)
+
             # 1.1. If no backpointer, or if the backpointer explicitly selects the 'uncharged' (nested) path...
             if not bp or bp.op is EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED:
+                if i == 0 and j == seq_len - 1:
+                    print(f"  → Going nested!", flush=True)
                 # ...delegate this entire interval to the nested traceback function.
                 merge_nested_interval(seq, nested_state, i, j, layer,
                                       trace_nested_interval, pairs, pair_layer)
                 continue
+
+            if i == 0 and j == seq_len - 1:
+                print(f"  → Processing PK composition!", flush=True)
 
             op = bp.op
             r = bp.split
@@ -170,15 +183,15 @@ def traceback_with_pk(
                     k_l, l_l = k, r
                     k_r, l_r = r + 1, l
 
-                stack.append(("YHX", i, l_l, k_l, l_l, layer + 1))
-                stack.append(("YHX", k_r, j, k_r, l_r, layer + 2))
+                stack.append(("YHX", i, l_l, k_l, l_l, layer))
+                stack.append(("YHX", k_r, j, k_r, l_r, layer))
                 continue
 
             # 1.4. Handle WX composition from two overlapping YHX subproblems.
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP:
                 # Both branches share the same (k,l); no BPs are needed—YHX will place (k,l) on entry
-                stack.append(("YHX", i, r, k, l, layer + 1))
-                stack.append(("YHX", r + 1, j, k, l, layer + 2))
+                stack.append(("YHX", i, r, k, l, layer))
+                stack.append(("YHX", r + 1, j, k, l, layer))
                 continue
 
             # 1.5. Handle WX composition from a YHX (crossing) and a WHX (nested) subproblem.
@@ -190,7 +203,7 @@ def traceback_with_pk(
                     k_l, l_l = k, r
                     k_r, l_r = r + 1, l
 
-                stack.append(("YHX", i, l_l, k_l, l_l, layer + 1))
+                stack.append(("YHX", i, l_l, k_l, l_l, layer))
                 stack.append(("WHX", k_r, j, k_r, l_r, 0))
                 continue
 
@@ -203,9 +216,12 @@ def traceback_with_pk(
                     k_l, l_l = k, r
                     k_r, l_r = r + 1, l
 
+                if i == 0 and j == seq_len - 1:
+                    print(f"  [PUSH] WHX({i}, {l_l}, {k_l}, {l_l}, 0)", flush=True)
+                    print(f"  [PUSH] YHX({k_r}, {j}, {k_r}, {l_r}, {layer})", flush=True)
+
                 stack.append(("WHX", i, l_l, k_l, l_l, 0))
-                print(f"[DEBUG] Pushing YHX: k_r={k_r}, j={j}, l_r={l_r}, layer={layer + 1}", flush=True)
-                stack.append(("YHX", k_r, j, k_r, l_r, layer + 1))
+                stack.append(("YHX", k_r, j, k_r, l_r, layer))
                 continue
 
             # 1.6. Fallback for any other WX operation: treat as a simple nested interval.
@@ -294,6 +310,8 @@ def traceback_with_pk(
             _, i, j, k, l, layer = frame
             place_pair_non_crossing(pairs, pair_layer, k, l, layer)
             logger.debug(f"YHX[{i},{j},{k},{l}] layer={layer}")
+
+            print(f"[YHX PROCESS] ({i},{j}:{k},{l}) layer={layer}", flush=True)
 
             bp = yhx_bp(eddy_rivas_fold_state, i, j, k, l)
             if not bp:

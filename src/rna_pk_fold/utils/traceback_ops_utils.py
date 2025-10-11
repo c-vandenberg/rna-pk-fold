@@ -125,6 +125,7 @@ def place_pair_non_crossing(
     int
         The layer on which the pair was successfully placed.
     """
+    print(f"[PLACE_PAIR] Attempting ({i},{j}) from layer {start_layer}", flush=True)
     # Start checking from the suggested layer.
     current_layer = start_layer
     while True:
@@ -135,6 +136,7 @@ def place_pair_non_crossing(
             if layer_index == current_layer and _crosses((i, j), (existing_i, existing_j)):
                 # If a crossing is found, mark a conflict and stop checking this layer.
                 has_conflict = True
+                print(f"  Conflict with ({existing_i},{existing_j}) on L{current_layer}", flush=True)
                 break
 
         # If no conflicts were found after checking all pairs on this layer...

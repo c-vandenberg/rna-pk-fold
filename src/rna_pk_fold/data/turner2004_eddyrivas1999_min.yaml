@@ -636,21 +636,20 @@ special_hairpins: {}
 # ------------------------------------------------------
 pseudoknot:
   # Per-step/tilde scalars (paper: \tilde Q = 0.2, \tilde P = 0.1)
-  q_ss: 0.0                 # maps to Q~
-  P_tilde_out: 0.0        # maps to P~
-  P_tilde_hole: 0.0        # maps to P~
-  Q_tilde_out: 0.0          # maps to P~
-  Q_tilde_hole: 0.0         # maps to Q~
+  q_ss: 0.0                 # Q~ - unpaired bases (general)
+  P_tilde_out: 0.0          # P~ - unpaired on outer span
+  P_tilde_hole: 0.0         # P~ - unpaired on hole
+  Q_tilde_out: 0.0          # Q~ - unpaired outer (alternative)
+  Q_tilde_hole: 0.0         # Q~ - unpaired hole (alternative)
 
-  # Fallback dangle terms: L~, R~ = dangle*g + Q~ (no table in paper)
-  # Use \tilde Q as fallback when no bigram entry is present
-  L_tilde: 0.0
-  R_tilde: 0.0
+  # Multiloop penalties for gap structures
+  M_tilde_yhx: 0.0         # M~ - YHX multiloop
+  M_tilde_vhx: 0.0        # M~ - VHX multiloop
+  M_tilde_whx: 0.0         # M~ - WHX multiloop
 
-  # Non-nested multiloop constant (paper: M~ = 8.43)
-  M_tilde_yhx: 0.0
-  M_tilde_vhx: 0.0
-  M_tilde_whx: 0.0
+  # Dangle fallbacks
+  L_tilde: 0.2              # Fallback dangle = Q~
+  R_tilde: 0.2              # Fallback dangle = Q~
 
   # Optional dangle bigram maps (paper doesn’t list numbers; keep empty or provide your own)
   dangle_hole_left: {}
@@ -678,9 +677,9 @@ pseudoknot:
   join_drift_penalty: 0.0
   short_hole_caps: {}
 
-  # Overlap/charging penalties (paper provides G_wh, G_w, G_wI; we map them below)
-  Gwh: 6.0                  # overlapping pseudoknots (paper)
-  Gwi: 1.0                 # “generating a pseudoknot in a multiloop” (paper’s G_wI)
+  # Overlap/charging penalties (paper provides G_wh, G_w, G_wI)
+  Gwh: 0.0                  # overlapping pseudoknots (paper)
+  Gwi: 0.0                 # “generating a pseudoknot in a multiloop” (paper’s G_wI)
   Gwh_wx: 0.0               # software-specific; not in paper
   Gwh_whx: 0.0              # software-specific; not in paper
 

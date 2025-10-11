@@ -338,8 +338,8 @@ def predict_eddy_rivas(
         enable_coax_variants=enable_coax,
         enable_coax_mismatch=enable_coax,
         enable_wx_overlap=enable_overlap,
-        enable_is2=False, # Experimental feature, disabled by default.
-        enable_join_drift=False, # Experimental feature, disabled by default.
+        enable_is2=False,
+        enable_join_drift=False,
         min_hole_width=min_hole_width,
         max_hole_width=max_hole_width,
         pk_penalty_gw=er_costs.pk_penalty_gw,
