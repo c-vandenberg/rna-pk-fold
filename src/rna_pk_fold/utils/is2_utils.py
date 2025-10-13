@@ -1,33 +1,34 @@
-from typing import Any
+import math
+from typing import Any, Callable
 
 
 def IS2_outer(seq: str, tables: Any, i: int, j: int, r: int, s: int) -> float:
     """
-        Safely calculates the energy for an IS2 (Irreducible Surface of Order 2) outer bridge.
+    Safely calculates the energy for an IS2 (Irreducible Surface of Order 2) outer bridge.
 
-        This function acts as a safe wrapper to compute the energy contribution of the
-        "bridge" part of an IS2 motif, which spans from an outer helix `(i, j)` to an
-        inner helix `(r, s)`. It dynamically calls a function or uses a float value
-        provided in the `tables` object.
+    This function acts as a safe wrapper to compute the energy contribution of the
+    "bridge" part of an IS2 motif, which spans from an outer helix `(i, j)` to an
+    inner helix `(r, s)`. It dynamically calls a function or uses a float value
+    provided in the `tables` object.
 
-        Parameters
-        ----------
-        seq : str
-            The RNA sequence.
-        tables : Any
-            An object expected to have an `IS2_outer` attribute, which can be
-            either a callable function `fn(seq, i, j, r, s)` or a float value.
-        i, j : int
-            The indices of the outer closing pair.
-        r, s : int
-            The indices of the inner closing pair.
+    Parameters
+    ----------
+    seq : str
+        The RNA sequence.
+    tables : Any
+        An object expected to have an `IS2_outer` attribute, which can be
+        either a callable function `fn(seq, i, j, r, s)` or a float value.
+    i, j : int
+        The indices of the outer closing pair.
+    r, s : int
+        The indices of the inner closing pair.
 
-        Returns
-        -------
-        float
-            The calculated energy for the IS2 outer bridge in kcal/mol, or 0.0 if
-            the energy function or value is not defined in the `tables` object.
-        """
+    Returns
+    -------
+    float
+        The calculated energy for the IS2 outer bridge in kcal/mol, or 0.0 if
+        the energy function or value is not defined in the `tables` object.
+    """
     # Check if a 'tables' object with the required attribute exists.
     if tables and hasattr(tables, "IS2_outer"):
         # Retrieve the attribute, which could be a function or a constant float.
@@ -80,3 +81,20 @@ def IS2_outer_yhx(config: Any, seq: str, i: int, j: int, r: int, s: int) -> floa
 
     # Call the function and ensure the result is a float.
     return float(energy_function(seq, i, j, r, s))
+
+
+def scan_is2_outer(state, cfg, seq, i, j, k, l,
+                   inner_get: Callable[[int,int], float],
+                   bridge_get: Callable[[int,int], float],
+                   op):
+    best = math.inf
+    best_bp = None
+    for r in range(i, k + 1):
+        for s2 in range(l, j + 1):
+            if r <= s2:
+                inner = inner_get(r, s2)
+                if math.isfinite(inner):
+                    cand = bridge_get(r, s2) + inner
+                    if cand < best:
+                        best, best_bp = cand, (r, s2)
+    return best, best_bp, op

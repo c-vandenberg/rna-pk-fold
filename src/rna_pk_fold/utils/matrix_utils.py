@@ -320,4 +320,14 @@ def zhx_collapse_with(eddy_rivas_state: EddyRivasFoldState, i, j, k, l, charged:
     # If not a collapse, perform a standard lookup in the sparse 4D ZHX matrix and cache the result.
     result = eddy_rivas_state.zhx_matrix.get(i, j, k, l)
     _zhx_lookup_cache[cache_key] = result
+
     return result
+
+
+def get_with_collapse(kind: str, state, i, j, k, l):
+    if kind == "whx":
+        return get_whx_with_collapse(state.whx_matrix, state.wxu_matrix, i, j, k, l)
+    if kind == "zhx":
+        return get_zhx_with_collapse(state.zhx_matrix, state.vxu_matrix, i, j, k, l)
+    raise ValueError(kind)
+

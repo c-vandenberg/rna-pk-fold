@@ -20,6 +20,7 @@ from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_ri
 from rna_pk_fold.folding.eddy_rivas.numba_kernels import (compose_wx_best_over_r_arrays, compose_vx_best_over_r,
                                                           best_sum, best_sum_with_penalty)
 from rna_pk_fold.rules.constraints import can_pair
+from rna_pk_fold.utils.debug_utils import debug_print, count_finite_cells
 from rna_pk_fold.utils.logging_utils import setup_logger
 
 logger = setup_logger(
@@ -167,7 +168,7 @@ class EddyRivasFoldingConfig:
     enable_coax_mismatch: bool = False  # allow |k-r|==1 seam as "mismatch coax"
     enable_join_drift: bool = False  # enable slight hole drift at join
     drift_radius: int = 0  # how far to drift (0 = off)
-    enable_is2: bool = True
+    enable_is2: bool = False
     pk_penalty_gw: float = 1.0 # Gw: pseudoknot introduction penalty (kcal/mol)
     max_hole_width: int = 0
     min_hole_width: int = 0  # 0 = identical behavior; 1+ prunes zero/narrow holes
@@ -284,7 +285,8 @@ class EddyRivasFoldingEngine:
         total_start = time.perf_counter()
 
         seq_len = eddy_rivas_fold_state.seq_len
-        # Log algorithm start
+
+        # --- Log header ---
         logger.info("=" * 60)
         logger.info(f"Eddy-Rivas DP for sequence length N={seq_len}")
         logger.info(f"Expected complexity:")
@@ -294,25 +296,24 @@ class EddyRivasFoldingEngine:
 
         clear_matrix_caches()
 
-        q_ss = self.cfg.costs.q_ss
-        g_w = self.cfg.pk_penalty_gw
-        g_wh = getattr(self.cfg.costs, "Gwh", 0.0)
-        g_wi = self.cfg.costs.g_wi
-        g_wh_wx = getattr(self.cfg.costs, "Gwh_wx", 0.0)
-        g_wh_whx = getattr(self.cfg.costs, "Gwh_whx", 0.0)
-        tables = getattr(self.cfg, "tables", None)
-        g = self.cfg.costs.coax_scale
-
-        # tilde scalars (names preserved)
-        p_out = getattr(tables, "P_tilde_out", getattr(self.cfg.costs, "P_tilde_out", 1.0))
-        p_hole = getattr(tables, "P_tilde_hole", getattr(self.cfg.costs, "P_tilde_hole", 1.0))
-        l_tilde = getattr(tables, "L_tilde", 0.0)
-        r_tilde = getattr(tables, "R_tilde", 0.0)
-        q_tilde_out = getattr(tables, "Q_tilde_out", getattr(self.cfg.costs, "Q_tilde_out", 0.0))
-        q_tilde_hole = getattr(tables, "Q_tilde_hole", getattr(self.cfg.costs, "Q_tilde_hole", 0.0))
-        m_tilde_yhx = getattr(tables, "M_tilde_yhx", getattr(self.cfg.costs, "M_tilde_yhx", 0.0))
-        m_tilde_vhx = getattr(tables, "M_tilde_vhx", getattr(self.cfg.costs, "M_tilde_vhx", 0.0))
-        m_tilde_whx = getattr(tables, "M_tilde_whx", getattr(self.cfg.costs, "M_tilde_whx", 0.0))
+        # --- Load model configuration
+        config = self._load_config()
+        q_ss = config["q_ss"]
+        g_w = config["g_w"]
+        g_wh = config["g_wh"]  # kept for completeness
+        g_wi = config["g_wi"]
+        g_wh_wx = config["g_wh_wx"]
+        g_wh_whx = config["g_wh_whx"]
+        g_coax_scale = config["g"]
+        p_out = config["p_out"]
+        p_hole = config["p_hole"]
+        l_tilde = config["l_tilde"]
+        r_tilde = config["r_tilde"]
+        q_tilde_out = config["q_tilde_out"]
+        q_tilde_hole = config["q_tilde_hole"]
+        m_tilde_yhx = config["m_tilde_yhx"]
+        m_tilde_vhx = config["m_tilde_vhx"]
+        m_tilde_whx = config["m_tilde_whx"]
 
         # --- Phase 1: Seeding ---
         seed_start = time.perf_counter()
@@ -330,18 +331,28 @@ class EddyRivasFoldingEngine:
         logger.info("Filling WHX matrix...")
         whx_start = time.perf_counter()
         self._dp_whx(seq, eddy_rivas_fold_state, q_ss, g_wh_whx, can_pair_mask)
-        test_cells = [(0, 33, 23, 33), (34, 69, 63, 68)]
-        for (i, j, k, l) in test_cells:
-            val = eddy_rivas_fold_state.whx_matrix.get(i, j, k, l)
-            print(f"[REF CHECK] WHX[{i},{j}:{k},{l}] = {val:.2f}", flush=True)
         self.timings['whx'] = time.perf_counter() - whx_start
         logger.info(f"WHX filled in {self.timings['whx']:.2f}s")
+
+        # Targeted debug checks (guarded)
+        debug_print(
+            self.cfg,
+            f"[REF CHECK] WHX[0,33:23,33] = {eddy_rivas_fold_state.whx_matrix.get(0, 33, 23, 33):.2f}"
+        )
+        debug_print(
+            self.cfg,
+            f"[REF CHECK] WHX[34,69:63,68] = {eddy_rivas_fold_state.whx_matrix.get(34, 69, 63, 68):.2f}"
+        )
 
         # VHX
         logger.info("Filling VHX matrix...")
         vhx_start = time.perf_counter()
-        self._dp_vhx(seq, eddy_rivas_fold_state, g_wi, p_hole, l_tilde, r_tilde,
-                     q_tilde_hole, m_tilde_vhx, m_tilde_whx, can_pair_mask)
+        self._dp_vhx(
+            seq, eddy_rivas_fold_state,
+            g_wi, p_hole, l_tilde, r_tilde,
+            q_tilde_hole, m_tilde_vhx, m_tilde_whx,
+            can_pair_mask
+        )
         self.timings['vhx'] = time.perf_counter() - vhx_start
         logger.info(f"VHX filled in {self.timings['vhx']:.2f}s")
 
@@ -355,45 +366,32 @@ class EddyRivasFoldingEngine:
         # YHX
         logger.info("Filling YHX matrix...")
         yhx_start = time.perf_counter()
-        self._dp_yhx(seq, eddy_rivas_fold_state, g_wi, p_out, q_tilde_out, m_tilde_yhx,
-                     m_tilde_whx, can_pair_mask)
+        self._dp_yhx(
+            seq, eddy_rivas_fold_state,
+            g_wi, p_out, q_tilde_out,
+            m_tilde_yhx, m_tilde_whx,
+            can_pair_mask
+        )
         self.timings['yhx'] = time.perf_counter() - yhx_start
         logger.info(f"YHX filled in {self.timings['yhx']:.2f}s")
 
-        yhx_val = eddy_rivas_fold_state.yhx_matrix.get(37, 42, 37, 40)
-        print(f"YHX[37,42:37,40] = {yhx_val:.2f}")
-        yhx_bp_val = eddy_rivas_fold_state.yhx_back_ptr.get(37, 42, 37, 40)
-        print(f"YHX BP: {yhx_bp_val}")
+        # Optional inspection (guarded)
+        debug_print(
+            self.cfg,
+            f"YHX[37,42:37,40] = {eddy_rivas_fold_state.yhx_matrix.get(37, 42, 37, 40):.2f}"
+        )
+        debug_print(self.cfg, f"YHX BP: {eddy_rivas_fold_state.yhx_back_ptr.get(37, 42, 37, 40)}")
 
-        whx_count = 0
-        for (i, j), holes in eddy_rivas_fold_state.whx_matrix.data.items():
-            for (k, l), v in holes.items():
-                if math.isfinite(v):
-                    whx_count += 1
-
-        yhx_count = 0
-        for (i, j), holes in eddy_rivas_fold_state.yhx_matrix.data.items():
-            for (k, l), v in holes.items():
-                if math.isfinite(v):
-                    yhx_count += 1
-
-        zhx_count = 0
-        for (i, j), holes in eddy_rivas_fold_state.zhx_matrix.data.items():
-            for (k, l), v in holes.items():
-                if math.isfinite(v):
-                    zhx_count += 1
-
-        vhx_count = 0
-        for (i, j), holes in eddy_rivas_fold_state.vhx_matrix.data.items():
-            for (k, l), v in holes.items():
-                if math.isfinite(v):
-                    vhx_count += 1
-
-        print(f"\n[GAP STATS]")
-        print(f"  WHX: {whx_count} finite cells")
-        print(f"  YHX: {yhx_count} finite cells")
-        print(f"  ZHX: {zhx_count} finite cells")
-        print(f"  VHX: {vhx_count} finite cells")
+        # Gap stats (using helper)
+        whx_count = count_finite_cells(eddy_rivas_fold_state.whx_matrix)
+        yhx_count = count_finite_cells(eddy_rivas_fold_state.yhx_matrix)
+        zhx_count = count_finite_cells(eddy_rivas_fold_state.zhx_matrix)
+        vhx_count = count_finite_cells(eddy_rivas_fold_state.vhx_matrix)
+        debug_print(self.cfg, "\n[GAP STATS]")
+        debug_print(self.cfg, f"  WHX: {whx_count} finite cells")
+        debug_print(self.cfg, f"  YHX: {yhx_count} finite cells")
+        debug_print(self.cfg, f"  ZHX: {zhx_count} finite cells")
+        debug_print(self.cfg, f"  VHX: {vhx_count} finite cells")
 
         # --- Phase 3: Composition ---
         # WX Composition
@@ -407,7 +405,7 @@ class EddyRivasFoldingEngine:
         # VX Composition
         logger.info("Composing VX matrix...")
         vx_start = time.perf_counter()
-        self._compose_vx(seq, eddy_rivas_fold_state, g_w, g, can_pair_mask)
+        self._compose_vx(seq, eddy_rivas_fold_state, g_w, g_coax_scale, can_pair_mask)
         self._publish_vx(eddy_rivas_fold_state)
         self.timings['vx_compose'] = time.perf_counter() - vx_start
         logger.info(f"VX composed in {self.timings['vx_compose']:.2f}s")
@@ -421,28 +419,69 @@ class EddyRivasFoldingEngine:
         logger.info("")
         logger.info("Timing breakdown:")
         logger.info(
-            f"  Seeding:        {self.timings['seed']:7.2f}s ({self.timings['seed'] / self.timings['total'] * 100:5.1f}%)")
+            f"  Seeding:        {self.timings['seed']:7.2f}s ({self.timings['seed'] / self.timings['total'] * 100:5.1f}%)"
+        )
         logger.info(
-            f"  WHX fill:       {self.timings['whx']:7.2f}s ({self.timings['whx'] / self.timings['total'] * 100:5.1f}%)")
+            f"  WHX fill:       {self.timings['whx']:7.2f}s ({self.timings['whx'] / self.timings['total'] * 100:5.1f}%)"
+        )
         logger.info(
-            f"  VHX fill:       {self.timings['vhx']:7.2f}s ({self.timings['vhx'] / self.timings['total'] * 100:5.1f}%)")
+            f"  VHX fill:       {self.timings['vhx']:7.2f}s ({self.timings['vhx'] / self.timings['total'] * 100:5.1f}%)"
+        )
         logger.info(
-            f"  ZHX fill:       {self.timings['zhx']:7.2f}s ({self.timings['zhx'] / self.timings['total'] * 100:5.1f}%)")
+            f"  ZHX fill:       {self.timings['zhx']:7.2f}s ({self.timings['zhx'] / self.timings['total'] * 100:5.1f}%)"
+        )
         logger.info(
-            f"  YHX fill:       {self.timings['yhx']:7.2f}s ({self.timings['yhx'] / self.timings['total'] * 100:5.1f}%)")
+            f"  YHX fill:       {self.timings['yhx']:7.2f}s ({self.timings['yhx'] / self.timings['total'] * 100:5.1f}%)"
+        )
         logger.info(
-            f"  WX composition: {self.timings['wx_compose']:7.2f}s ({self.timings['wx_compose'] / self.timings['total'] * 100:5.1f}%)")
+            f"  WX composition: {self.timings['wx_compose']:7.2f}s ({self.timings['wx_compose'] / self.timings['total'] * 100:5.1f}%)"
+        )
         logger.info(
-            f"  VX composition: {self.timings['vx_compose']:7.2f}s ({self.timings['vx_compose'] / self.timings['total'] * 100:5.1f}%)")
+            f"  VX composition: {self.timings['vx_compose']:7.2f}s ({self.timings['vx_compose'] / self.timings['total'] * 100:5.1f}%)"
+        )
         gap_total = self.timings['whx'] + self.timings['vhx'] + self.timings['zhx'] + self.timings['yhx']
         comp_total = self.timings['wx_compose'] + self.timings['vx_compose']
         logger.info(f"  Gap matrices:   {gap_total:7.2f}s ({gap_total / self.timings['total'] * 100:5.1f}%)")
         logger.info(f"  Compositions:   {comp_total:7.2f}s ({comp_total / self.timings['total'] * 100:5.1f}%)")
         logger.info("=" * 60)
 
-        seq = "AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU"
-        print(f"Position 37: {seq[37]}, Position 40: {seq[40]}")
-        print(f"Can pair: {can_pair(seq[37], seq[40])}")
+    def _load_config(self):
+        costs_config = self.cfg.costs
+        config_tables = getattr(self.cfg, "tables", None)
+        return dict(
+            q_ss=costs_config.q_ss,
+            g_w=self.cfg.pk_penalty_gw,
+            g_wh=getattr(costs_config, "Gwh", 0.0),
+            g_wi=costs_config.g_wi,
+            g_wh_wx=getattr(costs_config, "Gwh_wx", 0.0),
+            g_wh_whx=getattr(costs_config, "Gwh_whx", 0.0),
+            g=costs_config.coax_scale,
+            p_out=getattr(config_tables, "P_tilde_out", getattr(costs_config, "P_tilde_out", 1.0)),
+            p_hole=getattr(config_tables, "P_tilde_hole", getattr(costs_config, "P_tilde_hole", 1.0)),
+            l_tilde=getattr(config_tables, "L_tilde", 0.0),
+            r_tilde=getattr(costs_config, "R_tilde", 0.0),
+            q_tilde_out=getattr(config_tables, "Q_tilde_out", getattr(costs_config, "Q_tilde_out", 0.0)),
+            q_tilde_hole=getattr(config_tables, "Q_tilde_hole", getattr(costs_config, "Q_tilde_hole", 0.0)),
+            m_tilde_yhx=getattr(config_tables, "M_tilde_yhx", getattr(costs_config, "M_tilde_yhx", 0.0)),
+            m_tilde_vhx=getattr(config_tables, "M_tilde_vhx", getattr(costs_config, "M_tilde_vhx", 0.0)),
+            m_tilde_whx=getattr(config_tables, "M_tilde_whx", getattr(costs_config, "M_tilde_whx", 0.0)),
+        )
+
+    def time_phase(self, label: str, fn: Callable, *args, **kwargs):
+        t0 = time.perf_counter()
+        result = fn(*args, **kwargs)
+        dt = time.perf_counter() - t0
+        self.timings[label] = dt
+        logger.info(f"{label} completed in {dt:.2f}s")
+        return result
+
+    @staticmethod
+    def count_finite_cells(gap_matrix) -> int:
+        total = 0
+        for holes in gap_matrix.data.values():
+            for v in holes.values():
+                if math.isfinite(v): total += 1
+        return total
 
     # --------- Seeding ---------
     @staticmethod
