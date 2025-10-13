@@ -27,6 +27,11 @@ class ZHXSplitMode:
     LEFT_ZHX_WX  = 1   # ZHX(i,j:r,l) + WX(r+1,k)
     RIGHT_ZHX_WX = 2   # ZHX(i,j:k,s2) + WX(l, s2-1)
 
+@dataclass(frozen=True, slots=True)
+class YHXSplitMode:
+    LEFT_YHX_WX  = 1   # YHX(i, r: k, l) + WX(r+1, j)
+    RIGHT_WX_YHX = 2   # WX(i, s2) + YHX(s2+1, j: k, l)
+
 
 def whx_build_split_vectors(
     mode: int,
@@ -155,6 +160,42 @@ def zhx_wx_split_min_zhx(
         if math.isfinite(lv): left_vec[t] = lv
         if math.isfinite(rv): right_vec[t] = rv
 
+    return best_sum(left_vec, right_vec)
+
+
+def yhx_wx_split_min(
+    mode: YHXSplitMode,
+    state,
+    i: int, j: int, k: int, l: int,
+):
+    """
+    Compute min over splits for YHX+WX recurrences in YHX (plain matrix gets).
+    Returns (best_energy, t_star) where t_star is the argmin index, or -1 if none.
+    """
+    span_len = max(0, j - i)
+    if span_len <= 0:
+        return math.inf, -1
+
+    if mode == YHXSplitMode.LEFT_YHX_WX:
+        left_vec  = np.full(span_len, np.inf, dtype=np.float64)
+        right_vec = np.full(span_len, np.inf, dtype=np.float64)
+        for t in range(span_len):
+            r = i + t
+            lv = state.yhx_matrix.get(i, r, k, l)
+            rv = get_wxi_or_wx(state, r + 1, j)
+            if math.isfinite(lv): left_vec[t] = lv
+            if math.isfinite(rv): right_vec[t] = rv
+        return best_sum(left_vec, right_vec)
+
+    # RIGHT_WX_YHX
+    left_vec  = np.full(span_len, np.inf, dtype=np.float64)
+    right_vec = np.full(span_len, np.inf, dtype=np.float64)
+    for t in range(span_len):
+        s2 = i + t
+        lv = get_wxi_or_wx(state, i, s2)
+        rv = state.yhx_matrix.get(s2 + 1, j, k, l)
+        if math.isfinite(lv): left_vec[t] = lv
+        if math.isfinite(rv): right_vec[t] = rv
     return best_sum(left_vec, right_vec)
 
 
