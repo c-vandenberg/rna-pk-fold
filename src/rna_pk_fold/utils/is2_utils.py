@@ -1,8 +1,9 @@
 import math
-from typing import Any, Callable
+from typing import Tuple, Any, Optional
 
+from rna_pk_fold.utils.matrix_utils import get_inner_matrix_energy
 
-def IS2_outer(seq: str, tables: Any, i: int, j: int, r: int, s: int) -> float:
+def is2_outer(seq: str, tables: Any, i: int, j: int, r: int, s: int) -> float:
     """
     Safely calculates the energy for an IS2 (Irreducible Surface of Order 2) outer bridge.
 
@@ -32,7 +33,7 @@ def IS2_outer(seq: str, tables: Any, i: int, j: int, r: int, s: int) -> float:
     # Check if a 'tables' object with the required attribute exists.
     if tables and hasattr(tables, "IS2_outer"):
         # Retrieve the attribute, which could be a function or a constant float.
-        energy_calculator = tables.IS2_outer
+        energy_calculator = tables.is2_outer
         # If it's a function, call it with the provided coordinates.
         if callable(energy_calculator):
             return energy_calculator(seq, i, j, r, s)
@@ -44,7 +45,7 @@ def IS2_outer(seq: str, tables: Any, i: int, j: int, r: int, s: int) -> float:
     return 0.0
 
 
-def IS2_outer_yhx(config: Any, seq: str, i: int, j: int, r: int, s: int) -> float:
+def is2_outer_yhx(config: Any, seq: str, i: int, j: int, r: int, s: int) -> float:
     """
         Safely calculates the IS2 outer bridge energy in the YHX matrix context.
 
@@ -83,18 +84,38 @@ def IS2_outer_yhx(config: Any, seq: str, i: int, j: int, r: int, s: int) -> floa
     return float(energy_function(seq, i, j, r, s))
 
 
-def scan_is2_outer(state, cfg, seq, i, j, k, l,
-                   inner_get: Callable[[int,int], float],
-                   bridge_get: Callable[[int,int], float],
-                   op):
+def scan_is2_outer(
+    state,
+    cfg,
+    seq: str,
+    i: int, j: int, k: int, l: int,
+    inner_matrix: str,
+    bridge_kind: str,
+    op
+) -> Tuple[float, Optional[Tuple[int, int]], Any]:
+    """
+    Scan r in [i..k], s2 in [l..j] for an IS2 outer bridge and return (best_energy, (r,s2), op).
+    No nested functions; matrix/bridge selection is by string dispatch.
+    """
     best = math.inf
-    best_bp = None
+    best_bp: Optional[Tuple[int, int]] = None
+
     for r in range(i, k + 1):
         for s2 in range(l, j + 1):
-            if r <= s2:
-                inner = inner_get(r, s2)
-                if math.isfinite(inner):
-                    cand = bridge_get(r, s2) + inner
-                    if cand < best:
-                        best, best_bp = cand, (r, s2)
+            if r > s2:
+                continue
+            inner = get_inner_matrix_energy(state, inner_matrix, r, s2, k, l)
+            if math.isfinite(inner):
+                cand = bridge_energy(cfg, seq, bridge_kind, i, j, r, s2) + inner
+                if cand < best:
+                    best, best_bp = cand, (r, s2)
+
     return best, best_bp, op
+
+def bridge_energy(cfg, seq: str, bridge_kind: str, i: int, j: int, r: int, s2: int) -> float:
+    if bridge_kind == "yhx":
+        return is2_outer_yhx(cfg, seq, i, j, r, s2)
+    if bridge_kind == "default":
+        return is2_outer(seq, cfg.tables, i, j, r, s2)
+
+    raise ValueError(f"Unknown bridge_kind: {bridge_kind}")

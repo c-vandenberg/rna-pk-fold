@@ -60,3 +60,14 @@ def publish_best(uncomposed, composed, final, back_ptr_store, select_uncharged_o
         back_ptr_store.set(i, j, EddyRivasBackPointer(op=select_uncharged_op))
     else:
         final.set(i, j, wxc)
+
+
+def best_cand_check(best: float,
+                    best_bp: Optional[EddyRivasBackPointer],
+                    cand: float,
+                    bp: EddyRivasBackPointer
+                   ) -> Tuple[float, Optional[EddyRivasBackPointer]]:
+    if cand < best:
+        return cand, bp
+
+    return best, best_bp

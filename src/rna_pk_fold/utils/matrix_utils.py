@@ -331,3 +331,16 @@ def get_with_collapse(kind: str, state, i, j, k, l):
         return get_zhx_with_collapse(state.zhx_matrix, state.vxu_matrix, i, j, k, l)
     raise ValueError(kind)
 
+
+def get_inner_matrix_energy(state, inner_matrix: str, r: int, s2: int, k: int, l: int) -> float:
+    if inner_matrix == "yhx":
+        return state.yhx_matrix.get(r, s2, k, l)
+    if inner_matrix == "zhx":
+        return state.zhx_matrix.get(r, s2, k, l)
+    if inner_matrix == "vhx":
+        return state.vhx_matrix.get(r, s2, k, l)
+    if inner_matrix == "whx":
+        return state.whx_matrix.get(r, s2, k, l)
+
+    raise ValueError(f"Unknown inner_matrix: {inner_matrix}")
+

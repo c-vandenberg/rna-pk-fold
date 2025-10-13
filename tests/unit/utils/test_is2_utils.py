@@ -8,7 +8,7 @@ may provide the energy value either as a static attribute or via a callable meth
 """
 import pytest
 
-from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
+from rna_pk_fold.utils.is2_utils import is2_outer, is2_outer_yhx
 
 
 # ----------------------- IS2_outer -----------------------
@@ -27,7 +27,7 @@ def test_is2_outer_uses_callable_and_returns_value():
     # Instantiate the mock object.
     t = Tables()
     # Call the helper function, which should invoke the method on the tables object.
-    got = IS2_outer("ACGU", t, 0, 5, 1, 4)
+    got = is2_outer("ACGU", t, 0, 5, 1, 4)
 
     # The result should be the value returned by the method.
     assert got == -1.25
@@ -45,7 +45,7 @@ def test_is2_outer_uses_numeric_attribute_when_non_callable():
     # Instantiate the mock object.
     t = Tables()
     # Call the helper function, which should access the attribute directly.
-    got = IS2_outer("ACGU", t, 0, 5, 1, 4)
+    got = is2_outer("ACGU", t, 0, 5, 1, 4)
 
     # The result should be the value of the attribute.
     assert got == 2.5
@@ -56,9 +56,9 @@ def test_is2_outer_defaults_to_zero_when_missing_or_none():
         pass
 
     # tables is None
-    assert IS2_outer("ACGU", None, 0, 5, 1, 4) == 0.0
+    assert is2_outer("ACGU", None, 0, 5, 1, 4) == 0.0
     # attribute missing
-    assert IS2_outer("ACGU", TablesWithoutAttr(), 0, 5, 1, 4) == 0.0
+    assert is2_outer("ACGU", TablesWithoutAttr(), 0, 5, 1, 4) == 0.0
 
 
 # -------------------- IS2_outer_yhx ----------------------
@@ -71,7 +71,7 @@ def test_is2_outer_yhx_uses_callable_and_casts_to_float():
     class Cfg:
         tables = Tables()
 
-    got = IS2_outer_yhx(Cfg(), "ACGU", 0, 5, 1, 4)
+    got = is2_outer_yhx(Cfg(), "ACGU", 0, 5, 1, 4)
     assert isinstance(got, float)
     assert got == 3.75
 
@@ -87,9 +87,9 @@ def test_is2_outer_yhx_defaults_to_zero_when_no_tables_or_missing_attr():
         tables = TablesWithoutAttr()
 
     # tables is None
-    assert IS2_outer_yhx(CfgNoTables(), "ACGU", 0, 5, 1, 4) == 0.0
+    assert is2_outer_yhx(CfgNoTables(), "ACGU", 0, 5, 1, 4) == 0.0
     # IS2_outer_yhx attribute missing
-    assert IS2_outer_yhx(CfgWithTablesNoAttr(), "ACGU", 0, 5, 1, 4) == 0.0
+    assert is2_outer_yhx(CfgWithTablesNoAttr(), "ACGU", 0, 5, 1, 4) == 0.0
 
 
 def test_is2_outer_yhx_raises_if_attribute_is_non_callable():
@@ -102,4 +102,4 @@ def test_is2_outer_yhx_raises_if_attribute_is_non_callable():
         tables = Tables()
 
     with pytest.raises(TypeError):
-        IS2_outer_yhx(Cfg(), "ACGU", 0, 5, 1, 4)
+        is2_outer_yhx(Cfg(), "ACGU", 0, 5, 1, 4)

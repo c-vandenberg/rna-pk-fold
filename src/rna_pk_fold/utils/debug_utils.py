@@ -5,9 +5,9 @@ def debug_enabled(cfg) -> bool:
     return bool(getattr(cfg, "verbose", False))
 
 
-def debug_print(cfg, *a, **kw):
+def debug_print(cfg, *arg, **kwarg):
     if debug_enabled(cfg):
-        print(*a, **kw)
+        print(*arg, **kwarg)
 
 
 def debug_cell(cfg, cell, target) -> bool:

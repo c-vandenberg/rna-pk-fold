@@ -11,7 +11,7 @@ from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
-from rna_pk_fold.utils.is2_utils import IS2_outer, IS2_outer_yhx
+from rna_pk_fold.utils.is2_utils import is2_outer, is2_outer_yhx, scan_is2_outer
 from rna_pk_fold.utils.iter_utils import iter_spans, iter_inner_holes, iter_holes_pairable
 from rna_pk_fold.utils.matrix_utils import (clear_matrix_caches, get_whx_with_collapse, get_zhx_with_collapse,
                                             get_wxi_or_wx, whx_collapse_with, zhx_collapse_with)
@@ -20,6 +20,8 @@ from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_ri
 from rna_pk_fold.folding.eddy_rivas.numba_kernels import (compose_wx_best_over_r_arrays, compose_vx_best_over_r,
                                                           best_sum, best_sum_with_penalty)
 from rna_pk_fold.rules.constraints import can_pair
+from rna_pk_fold.utils.recurrence_split_utils import WHXSplitMode, whx_build_split_vectors, whx_split_min
+from rna_pk_fold.utils.recurrence_cand_utils import best_cand_check
 from rna_pk_fold.utils.debug_utils import debug_print, count_finite_cells
 from rna_pk_fold.utils.logging_utils import setup_logger
 
@@ -576,115 +578,109 @@ class EddyRivasFoldingEngine:
         """
         spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
         for i, j in tqdm(spans, desc="WHX", leave=False):
+            span_len = j - i
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
+                # ---------- Guards/Filters (Hole Width, Beam Threshold, Watson-Crick Base Pairing ----------
                 hole_w = (l - k - 1)
                 if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
                     continue
                 if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
                     continue
 
-                # Pruning for beam search
                 if self.cfg.beam_v_threshold != 0.0:
                     if eddy_rivas_fold_state.vxu_matrix.get(k, l) > self.cfg.beam_v_threshold:
                         continue
 
-                # Check pairing constraint
                 if can_pair_mask is not None and not can_pair_mask[k][l]:
                     continue
 
+                # ---------- Targeted Debug Probes ----------
+                dbg_cell = (i, j, k, l) == (0, 33, 23, 33)
                 if i == 0 and j == 33 and 20 <= k <= 30 and l == 33:
-                    can_pair_kl = can_pair_mask[k][l] if can_pair_mask else True
-                    print(f"[PAIR CHECK] can_pair[{k}][33] = {can_pair_kl}", flush=True)
+                    debug_print(True, f"[PAIR CHECK] can_pair[{k}][33] = {can_pair_mask[k][l]}")
+                debug_print(dbg_cell, "\n[WHX DEBUG] Filling (0,33:23,33)")
 
+                dbg_cell = (i, j, k, l) == (0, 33, 23, 33)
+                if dbg_cell:
+                    print("\n[WHX DEBUG] Filling (0,33:23,33)", flush=True)
+
+                # ---------- Initialize Best Candidate Variables
                 best = math.inf
                 best_bp: Optional[EddyRivasBackPointer] = None
 
-                if (i, j, k, l) == (0, 33, 23, 33):
-                    print(f"\n[WHX DEBUG] Filling (0,33:23,33)", flush=True)
-
-                # Case 1: Add an unpaired base at the 5' end of the hole.
-                v = get_whx_with_collapse(eddy_rivas_fold_state.whx_matrix,
-                                          eddy_rivas_fold_state.wxu_matrix, i, j, k + 1, l)
+                # ---------- Case 1: Add An Unpaired Base at The 5' End of The Hole (Shrink Hole Left). ----------
+                v = get_whx_with_collapse(
+                    whx_matrix=eddy_rivas_fold_state.whx_matrix,
+                    wx_matrix=eddy_rivas_fold_state.wxu_matrix,
+                    i=i, j=j, k=k + 1, l=l
+                )
                 cand = v + unpaired_base_penalty
-                if (i, j, k, l) == (0, 33, 23, 33):
-                    print(f"  Case RE_WHX_SHRINK_LEFT: v={v:.2f} cand={cand:.2f}", flush=True)
-                if cand < best:
-                    best = cand
-                    best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT,
-                                                   outer=(i, j), hole=(k, l))
+                debug_print(dbg_cell, f"  Case RE_WHX_SHRINK_LEFT: v={v:.2f} cand={cand:.2f}")
+                best, best_bp = best_cand_check(
+                    best, best_bp, cand,
+                    EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT, outer=(i, j), hole=(k, l))
+                )
 
-                # Case 2: Add an unpaired base at the 3' end of the hole.
-                v = get_whx_with_collapse(eddy_rivas_fold_state.whx_matrix,
-                                          eddy_rivas_fold_state.wxu_matrix, i, j, k, l - 1)
+                # ---------- Case 2: Add an Unpaired Base at The 3' End of The Hole (Shrink Hole Right). ----------
+                v = get_whx_with_collapse(
+                    whx_matrix=eddy_rivas_fold_state.whx_matrix,
+                    wx_matrix=eddy_rivas_fold_state.wxu_matrix,
+                    i=i, j=j, k=k, l=l - 1
+                )
                 cand = v + unpaired_base_penalty
-                if (i, j, k, l) == (0, 33, 23, 33):
-                    print(f"  Case RE_WHX_SHRINK_RIGHT: v={v:.2f} cand={cand:.2f}", flush=True)
-                if cand < best:
-                    best = cand
-                    best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_SHRINK_RIGHT,
-                                                   outer=(i, j), hole=(k, l))
+                debug_print(dbg_cell, f"  Case RE_WHX_SHRINK_RIGHT: v={v:.2f} cand={cand:.2f}")
+                best, best_bp = best_cand_check(
+                    best, best_bp, cand,
+                    EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_SHRINK_RIGHT, outer=(i, j), hole=(k, l))
+                )
 
-                # Case 3: Add an unpaired base at the 5' end of the outer span.
+                # ---------- Case 3: Add an Unpaired Base at The 5' End of The Outer Span. ----------
                 v = eddy_rivas_fold_state.whx_matrix.get(i + 1, j, k, l)
                 cand = v + unpaired_base_penalty
-                if (i, j, k, l) == (0, 33, 23, 33):
-                    print(f"  Case RE_WHX_TRIM_LEFT: v={v:.2f} cand={cand:.2f}", flush=True)
-                if cand < best:
-                    best = cand
-                    best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_TRIM_LEFT,
-                                                   outer=(i, j), hole=(k, l))
+                debug_print(dbg_cell, f"  Case RE_WHX_TRIM_LEFT: v={v:.2f} cand={cand:.2f}")
+                best, best_bp = best_cand_check(
+                    best, best_bp, cand,
+                    EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_TRIM_LEFT, outer=(i, j), hole=(k, l))
+                )
 
-                # Case 4: Add an unpaired base at the 3' end of the outer span.
+                # ---------- Case 4: Add An Unpaired Base at The 3' End of The Outer Span. ----------
                 v = eddy_rivas_fold_state.whx_matrix.get(i, j - 1, k, l)
                 cand = v + unpaired_base_penalty
-                if (i, j, k, l) == (0, 33, 23, 33):
-                    print(f"  Case RE_WHX_TRIM_RIGHT: v={v:.2f} cand={cand:.2f}", flush=True)
-                if cand < best:
-                    best = cand
-                    best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_TRIM_RIGHT,
-                                                   outer=(i, j), hole=(k, l))
+                debug_print(dbg_cell, f"  Case RE_WHX_TRIM_RIGHT: v={v:.2f} cand={cand:.2f}")
+                best, best_bp = best_cand_check(
+                    best, best_bp, cand,
+                    EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_TRIM_RIGHT, outer=(i, j), hole=(k, l))
+                )
 
-                # Case 5: Collapse the hole to form a nested structure WX(i, j).
-                v = get_whx_with_collapse(eddy_rivas_fold_state.whx_matrix,
-                                          eddy_rivas_fold_state.wxu_matrix, i, j, k, l)
+                # ---------- Case 5: Collapse The Hole to Form a Nested Structure WX(i, j). ----------
+                v = get_whx_with_collapse(
+                    whx_matrix=eddy_rivas_fold_state.whx_matrix,
+                    wx_matrix=eddy_rivas_fold_state.wxu_matrix,
+                    i=i, j=j, k=k, l=l
+                )
                 cand = v
-                if (i, j, k, l) == (0, 33, 23, 33):
-                    print(f"  Case RE_WHX_COLLAPSE: v={v:.2f} cand={cand:.2f}", flush=True)
-                if cand < best:
-                    best = cand
-                    best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
-                                                   outer=(i, j), hole=(k, l))
+                debug_print(dbg_cell, f"  Case RE_WHX_COLLAPSE: v={v:.2f} cand={cand:.2f}")
+                best, best_bp = best_cand_check(
+                    best, best_bp, cand,
+                    EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE, outer=(i, j), hole=(k, l))
+                )
 
-                # Case 6: Add unpaired bases at both outer ends.
+                # ---------- Case 6: Add Unpaired Bases at Both Outer Ends. ----------
                 v = eddy_rivas_fold_state.whx_matrix.get(i + 1, j - 1, k, l)
-                if (i, j, k, l) == (0, 33, 23, 33):
-                    print(f"  Case RE_WHX_SS_BOTH: v={v:.2f} cand={cand:.2f}", flush=True)
+                debug_print(dbg_cell, f"  Case RE_WHX_SS_BOTH: v={v:.2f} cand={v + 2.0 * unpaired_base_penalty:.2f}")
                 if math.isfinite(v):
                     cand = v + 2.0 * unpaired_base_penalty
-                    if cand < best:
-                        best = cand
-                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_SS_BOTH,
-                                                       outer=(i, j), hole=(k, l))
+                    best, best_bp = best_cand_check(
+                        best, best_bp, cand,
+                        EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_SS_BOTH, outer=(i, j), hole=(k, l))
+                    )
 
-                # Case 7: Bifurcation into WHX + WX (left-gapped).
-                lr = max(0, j - i)
-                if lr > 0:
-                    left_vec = np.full(lr, np.inf, dtype=np.float64)
-                    right_vec = np.full(lr, np.inf, dtype=np.float64)
-                    for t in range(lr):
-                        r = i + t
-                        lv = eddy_rivas_fold_state.whx_matrix.get(i, r, k, l)
-                        rv = get_wxi_or_wx(eddy_rivas_fold_state, r + 1, j)
-                        if math.isfinite(lv): left_vec[t] = lv
-                        if math.isfinite(rv): right_vec[t] = rv
-
-                    cand_split, t_star = best_sum(left_vec, right_vec)
-                    if (i, j, k, l) == (0, 33, 23, 33):
-                        print(f"  Case SPLIT_LEFT_WHX_WX: cand={cand_split:.2f} t_star={t_star}", flush=True)
-                        if t_star >= 0:
-                            r_star = i + t_star
-                            print(f"    left[{t_star}]={left_vec[t_star]:.2f} right[{t_star}]={right_vec[t_star]:.2f}",
-                                  flush=True)
+                # ---------- Case 7: Split Left Into WHX + WX. ----------
+                if span_len > 0:
+                    cand_split, t_star = whx_split_min(
+                        WHXSplitMode.LEFT_WHX_WX, eddy_rivas_fold_state, i, j, k, l
+                    )
+                    debug_print(dbg_cell, f"  Case SPLIT_LEFT_WHX_WX: cand={cand_split:.2f} t_star={t_star}")
                     if t_star >= 0 and cand_split < best:
                         r_star = i + t_star
                         best = cand_split
@@ -693,21 +689,12 @@ class EddyRivasFoldingEngine:
                             outer=(i, j), hole=(k, l), split=r_star
                         )
 
-                # Case 8: Bifurcation into WX + WHX (right-gapped).
-                ls = max(0, j - i)
-                if ls > 0:
-                    left_vec = np.full(ls, np.inf, dtype=np.float64)
-                    right_vec = np.full(ls, np.inf, dtype=np.float64)
-                    for t in range(ls):
-                        s2 = i + t
-                        lv = get_wxi_or_wx(eddy_rivas_fold_state, i, s2)
-                        rv = eddy_rivas_fold_state.whx_matrix.get(s2 + 1, j, k, l)
-                        if math.isfinite(lv): left_vec[t] = lv
-                        if math.isfinite(rv): right_vec[t] = rv
-
-                    cand_split, t_star = best_sum(left_vec, right_vec)
-                    if (i, j, k, l) == (0, 33, 23, 33):
-                        print(f"  Case SPLIT_RIGHT_WX_WHX: cand={cand_split:.2f}", flush=True)
+                # ---------- Case 8: Split Right into WX + WHX ----------
+                if span_len > 0:
+                    cand_split, t_star = whx_split_min(
+                        WHXSplitMode.RIGHT_WX_WHX, eddy_rivas_fold_state, i, j, k, l
+                    )
+                    debug_print(dbg_cell, f"  Case SPLIT_RIGHT_WX_WHX: cand={cand_split:.2f}")
                     if t_star >= 0 and cand_split < best:
                         s2_star = i + t_star
                         best = cand_split
@@ -716,58 +703,51 @@ class EddyRivasFoldingEngine:
                             outer=(i, j), hole=(k, l), split=s2_star
                         )
 
-                # Case 9: Overlapping pseudoknot (WHX + WHX).
-                if overlap_penalty != 0.0:
-                    lr = max(0, j - i)
-                    if lr > 0:
-                        left_vec = np.full(lr, np.inf, dtype=np.float64)
-                        right_vec = np.full(lr, np.inf, dtype=np.float64)
-                        for t in range(lr):
-                            r = i + t
-                            lv = eddy_rivas_fold_state.whx_matrix.get(i, r, k, l)
-                            rv = eddy_rivas_fold_state.whx_matrix.get(r + 1, j, k, l)
-                            if math.isfinite(lv): left_vec[t] = lv
-                            if math.isfinite(rv): right_vec[t] = rv
+                # ---------- Case 9: Overlapping Pseudoknot (WHX + WHX). ----------
+                if overlap_penalty != 0.0 and span_len > 0:
+                    cand_overlap, t_star = whx_split_min(
+                        WHXSplitMode.OVERLAP, eddy_rivas_fold_state, i, j, k, l, overlap_penalty=overlap_penalty
+                    )
+                    debug_print(dbg_cell,
+                                 f"  Case OVERLAP_SPLIT: cand={cand_overlap:.2f} t_star={t_star} penalty={overlap_penalty:.2f}")
+                    if t_star >= 0 and cand_overlap < best:
+                        r_star = i + t_star
+                        best = cand_overlap
+                        best_bp = EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_WHX_OVERLAP_SPLIT,
+                            outer=(i, j), hole=(k, l), split=r_star
+                        )
 
-                        cand_overlap, t_star = best_sum_with_penalty(left_vec, right_vec, float(overlap_penalty))
-                        if (i, j, k, l) == (0, 33, 23, 33):
-                            print(
-                                f"  Case OVERLAP_SPLIT: cand={cand_overlap:.2f} t_star={t_star} penalty={overlap_penalty:.2f}",
-                                flush=True)
-                            if t_star >= 0:
-                                r_star = i + t_star
-                                print(
-                                    f"    left[{t_star}]={left_vec[t_star]:.2f} right[{t_star}]={right_vec[t_star]:.2f}",
-                                    flush=True)
-                        if t_star >= 0 and cand_overlap < best:
-                            r_star = i + t_star
-                            best = cand_overlap
-                            best_bp = EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_WHX_OVERLAP_SPLIT,
-                                outer=(i, j), hole=(k, l), split=r_star
-                            )
-
-                # Case 10: IS2 motif (Irreducible Surface of order 2).
+                # ---------- Case 10: IS2 motif (Outer Bridge + Inner YHX). ----------
                 if self.cfg.enable_is2:
-                    if (i, j, k, l) == (0, 33, 23, 33):
-                        print(f"  Case IS2: Searching for IS2 motif...", flush=True)
-                    for r2 in range(i, k + 1):
-                        for s2 in range(l, j + 1):
-                            if r2 <= k and l <= s2 and r2 <= s2:
-                                inner_y = eddy_rivas_fold_state.yhx_matrix.get(r2, s2, k, l)
-                                if math.isfinite(inner_y):
-                                    bridge = IS2_outer_yhx(self.cfg, seq, i, j, r2, s2)
-                                    cand = bridge + inner_y
-                                    if cand < best:
-                                        best = cand
-                                        best_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_IS2_INNER_YHX,
-                                                                       outer=(i, j), hole=(k, l), bridge=(r2, s2))
+                    if dbg_cell:
+                        print("  Case IS2: Searching for IS2 motif...", flush=True)
 
-                if (i, j, k, l) == (0, 33, 23, 33):
-                    print(f"  FINAL: best={best:.2f} bp={best_bp}", flush=True)
+                    is2_best, is2_bp, _ = scan_is2_outer(
+                        state=eddy_rivas_fold_state,
+                        cfg=self.cfg,
+                        seq=seq,
+                        i=i, j=j, k=k, l=l,
+                        inner_matrix="yhx",  # WHX’s IS2 variant uses YHX as inner
+                        bridge_kind="yhx",  # Bridge via IS2_outer_yhx
+                        op=EddyRivasBacktrackOp.RE_WHX_IS2_INNER_YHX
+                    )
+
+                    if is2_bp is not None:
+                        r2, s2 = is2_bp
+                        best, best_bp = best_cand_check(
+                            best, best_bp, is2_best,
+                            EddyRivasBackPointer(
+                                op=EddyRivasBacktrackOp.RE_WHX_IS2_INNER_YHX,
+                                outer=(i, j), hole=(k, l), bridge=(r2, s2)
+                            )
+                        )
+
+                debug_print(dbg_cell, f"  FINAL: best={best:.2f} bp={best_bp}")
                 eddy_rivas_fold_state.whx_matrix.set(i, j, k, l, best)
                 eddy_rivas_fold_state.whx_back_ptr.set(i, j, k, l, best_bp)
-                if i == 0 and j >= 33 and 20 <= k <= 30 and 30 <= l <= 35:
+
+                if i == 0 and j >= 33 and 20 <= k <= 30 <= l <= 35:
                     status = "SUCCESS" if math.isfinite(best) else "FAIL"
                     print(f"[WHX {status}] ({i},{j}:{k},{l}) = {best:.2f}", flush=True)
 
@@ -944,7 +924,7 @@ class EddyRivasFoldingEngine:
                             if r <= k and l <= s2 and r <= s2:
                                 inner = get_zhx_with_collapse(eddy_rivas_fold_state.zhx_matrix,
                                                               eddy_rivas_fold_state.vxu_matrix, r, s2, k, l)
-                                cand = IS2_outer(seq, self.cfg.tables, i, j, r, s2) + inner
+                                cand = is2_outer(seq, self.cfg.tables, i, j, r, s2) + inner
                                 if cand < best:
                                     best = cand
                                     best_bp = EddyRivasBackPointer(
@@ -1159,7 +1139,7 @@ class EddyRivasFoldingEngine:
                             if r <= s2:
                                 inner = eddy_rivas_fold_state.vhx_matrix.get(r, s2, k, l)
                                 if math.isfinite(inner):
-                                    bridge = IS2_outer(seq, self.cfg.tables, i, j, r, s2)
+                                    bridge = is2_outer(seq, self.cfg.tables, i, j, r, s2)
                                     cand = bridge + inner
                                     if cand < best:
                                         best = cand
@@ -1393,7 +1373,7 @@ class EddyRivasFoldingEngine:
                                 inner_w = get_whx_with_collapse(eddy_rivas_fold_state.whx_matrix,
                                                                 eddy_rivas_fold_state.wxu_matrix, r2, s2, k, l)
                                 if math.isfinite(inner_w):
-                                    bridge = IS2_outer_yhx(self.cfg, seq, i, j, r2, s2)
+                                    bridge = is2_outer_yhx(self.cfg, seq, i, j, r2, s2)
                                     cand = bridge + inner_w
                                     if cand < best:
                                         best = cand
