@@ -1,17 +1,31 @@
 import math
+from dataclasses import dataclass
 from typing import Callable, Tuple
 
 import numpy as np
 
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.numba_kernels import best_sum, best_sum_with_penalty
-from rna_pk_fold.utils.matrix_utils import get_wxi_or_wx
+from rna_pk_fold.utils.matrix_utils import get_wxi_or_wx, get_zhx_with_collapse
 
 
+@dataclass(frozen=True, slots=True)
 class WHXSplitMode:
     LEFT_WHX_WX = 0      # WHX(i,r:k,l)  + WX(r+1,j)
     RIGHT_WX_WHX = 1     # WX(i,s)       + WHX(s+1,j:k,l)
     OVERLAP = 2          # WHX(i,r:k,l)  + WHX(r+1,j:k,l)
+
+
+@dataclass(frozen=True, slots=True)
+class VHXSplitMode:
+    LEFT_ZHX_WX  = 1   # ZHX(i,j:r,l) + WX(r+1,k)
+    RIGHT_ZHX_WX = 2   # ZHX(i,j:k,s2) + WX(l, s2-1)
+
+
+@dataclass(frozen=True, slots=True)
+class ZHXSplitMode:
+    LEFT_ZHX_WX  = 1   # ZHX(i,j:r,l) + WX(r+1,k)
+    RIGHT_ZHX_WX = 2   # ZHX(i,j:k,s2) + WX(l, s2-1)
 
 
 def whx_build_split_vectors(
@@ -63,6 +77,85 @@ def whx_split_min(
         return best_sum_with_penalty(left_vec, right_vec, float(overlap_penalty))
     else:
         return best_sum(left_vec, right_vec)
+
+
+def zhx_wx_split_min_vhx(
+    mode: VHXSplitMode,
+    state,
+    i: int, j: int, k: int, l: int,
+):
+    """
+    Compute min over split for ZHX+WX in VHX recurrences.
+    Returns (best_energy, t_star) where t_star is the argmin index over the split dimension,
+    or (-1) if no finite candidate.
+    """
+    if mode == VHXSplitMode.LEFT_ZHX_WX:
+        lr = max(0, k - i)
+        if lr <= 0:
+            return math.inf, -1
+        left_vec  = np.full(lr, np.inf, dtype=np.float64)
+        right_vec = np.full(lr, np.inf, dtype=np.float64)
+        for t in range(lr):
+            r = i + t
+            lv = get_zhx_with_collapse(state.zhx_matrix, state.vxu_matrix, i, j, r, l)
+            rv = get_wxi_or_wx(state, r + 1, k)
+            if math.isfinite(lv): left_vec[t] = lv
+            if math.isfinite(rv): right_vec[t] = rv
+        return best_sum(left_vec, right_vec)
+
+    # mode == VHXSplitMode.RIGHT_ZHX_WX
+    ls = max(0, j - l)  # = j - l
+    if ls <= 0:
+        return math.inf, -1
+    left_vec  = np.full(ls, np.inf, dtype=np.float64)
+    right_vec = np.full(ls, np.inf, dtype=np.float64)
+    for t in range(ls):
+        s2 = (l + 1) + t
+        lv = get_zhx_with_collapse(state.zhx_matrix, state.vxu_matrix, i, j, k, s2)
+        rv = get_wxi_or_wx(state, l, s2 - 1)
+        if math.isfinite(lv): left_vec[t] = lv
+        if math.isfinite(rv): right_vec[t] = rv
+    return best_sum(left_vec, right_vec)
+
+
+def zhx_wx_split_min_zhx(
+    mode: ZHXSplitMode,
+    state,
+    i: int, j: int, k: int, l: int,
+):
+    """
+    Compute min over split for ZHX+WX recurrences in ZHX (no collapse;
+    uses ZHX.get directly). Returns (best_energy, t_star) where t_star is
+    the argmin over the split index, or (-1) if no finite candidate exists.
+    """
+    if mode == ZHXSplitMode.LEFT_ZHX_WX:
+        lr = max(0, k - i)
+        if lr <= 0:
+            return math.inf, -1
+        left_vec  = np.full(lr, np.inf, dtype=np.float64)
+        right_vec = np.full(lr, np.inf, dtype=np.float64)
+        for t in range(lr):
+            r = i + t
+            lv = state.zhx_matrix.get(i, j, r, l)
+            rv = get_wxi_or_wx(state, r + 1, k)
+            if math.isfinite(lv): left_vec[t] = lv
+            if math.isfinite(rv): right_vec[t] = rv
+        return best_sum(left_vec, right_vec)
+
+    # mode == ZHXSplitMode.RIGHT_ZHX_WX
+    ls = max(0, j - l)
+    if ls <= 0:
+        return math.inf, -1
+    left_vec  = np.full(ls, np.inf, dtype=np.float64)
+    right_vec = np.full(ls, np.inf, dtype=np.float64)
+    for t in range(ls):
+        s2 = (l + 1) + t
+        lv = state.zhx_matrix.get(i, j, k, s2)
+        rv = get_wxi_or_wx(state, l, s2 - 1)
+        if math.isfinite(lv): left_vec[t] = lv
+        if math.isfinite(rv): right_vec[t] = rv
+
+    return best_sum(left_vec, right_vec)
 
 
 def build_split_vectors(
