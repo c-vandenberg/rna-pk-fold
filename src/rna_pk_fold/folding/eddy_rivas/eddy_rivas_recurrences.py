@@ -161,7 +161,7 @@ class EddyRivasFoldingConfig:
     verbose : bool
         If True, enables verbose logging.
     """
-    enable_coax: bool = False # keep off initially
+    enable_coax: bool = True
     enable_wx_overlap: bool = False # turn on WX same-hole overlap terms
     enable_coax_variants: bool = False  # NEW: add extra coax topologies in VX composition
     enable_coax_mismatch: bool = False  # allow |k-r|==1 seam as "mismatch coax"
@@ -1444,6 +1444,8 @@ class EddyRivasFoldingEngine:
                 r_c = np.full(base_l, np.inf, dtype=np.float64) # Right, charged
                 left_y = np.full(base_l, np.inf, dtype=np.float64) # Energies from YHX matrix (left)
                 right_y = np.full(base_l, np.inf, dtype=np.float64) # Energies from YHX matrix (right)
+                left_y_is_charged = np.zeros(base_l, dtype=np.uint8)
+                right_y_is_charged = np.zeros(base_l, dtype=np.uint8)
 
                 # Iterate through all possible split points 'r' to populate the energy vectors.
                 for t in range(base_l):
@@ -1472,17 +1474,20 @@ class EddyRivasFoldingEngine:
                     # Get energies from the YHX matrix as an alternative subproblem type.
                     if can_pair_mask[k][r]:
                         ly = eddy_rivas_fold_state.yhx_matrix.get(i, r, k, r)
-                        if math.isfinite(ly): left_y[t] = ly
+                        if math.isfinite(ly):
+                            left_y[t] = ly
+                            bp_ly = eddy_rivas_fold_state.yhx_back_ptr.get(i, r, k, r)
+                            if bp_ly is not None and getattr(bp_ly, "charged", False):
+                                left_y_is_charged[t] = 1
 
                     if can_pair_mask[r + 1][l]:
                         ry = eddy_rivas_fold_state.yhx_matrix.get(r + 1, j, r + 1, l)
-                        if math.isfinite(ry): right_y[t] = ry
-
-                    # YHX terms (left and right).
-                    ly = eddy_rivas_fold_state.yhx_matrix.get(i, r, k, r)
-                    ry = eddy_rivas_fold_state.yhx_matrix.get(r + 1, j, r + 1, l)
-                    if math.isfinite(ly): left_y[t] = ly
-                    if math.isfinite(ry): right_y[t] = ry
+                        if math.isfinite(ry):
+                            right_y[t] = ry
+                            bp_ry = eddy_rivas_fold_state.yhx_back_ptr.get(r + 1, j, r + 1,
+                                                                     l)
+                            if bp_ry is not None and getattr(bp_ry, "charged", False):
+                                right_y_is_charged[t] = 1
 
                 # Calculate penalty for very short loops between helices.
                 cap_pen = short_hole_penalty(self.cfg.costs, k, l)
@@ -1491,7 +1496,8 @@ class EddyRivasFoldingEngine:
                 # Pass the energy vectors to the optimized Numba kernel to find the best split point 'r'
                 # and the best combination of subproblems (WHX+WHX, YHX+YHX, etc.).
                 cand, t_star, case_id = compose_wx_best_over_r_arrays(
-                    l_u, r_u, l_c, r_c, left_y, right_y, float(pseudoknot_penalty), float(cap_pen)
+                    l_u, r_u, l_c, r_c, left_y, right_y, left_y_is_charged, right_y_is_charged,
+                    float(pseudoknot_penalty), float(cap_pen)
                 )
 
                 # --- Update Step ---
@@ -1550,26 +1556,49 @@ class EddyRivasFoldingEngine:
                     r_star = k + t_star # Recalculate best split point.
 
                     # Decode the 'case_id' from the kernel to determine the backtrack operation.
-                    if case_id in (0, 1, 2, 3):
-                        # Case: WHX + WHX
+                    charged = False
+                    if case_id in (0, 1, 2):
+                        # Case: WHX + WHX (uu/cu/uc): no Gw, not charged
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX
                         hole_left = (k, r_star)
                         hole_right = (r_star + 1, l)
+                    elif case_id == 3:
+                        # Case: WHX + WHX (cc): Gw applied in kernel; charged
+                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX
+                        hole_left = (k, r_star)
+                        hole_right = (r_star + 1, l)
+                        charged = True
                     elif case_id == 4:
-                        # Case: YHX + YHX
+                        # Case: YHX + YHX: Gw only if both charged (decided in kernel);
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX
                         hole_left = (k, r_star)
                         hole_right = (r_star + 1, l)
-                    elif case_id in (5, 6):
-                        # Case: YHX + WHX
+                        charged = bool(left_y_is_charged[t_star] and right_y_is_charged[t_star])
+                    elif case_id == 5:
+                        # Case: YHX + WHX (right uncharged): no Gw, not charged
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX
                         hole_left = (k, r_star)
                         hole_right = (r_star + 1, l)
-                    else:  # case_id in (7, 8)
-                        # Case: WHX + YHX
+                    elif case_id == 6:
+                        # Case: YHX + WHX (right charged): Gw only if left Y is charged
+                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX
+                        hole_left = (k, r_star)
+                        hole_right = (r_star + 1, l)
+                        charged = bool(left_y_is_charged[t_star])
+                    elif case_id == 7:
+                        # Case: WHX (left uncharged) + YHX: no Gw, not charged
                         op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX
                         hole_left = (k, r_star)
                         hole_right = (r_star + 1, l)
+                    elif case_id == 8:
+                        # Case: WHX (left charged) + YHX: Gw only if right Y is charged
+                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX
+                        hole_left = (k, r_star)
+                        hole_right = (r_star + 1, l)
+                        charged = bool(right_y_is_charged[t_star])
+                    else:
+                        # Defensive — should never happen
+                        continue
 
                     # Final guard against creating backpointers to invalid, empty sub-holes.
                     k_l, l_l = hole_left
@@ -1585,7 +1614,7 @@ class EddyRivasFoldingEngine:
                         hole_left=hole_left,
                         hole_right=hole_right,
                         split=r_star,
-                        charged=True,
+                        charged=charged,
                     )
 
                     best_c = cand
@@ -1835,10 +1864,24 @@ class EddyRivasFoldingEngine:
                     # ...update the best energy and create a new backpointer for this configuration.
                     best_c = cand
                     r_star = k + t_star
-                    best_bp = EddyRivasBackPointer(
-                        op=EddyRivasBacktrackOp.RE_PK_COMPOSE_VX,
-                        outer=(i, j), hole=(k, l), split=r_star, charged=True
-                    )
+
+                    # Decide if this composition truly formed a PK (cc case only)
+                    charged = (base_case == 3)
+
+                    # Only consider 'charged' if both charged sides are finite
+                    if charged and (not (np.isfinite(l_c[t_star]) and np.isfinite(r_c[t_star]))):
+                        charged = False
+
+                    k_l, l_l = (k, r_star)
+                    k_r, l_r = (r_star + 1, l)
+                    if (l_l - k_l) <= 1 or (l_r - k_r) <= 1:
+                        # Skip publishing this split; search continues
+                        pass
+                    else:
+                        best_bp = EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_PK_COMPOSE_VX,
+                            outer=(i, j), hole=(k, l), split=r_star, charged=True
+                        )
 
             # After checking all possible holes (k, l) for the current span (i, j),
             # commit the best result to the composed matrix and its backpointer store.

@@ -26,6 +26,7 @@ def _min4(a: float, b: float, c: float, d: float):
 def compose_wx_best_over_r_arrays(
     l_u: np.ndarray, r_u: np.ndarray, l_c: np.ndarray, r_c: np.ndarray,
     left_y: np.ndarray, right_y: np.ndarray,
+    left_y_is_charged, right_y_is_charged,
     gw_penalty: float, cap_penalty: float
 ):
     """
@@ -74,13 +75,13 @@ def compose_wx_best_over_r_arrays(
 
     # Iterate through each possible split point 't' (where r = k + t).
     for t in range(num_splits):
-        # --- Case Group 1: Compositions involving WHX subproblems ---
+        # --- Case 1: Compositions involving WHX subproblems ---
         # Calculate the four energy combinations for WHX(left) + WHX(right),
         # considering both charged (c) and uncharged (u) subproblems.
         cand_uu = l_u[t] + r_u[t] + cap_penalty  # uncharged + uncharged
         cand_cu = l_c[t] + r_u[t] + cap_penalty  # charged + uncharged
         cand_uc = l_u[t] + r_c[t] + cap_penalty  # uncharged + charged
-        cand_cc = l_c[t] + r_c[t] + cap_penalty  # charged + charged
+        cand_cc = l_c[t] + r_c[t] + cap_penalty + gw_penalty  # charged + charged
 
         # Find the minimum among these four WHX combinations.
         m, which = _min4(cand_uu, cand_cu, cand_uc, cand_cc)
@@ -90,9 +91,11 @@ def compose_wx_best_over_r_arrays(
             best_idx = t
             best_case = which
 
-        # --- Case Group 2: Compositions involving YHX subproblems ---
+        # --- Case 2: Compositions involving YHX sub-problems (YHX + YHX) ---
         if np.isfinite(left_y[t]) and np.isfinite(right_y[t]):
-            cand = gw_penalty + left_y[t] + right_y[t] + cap_penalty
+            cand = left_y[t] + right_y[t] + cap_penalty
+            if left_y_is_charged[t] and right_y_is_charged[t]:
+                cand += gw_penalty
             if cand < best:
                 best = cand
                 best_idx = t
@@ -101,13 +104,16 @@ def compose_wx_best_over_r_arrays(
         # --- Case 3 & 4: YHX(left) + WHX(right) ---
         if np.isfinite(left_y[t]):
             # YHX(left) + WHX(right, uncharged)
-            cand = gw_penalty + left_y[t] + r_u[t] + cap_penalty
+            cand = left_y[t] + r_u[t] + cap_penalty
             if cand < best:
                 best = cand
                 best_idx = t
                 best_case = 5
+
             # YHX(left) + WHX(right, charged)
             cand = left_y[t] + r_c[t] + cap_penalty
+            if left_y_is_charged[t]:
+                cand += gw_penalty
             if cand < best:
                 best = cand
                 best_idx = t
@@ -116,13 +122,15 @@ def compose_wx_best_over_r_arrays(
         # --- Case 5 & 6: WHX(left) + YHX(right) ---
         if np.isfinite(right_y[t]):
             # WHX(left, uncharged) + YHX(right)
-            cand = gw_penalty + right_y[t] + l_u[t] + cap_penalty
+            cand = right_y[t] + l_u[t] + cap_penalty
             if cand < best:
                 best = cand
                 best_idx = t
                 best_case = 7
             # WHX(left, charged) + YHX(right)
             cand = l_c[t] + right_y[t] + cap_penalty
+            if right_y_is_charged[t]:
+                cand += gw_penalty
             if cand < best:
                 best = cand
                 best_idx = t
@@ -193,7 +201,7 @@ def compose_vx_best_over_r(
         cand_uu = l_u[t] + r_u[t] + cap_penalty
         cand_cu = l_c[t] + r_u[t] + cap_penalty
         cand_uc = l_u[t] + r_c[t] + cap_penalty
-        cand_cc = l_c[t] + r_c[t] + cap_penalty
+        cand_cc = l_c[t] + r_c[t] + cap_penalty + gw_penalty
 
         # Find the minimum energy from the base ZHX combinations.
         base, which = _min4(cand_uu, cand_cu, cand_uc, cand_cc)
