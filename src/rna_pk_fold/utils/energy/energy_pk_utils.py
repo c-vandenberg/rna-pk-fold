@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional, Tuple, Mapping
-from rna_pk_fold.utils.nucleotide_utils import pair_str
+from rna_pk_fold.utils.sequences.nucleotide_utils import pair_str
 
 
 def coax_pair_key(seq: str, index_a: int, index_b: int) -> Optional[str]:

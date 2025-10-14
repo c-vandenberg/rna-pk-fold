@@ -7,8 +7,8 @@ import numpy as np
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
                                                 dangle_outer_right)
-from rna_pk_fold.utils.matrix_utils import get_whx_with_collapse, get_zhx_with_collapse, get_wxi_or_wx
-from rna_pk_fold.utils.is2_utils import is2_outer, is2_outer_yhx
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_whx_with_collapse, get_zhx_with_collapse, get_wxi_or_wx
+from rna_pk_fold.utils.energy.is2_utils import is2_outer, is2_outer_yhx
 
 
 # ---------- Best-value tracker with optional tie-break to RIGHT ----------
@@ -338,7 +338,7 @@ def consider_yhx_wrap_whx(
         )
 
 import math
-from typing import Optional, Tuple
+
 
 # Reuse CandTracker, best_split, scan_is2_outer_simple from earlier utilities
 

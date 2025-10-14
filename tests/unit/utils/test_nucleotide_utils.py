@@ -5,7 +5,7 @@ This module validates the function responsible for standardizing nucleotide
 characters by ensuring they are in uppercase and that the DNA base 'T'
 (Thymine) is correctly mapped to the RNA base 'U' (Uracil).
 """
-from rna_pk_fold.utils.nucleotide_utils import normalize_base
+from rna_pk_fold.utils.sequences.nucleotide_utils import normalize_base
 
 
 def test_normalize_base_uppercases_and_maps_t_to_u():

@@ -1,7 +1,7 @@
 import math
 from typing import Tuple, Any, Optional
 
-from rna_pk_fold.utils.matrix_utils import get_inner_matrix_energy
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_inner_matrix_energy
 
 def is2_outer(seq: str, tables: Any, i: int, j: int, r: int, s: int) -> float:
     """

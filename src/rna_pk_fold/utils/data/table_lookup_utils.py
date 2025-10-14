@@ -39,27 +39,3 @@ def table_lookup(
         return none_value
 
     return table.get((key_x, key_y), default_value)
-
-
-def clamp_non_favorable(energy: float) -> float:
-    """
-    Clamps a free energy value to be non-positive (i.e., not destabilizing).
-
-    In many thermodynamic models, certain interactions like coaxial stacking are
-    assumed to be purely stabilizing or neutral. This function ensures that if
-    a parameter or calculation erroneously produces a positive (destabilizing)
-    energy for such an interaction, it is clamped to 0.0.
-
-    Parameters
-    ----------
-    energy : float
-        The free energy value in kcal/mol.
-
-    Returns
-    -------
-    float
-        The original energy if it is less than or equal to 0.0; otherwise, 0.0.
-    """
-    # If the energy is stabilizing (<= 0), return it as is.
-    # Otherwise, return 0.0 to prevent it from contributing a destabilizing penalty.
-    return energy if energy <= 0.0 else 0.0

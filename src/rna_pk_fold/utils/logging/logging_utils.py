@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import datetime
 
 # Default log directory
-DEFAULT_LOG_DIR = Path("var/log")
+DEFAULT_LOG_DIR = Path("../var/log")
 
 
 def get_log_file_path(

@@ -4,7 +4,7 @@ import math
 from rna_pk_fold.energies.energy_types import SecondaryStructureEnergies
 from rna_pk_fold.utils import calculate_delta_g, lookup_loop_baseline_js, normalize_base, dimer_key
 from rna_pk_fold.rules.constraints import MIN_HAIRPIN_UNPAIRED
-from rna_pk_fold.utils.nucleotide_utils import pair_str, dangle3_key, dangle5_key
+from rna_pk_fold.utils.sequences.nucleotide_utils import pair_str, dangle3_key, dangle5_key
 
 DEFAULT_T_K = 310.15  # 37 °C in Kelvin
 

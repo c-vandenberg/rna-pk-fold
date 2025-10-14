@@ -11,21 +11,22 @@ from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
-from rna_pk_fold.utils.iter_utils import iter_spans, iter_inner_holes, iter_holes_pairable
-from rna_pk_fold.utils.matrix_utils import (clear_matrix_caches, get_whx_with_collapse, get_zhx_with_collapse,
-                                            get_wxi_or_wx, whx_collapse_with, zhx_collapse_with)
+from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_inner_holes, iter_holes_pairable
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import (clear_matrix_caches, get_whx_with_collapse,
+                                                                get_zhx_with_collapse,get_wxi_or_wx,
+                                                                whx_collapse_with, zhx_collapse_with)
 from rna_pk_fold.energies.energy_pk_ops import coax_pack, short_hole_penalty
 from rna_pk_fold.folding.eddy_rivas.numba_kernels import compose_wx_best_over_r_arrays, compose_vx_best_over_r
 from rna_pk_fold.rules.constraints import can_pair
-from rna_pk_fold.utils.recurrence_gap_matrix_utils import (
+from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
     should_skip_cell, CandTracker, consider_vhx_inner_dangles,best_split, scan_is2_outer_simple,
     consider_vhx_close_and_wrap, consider_dangles_on_hole_from_vhx, consider_ss_hole_right_biased,
     consider_dangles_on_outer_from_vhx, consider_ss_outer_right_biased, consider_yhx_wrap_whx,
     consider_ss_outer_both, consider_whx_hole_shrinks, consider_whx_outer_trims, consider_whx_collapse,
     consider_whx_ss_both, consider_whx_splits, consider_whx_overlap_split, consider_whx_is2
 )
-from rna_pk_fold.utils.debug_utils import debug_print, count_finite_cells
-from rna_pk_fold.utils.logging_utils import setup_logger
+from rna_pk_fold.utils.logging.debug_utils import debug_print, count_finite_cells
+from rna_pk_fold.utils.logging.logging_utils import setup_logger
 
 logger = setup_logger(
     name=__name__,
@@ -535,21 +536,6 @@ class EddyRivasFoldingEngine:
 
             if hasattr(eddy_rivas_fold_state, "wxi_matrix") and eddy_rivas_fold_state.wxi_matrix is not None:
                 eddy_rivas_fold_state.wxi_matrix.set(i, j, base_w)
-
-    def _check_hole_guard(self, idx_i: int, idx_k: int) -> bool:
-        hole_w = (idx_i - idx_k - 1)
-        if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
-            return True
-        if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
-            return True
-
-        return False
-
-    def _check_beam_guard(self, matrix_row) -> bool:
-        if self.cfg.beam_v_threshold != 0.0 and matrix_row > self.cfg.beam_v_threshold:
-            return True
-
-        return False
 
     # --------- WHX ---------
     def _dp_whx(self, seq: str, eddy_rivas_fold_state: EddyRivasFoldState,

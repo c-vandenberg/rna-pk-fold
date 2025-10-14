@@ -2,9 +2,9 @@ from __future__ import annotations
 from typing import Tuple, Mapping, Protocol, Optional
 
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
-from rna_pk_fold.utils.indices_utils import safe_base
-from rna_pk_fold.utils.table_lookup_utils import table_lookup
-from rna_pk_fold.utils.energy_pk_utils import coax_energy_for_join
+from rna_pk_fold.utils.sequences.indices_utils import safe_base
+from rna_pk_fold.utils.data.table_lookup_utils import table_lookup
+from rna_pk_fold.utils.energy.energy_pk_utils import coax_energy_for_join
 
 
 class CoaxConfigLike(Protocol):

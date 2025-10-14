@@ -8,7 +8,7 @@ may provide the energy value either as a static attribute or via a callable meth
 """
 import pytest
 
-from rna_pk_fold.utils.is2_utils import is2_outer, is2_outer_yhx
+from rna_pk_fold.utils.energy.is2_utils import is2_outer, is2_outer_yhx
 
 
 # ----------------------- IS2_outer -----------------------

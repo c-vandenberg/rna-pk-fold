@@ -6,9 +6,8 @@ essential for RNA energy calculations, covering energy table lookups with variou
 fallback mechanisms and a core thermodynamic safety check (`clamp_non_favorable`).
 """
 import math
-import pytest
 
-from rna_pk_fold.utils.table_lookup_utils import table_lookup, clamp_non_favorable
+from rna_pk_fold.utils.data.table_lookup_utils import table_lookup, clamp_non_favorable
 
 
 # ----------------------- table_lookup -----------------------

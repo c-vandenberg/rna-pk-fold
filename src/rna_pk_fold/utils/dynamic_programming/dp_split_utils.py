@@ -6,7 +6,7 @@ import numpy as np
 
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.numba_kernels import best_sum, best_sum_with_penalty
-from rna_pk_fold.utils.matrix_utils import get_wxi_or_wx, get_zhx_with_collapse
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_wxi_or_wx, get_zhx_with_collapse
 
 
 @dataclass(frozen=True, slots=True)

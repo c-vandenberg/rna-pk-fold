@@ -7,7 +7,7 @@ context of pseudoknotted structures.
 """
 import math
 
-from rna_pk_fold.utils.energy_pk_utils import (
+from rna_pk_fold.utils.energy.energy_pk_utils import (
     coax_pair_key,
     coax_energy_for_join,
 )

@@ -1,6 +1,6 @@
-from typing import Iterable, Iterator, Tuple
+from typing import Iterator, Tuple
 
-from rna_pk_fold.utils.iter_utils import iter_holes_pairable
+from rna_pk_fold.utils.sequences.iter_utils import iter_holes_pairable
 
 
 def hole_passes_filters(i:int, j:int, k:int, l:int, cfg, vxu_matrix) -> bool:

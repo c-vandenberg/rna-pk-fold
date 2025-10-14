@@ -28,7 +28,7 @@ from importlib.resources import files as importlib_files
 
 # --- Local Application Imports ---
 # Energy model loading and definition
-from rna_pk_fold.utils.logging_utils import setup_logger, DEFAULT_LOG_DIR
+from rna_pk_fold.utils.logging.logging_utils import setup_logger, DEFAULT_LOG_DIR
 from rna_pk_fold.energies import SecondaryStructureEnergyLoader
 from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
 

@@ -24,8 +24,8 @@ from rna_pk_fold.folding.zucker.zucker_back_pointer import ZuckerBackPointer
 
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.energies.energy_pk_ops import dangle_hole_right, dangle_hole_left
-from rna_pk_fold.utils.energy_pk_utils import coax_energy_for_join
-from rna_pk_fold.utils.iter_utils import iter_complementary_tuples, iter_inner_holes
+from rna_pk_fold.utils.energy.energy_pk_utils import coax_energy_for_join
+from rna_pk_fold.utils.sequences.iter_utils import iter_complementary_tuples, iter_inner_holes
 
 
 def make_costs(**overrides) -> PseudoknotEnergies:

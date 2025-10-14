@@ -6,7 +6,7 @@ generate iterators for various index combinations. These iterators are fundament
 building blocks for dynamic programming algorithms in RNA folding, as they provide
 a systematic way to loop over all required substructures (spans, holes, etc.).
 """
-from rna_pk_fold.utils.iter_utils import (
+from rna_pk_fold.utils.sequences.iter_utils import (
     iter_spans,
     iter_holes,
     iter_complementary_tuples,

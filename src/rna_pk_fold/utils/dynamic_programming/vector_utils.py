@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from rna_pk_fold.utils.matrix_utils import whx_collapse_with, zhx_collapse_with
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import whx_collapse_with, zhx_collapse_with
 from rna_pk_fold.energies.energy_pk_ops import coax_pack
 
 

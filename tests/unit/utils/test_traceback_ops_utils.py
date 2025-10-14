@@ -8,9 +8,9 @@ pseudoknot layer, and that results from secondary structure tracebacks are
 integrated without corrupting existing layer information (`merge_nested_interval`).
 """
 from rna_pk_fold.structures import Pair
-from rna_pk_fold.utils.indices_utils import canonical_pair
+from rna_pk_fold.utils.sequences.indices_utils import canonical_pair
 
-from rna_pk_fold.utils.traceback_ops_utils import (
+from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import (
     add_pair_once,
     merge_nested_interval,
 )

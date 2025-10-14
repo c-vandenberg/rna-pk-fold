@@ -13,7 +13,7 @@ import pytest
 from types import SimpleNamespace
 
 # Adjust this import path to match your file containing wx_bp/whx_bp/...
-from rna_pk_fold.utils.back_pointer_utils import (
+from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import (
     wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
 )
 

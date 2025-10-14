@@ -8,7 +8,7 @@ split points, which are fundamental operations in RNA folding algorithms.
 """
 import pytest
 
-from rna_pk_fold.utils.indices_utils import (
+from rna_pk_fold.utils.sequences.indices_utils import (
     safe_base,
     canonical_pair,
     is_interval_valid,

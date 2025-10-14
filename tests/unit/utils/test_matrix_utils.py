@@ -15,7 +15,7 @@ implementations.
 import math
 import pytest
 
-from rna_pk_fold.utils.matrix_utils import (
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import (
     clear_matrix_caches,
     get_whx_with_collapse,
     get_zhx_with_collapse,
