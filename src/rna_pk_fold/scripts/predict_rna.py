@@ -34,12 +34,12 @@ from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
 
 # Nested (Zuker) folding components
 from rna_pk_fold.folding.zucker import make_fold_state as make_zucker_state
-from rna_pk_fold.folding.zucker.zucker_recurrences import ZuckerFoldingConfig, ZuckerFoldingEngine
+from rna_pk_fold.folding.zucker.zucker_dynamic_programming import ZuckerFoldingConfig, ZuckerFoldingEngine
 from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested as zucker_traceback
 from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested_interval
 
 # Eddy-Rivas (pseudoknot) folding components
-from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences
+from rna_pk_fold.folding.eddy_rivas import eddy_rivas_dynamic_programming
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pk as eddy_rivas_traceback
 
@@ -188,7 +188,7 @@ def load_energy_model(yaml_path: Optional[str], temp_c: float) -> SecondaryStruc
 
 def build_eddy_rivas_costs(energy_model: SecondaryStructureEnergyModel,
                            q_ss_override: Optional[float],
-                           gw_override: Optional[float]) -> eddy_rivas_recurrences.PseudoknotEnergies:
+                           gw_override: Optional[float]) -> eddy_rivas_dynamic_programming.PseudoknotEnergies:
     """
     Constructs the pseudoknot energy parameter object, applying CLI overrides.
 
@@ -333,7 +333,7 @@ def predict_eddy_rivas(
     logger.info(f"Hole width: [{min_hole_width}, {max_hole_width if max_hole_width > 0 else '∞'}]")
 
     # Configure the Eddy-Rivas engine.
-    er_config = eddy_rivas_recurrences.EddyRivasFoldingConfig(
+    er_config = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
         enable_coax=enable_coax,
         enable_coax_variants=enable_coax,
         enable_coax_mismatch=enable_coax,
@@ -346,7 +346,7 @@ def predict_eddy_rivas(
         costs=er_costs,
         verbose=logger.isEnabledFor(logging.INFO),
     )
-    er_engine = eddy_rivas_recurrences.EddyRivasFoldingEngine(er_config)
+    er_engine = eddy_rivas_dynamic_programming.EddyRivasFoldingEngine(er_config)
 
     # Initialize the state object for the Eddy-Rivas matrices.
     eddy_rivas_state = init_eddy_rivas_fold_state(len(seq))

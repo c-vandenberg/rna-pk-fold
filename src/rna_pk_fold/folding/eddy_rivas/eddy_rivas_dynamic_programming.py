@@ -11,12 +11,9 @@ from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
-from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_inner_holes, iter_holes_pairable
+from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_holes_pairable
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import (clear_matrix_caches, get_whx_with_collapse,
-                                                                get_zhx_with_collapse,get_wxi_or_wx,
-                                                                whx_collapse_with, zhx_collapse_with)
-from rna_pk_fold.energies.energy_pk_ops import coax_pack, short_hole_penalty
-from rna_pk_fold.folding.eddy_rivas.numba_kernels import compose_wx_best_over_r_arrays, compose_vx_best_over_r
+                                                                get_zhx_with_collapse,get_wxi_or_wx)
 from rna_pk_fold.rules.constraints import can_pair
 from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
     should_skip_cell, CandTracker, consider_vhx_inner_dangles,best_split, scan_is2_outer_simple,
@@ -25,6 +22,9 @@ from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
     consider_ss_outer_both, consider_whx_hole_shrinks, consider_whx_outer_trims, consider_whx_collapse,
     consider_whx_ss_both, consider_whx_splits, consider_whx_overlap_split, consider_whx_is2
 )
+from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (compose_wx_for_hole,
+                                                                        compose_wx_yhx_overlap_for_span,
+                                                                        publish_2d_cell, compose_vx_for_hole)
 from rna_pk_fold.utils.logging.debug_utils import debug_print, count_finite_cells
 from rna_pk_fold.utils.logging.logging_utils import setup_logger
 
@@ -1104,258 +1104,36 @@ class EddyRivasFoldingEngine:
         # Iterate over all possible outer spans (i, j) of the structure.
         spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
         for i, j in tqdm(spans, desc="WX Compose", leave=False):
+
             # Initialize with the best composed energy found so far for this span.
             best_c = eddy_rivas_fold_state.wxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
 
             # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
             for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
-                # Apply configured filters to prune the search space.
-                # Filter 1: Minimum and maximum allowed hole width.
-                hole_w = (l - k - 1)
-                if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
-                    continue
-                if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
+                # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
+                if should_skip_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxu_matrix.get):
                     continue
 
-                # Filter 2: Beam search pruning based on the stability of the inner helix (k, l).
-                if self.cfg.beam_v_threshold != 0.0:
-                    v_inner = eddy_rivas_fold_state.vxu_matrix.get(k, l)
-                    if v_inner > self.cfg.beam_v_threshold:
-                        continue
-
-                # --- Pre-computation Step for Numba Kernal ---
-                # Create vectors to store energies for every possible split point 'r' between k and l.
-                # This vectorization allows for efficient processing by a Numba kernel.
-                base_l = l - k
-                l_u = np.full(base_l, np.inf, dtype=np.float64) # Left, uncharged (nested subproblem)
-                r_u = np.full(base_l, np.inf, dtype=np.float64) # Right, uncharged
-                l_c = np.full(base_l, np.inf, dtype=np.float64) # Left, charged (pseudoknotted subproblem)
-                r_c = np.full(base_l, np.inf, dtype=np.float64) # Right, charged
-                left_y = np.full(base_l, np.inf, dtype=np.float64) # Energies from YHX matrix (left)
-                right_y = np.full(base_l, np.inf, dtype=np.float64) # Energies from YHX matrix (right)
-                left_y_is_charged = np.zeros(base_l, dtype=np.uint8)
-                right_y_is_charged = np.zeros(base_l, dtype=np.uint8)
-
-                # Iterate through all possible split points 'r' to populate the energy vectors.
-                for t in range(base_l):
-                    r = k + t
-
-                    # Enforce the strict Rivas & Eddy ordering for pseudoknot helices.
-                    if self.cfg.strict_complement_order and not (i < k <= r < l <= j):
-                            continue
-
-                    # Enforce minimum lengths for the 5' and 3' outer segments.
-                    if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
-                        continue
-
-                    # Calculate energies for the left and right gapped subproblems.
-                    # 'whx_collapse_with' gets the energy, handling cases where the subproblem's hole is empty.
-                    # 'charged=False' (u) gets the nested baseline; 'charged=True' (c) gets the pseudoknotted energy.
-                    l_u[t] = whx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=False,
-                                               can_pair_mask=can_pair_mask)
-                    r_u[t] = whx_collapse_with(eddy_rivas_fold_state, r + 1, j, r + 1, l, charged=False,
-                                               can_pair_mask=can_pair_mask)
-                    l_c[t] = whx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=True,
-                                               can_pair_mask=can_pair_mask)
-                    r_c[t] = whx_collapse_with(eddy_rivas_fold_state, r + 1, j, r + 1, l, charged=True,
-                                               can_pair_mask=can_pair_mask)
-
-                    # Get energies from the YHX matrix as an alternative subproblem type.
-                    if can_pair_mask[k][r]:
-                        ly = eddy_rivas_fold_state.yhx_matrix.get(i, r, k, r)
-                        if math.isfinite(ly):
-                            left_y[t] = ly
-                            bp_ly = eddy_rivas_fold_state.yhx_back_ptr.get(i, r, k, r)
-                            if bp_ly is not None and getattr(bp_ly, "charged", False):
-                                left_y_is_charged[t] = 1
-
-                    if can_pair_mask[r + 1][l]:
-                        ry = eddy_rivas_fold_state.yhx_matrix.get(r + 1, j, r + 1, l)
-                        if math.isfinite(ry):
-                            right_y[t] = ry
-                            bp_ry = eddy_rivas_fold_state.yhx_back_ptr.get(r + 1, j, r + 1,
-                                                                     l)
-                            if bp_ry is not None and getattr(bp_ry, "charged", False):
-                                right_y_is_charged[t] = 1
-
-                # Calculate penalty for very short loops between helices.
-                cap_pen = short_hole_penalty(self.cfg.costs, k, l)
-
-                # --- Kernel Execution ---
-                # Pass the energy vectors to the optimized Numba kernel to find the best split point 'r'
-                # and the best combination of subproblems (WHX+WHX, YHX+YHX, etc.).
-                cand, t_star, case_id = compose_wx_best_over_r_arrays(
-                    l_u, r_u, l_c, r_c, left_y, right_y, left_y_is_charged, right_y_is_charged,
-                    float(pseudoknot_penalty), float(cap_pen)
+                cand, bp = compose_wx_for_hole(
+                    eddy_rivas_fold_state, self.cfg, seq, i, j, k, l, pseudoknot_penalty, can_pair_mask
                 )
-
-                # --- Update Step ---
-                # If the candidate energy from the kernel is better than the best found so far...
-                if cand < best_c:
-                    r_star = k + t_star if t_star >= 0 else -1
-
-                    # Proceed only if the kernel returned a valid split point.
-                    if r_star >= 0:
-                        t = r_star - k
-
-                        # In _compose_wx, inside the hole loop:
-                        if i == 0 and j == 69 and k in range(23, 35) and l in range(58, 69):
-                            print(f"  [REF HOLE] ({k},{l}) kernel_energy={cand:.2f} case={case_id}", flush=True)
-
-                        # Determine which vectors contributed based on case_id
-                        # This is a critical filter: ensure that both the left and right sub-fragments
-                        # have a defined gapped structure. This prevents selecting combinations where
-                        # one side has simply collapsed to a nested structure, which wouldn't form a true pseudoknot.
-                        # Which vectors contributed is determined based on case_id
-                        if case_id == 0:  # Lu + Ru (uncharged + uncharged)
-                            left_has_structure = (t < len(l_u) and math.isfinite(l_u[t]))
-                            right_has_structure = (t < len(r_u) and math.isfinite(r_u[t]))
-                        elif case_id == 1:  # Lu + Rc (uncharged + charged)
-                            left_has_structure = (t < len(l_u) and math.isfinite(l_u[t]))
-                            right_has_structure = (t < len(r_c) and math.isfinite(r_c[t]))
-                        elif case_id == 2:  # Lc + Ru (charged + uncharged)
-                            left_has_structure = (t < len(l_c) and math.isfinite(l_c[t]))
-                            right_has_structure = (t < len(r_u) and math.isfinite(r_u[t]))
-                        elif case_id == 3:  # Lc + Rc (charged + charged)
-                            left_has_structure = (t < len(l_c) and math.isfinite(l_c[t]))
-                            right_has_structure = (t < len(r_c) and math.isfinite(r_c[t]))
-                        elif case_id == 4:  # YHX + YHX
-                            left_has_structure = (t < len(left_y) and math.isfinite(left_y[t]))
-                            right_has_structure = (t < len(right_y) and math.isfinite(right_y[t]))
-                        elif case_id in (5, 6):  # YHX + WHX
-                            left_has_structure = (t < len(left_y) and math.isfinite(left_y[t]))
-                            right_has_structure = (t < len(r_u if case_id == 5 else r_c) and math.isfinite(
-                                (r_u if case_id == 5 else r_c)[t]))
-                        else:  # case 7, 8: WHX + YHX
-                            left_has_structure = (t < len(l_u if case_id == 7 else l_c) and math.isfinite(
-                                (l_u if case_id == 7 else l_c)[t]))
-                            right_has_structure = (t < len(right_y) and math.isfinite(right_y[t]))
-
-                        if not (left_has_structure and right_has_structure):
-                            if i == 0 and j == eddy_rivas_fold_state.seq_len - 1:
-                                print(
-                                    f"  [FILTER REJECT] hole=({k},{l}) r={r_star} case={case_id} left_ok={left_has_structure} right_ok={right_has_structure}",
-                                    flush=True)
-                            continue # Skip if it's not a true pseudoknot.
-
-                    if i == 0 and j == 27:
-                        print(f"  [ACCEPTED] hole=({k},{l}) case={case_id} energy={cand:.2f}", flush=True)
-
-                    # If all checks pass, this is a valid, new best pseudoknot candidate.
-                    r_star = k + t_star # Recalculate best split point.
-
-                    # Decode the 'case_id' from the kernel to determine the backtrack operation.
-                    charged = False
-                    if case_id in (0, 1, 2):
-                        # Case: WHX + WHX (uu/cu/uc): no Gw, not charged
-                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX
-                        hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)
-                    elif case_id == 3:
-                        # Case: WHX + WHX (cc): Gw applied in kernel; charged
-                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX
-                        hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)
-                        charged = True
-                    elif case_id == 4:
-                        # Case: YHX + YHX: Gw only if both charged (decided in kernel);
-                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX
-                        hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)
-                        charged = bool(left_y_is_charged[t_star] and right_y_is_charged[t_star])
-                    elif case_id == 5:
-                        # Case: YHX + WHX (right uncharged): no Gw, not charged
-                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX
-                        hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)
-                    elif case_id == 6:
-                        # Case: YHX + WHX (right charged): Gw only if left Y is charged
-                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX
-                        hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)
-                        charged = bool(left_y_is_charged[t_star])
-                    elif case_id == 7:
-                        # Case: WHX (left uncharged) + YHX: no Gw, not charged
-                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX
-                        hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)
-                    elif case_id == 8:
-                        # Case: WHX (left charged) + YHX: Gw only if right Y is charged
-                        op = EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_WHX_YHX
-                        hole_left = (k, r_star)
-                        hole_right = (r_star + 1, l)
-                        charged = bool(right_y_is_charged[t_star])
-                    else:
-                        # Defensive — should never happen
-                        continue
-
-                    # Final guard against creating backpointers to invalid, empty sub-holes.
-                    k_l, l_l = hole_left
-                    k_r, l_r = hole_right
-                    if (l_l - k_l <= 1) or (l_r - k_r <= 1):
-                        continue
-
-                    # Create the backpointer for this optimal pseudoknot configuration.
-                    best_bp = EddyRivasBackPointer(
-                        op=op,
-                        outer=(i, j),
-                        hole=(k, l),
-                        hole_left=hole_left,
-                        hole_right=hole_right,
-                        split=r_star,
-                        charged=charged,
-                    )
-
-                    best_c = cand
-
-                    # After the final best_bp assignment:
-                    if i == 0 and j == eddy_rivas_fold_state.seq_len - 1 and best_bp:
-                        print(f"  [ACCEPTED] hole={best_bp.hole} split={best_bp.split} energy={best_c:.2f}", flush=True)
-
-                    if i == 0 and j == 27:  # Full span for tmRNA
-                        print(f"[HOLE] ({k},{l}) best={cand:.2f} case={case_id}", flush=True)
-                        if cand < math.inf:
-                            # Show what arrays contributed
-                            print(f"  Lu finite: {np.sum(np.isfinite(l_u))}/{len(l_u)}", flush=True)
-                            print(f"  Ru finite: {np.sum(np.isfinite(r_u))}/{len(r_u)}", flush=True)
-                            if case_id in (4, 5, 6, 7, 8):
-                                print(f"  YHX involved!", flush=True)
-
-            # --- Optional Overlap Path ---
-            # This section handles a different class of pseudoknots where two YHX structures overlap.
-            if self.cfg.enable_wx_overlap and g_wh_wx != 0.0:
-                # Iterate through a different set of inner holes and split points.
-                for (k2, l2) in iter_inner_holes(i, j, min_hole_width=self.cfg.min_hole_width):
-                    for r2 in range(i, j):
-                        left_yv = eddy_rivas_fold_state.yhx_matrix.get(i, r2, k2, l2)
-                        right_yv = eddy_rivas_fold_state.yhx_matrix.get(r2 + 1, j, k2, l2)
-
-                        # If both subproblems have finite energy, calculate the total energy.
-                        if math.isfinite(left_yv) and math.isfinite(right_yv):
-                            cand_overlap = (
-                                    g_wh_wx + left_yv + right_yv + short_hole_penalty(self.cfg.costs, k2, l2)
-                            )
-                            # If this is a new best energy, update the backpointer.
-                            if cand_overlap < best_c:
-                                best_c = cand_overlap
-                                best_bp = EddyRivasBackPointer(
-                                    op=EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP,
-                                    outer=(i, j),
-                                    hole=(k2, l2),
-                                    split=r2,
-                                    charged=True,
-                                )
+                if cand < best_c and bp is not None:
+                    best_c, best_bp = cand, bp
 
 
             if i == 0 and j == eddy_rivas_fold_state.seq_len - 1:
                 wxu_val = eddy_rivas_fold_state.wxu_matrix.get(i, j)
                 print(f"[COMPOSE END] WXU={wxu_val:.2f}, best_c={best_c:.2f}, best_bp={best_bp}", flush=True)
 
-            # After checking all holes (k,l) for the current span (i,j), commit the best result.
-            eddy_rivas_fold_state.wxc_matrix.set(i, j, best_c)
-            if best_bp is not None:
-                eddy_rivas_fold_state.wx_back_ptr.set(i, j, best_bp)
+            # Optional YHX-overlap path
+            cand_ov, bp_ov = compose_wx_yhx_overlap_for_span(eddy_rivas_fold_state, self.cfg, i, j, g_wh_wx)
+            if cand_ov < best_c and bp_ov is not None:
+                best_c, best_bp = cand_ov, bp_ov
+
+            # After checking all possible holes (k, l) for the current span (i, j),
+            # commit the best result to the composed matrix and its backpointer store.
+            publish_2d_cell(eddy_rivas_fold_state.wxc_matrix, eddy_rivas_fold_state.wx_back_ptr, i, j, best_c, best_bp)
 
             # --- Final Debugging Block ---
             # This block prints the final winning configuration for the entire sequence.
@@ -1484,100 +1262,26 @@ class EddyRivasFoldingEngine:
         # Iterate over all possible outer spans (i, j) that could form a closing pair.
         spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
         for i, j in tqdm(spans, desc="VX Compose", leave=False):
+
+            # Initialize with the best composed energy found so far for this span.
             best_c = eddy_rivas_fold_state.vxc_matrix.get(i, j)
             best_bp: Optional[EddyRivasBackPointer] = None
 
+            # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
             for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
-                hole_w = (l - k - 1)
-                if self.cfg.min_hole_width and hole_w < self.cfg.min_hole_width:
-                    continue
-                if self.cfg.max_hole_width and hole_w > self.cfg.max_hole_width:
+                # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
+                if should_skip_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxc_matrix.get):
                     continue
 
-                # --- Pre-computation Step for Numba Kernal ---
-                # Create vectors to store energies for every possible split point 'r' between k and l.
-                # This vectorization allows for efficient processing by a Numba kernel.
-                base_l = l - k
-                l_u = np.full(base_l, np.inf, dtype=np.float64)  # Left, uncharged (nested subproblem)
-                r_u = np.full(base_l, np.inf, dtype=np.float64)  # Right, uncharged
-                l_c = np.full(base_l, np.inf, dtype=np.float64)  # Left, charged (pseudoknotted subproblem)
-                r_c = np.full(base_l, np.inf, dtype=np.float64)  # Right, charged
-                coax_total = np.zeros(base_l, dtype=np.float64)  # Total coaxial stacking energy
-                coax_bonus = np.zeros(base_l, dtype=np.float64)  # Coaxial stacking bonus energy
-
-                # Iterate through all possible split points 'r' to populate the energy vectors.
-                for t in range(base_l):
-                    r = k + t # 'r' is the split point.
-
-                    # Enforce the strict Rivas & Eddy ordering for pseudoknot helices.
-                    if self.cfg.strict_complement_order:
-                        if not (i < k <= r < l <= j):
-                            continue
-
-                    # Enforce minimum lengths for the 5' and 3' outer segments.
-                    if (r - i) < self.cfg.min_outer_left or (j - (r + 1)) < self.cfg.min_outer_right:
-                        continue
-
-                    # Calculate energies for the left and right gapped subproblems from the ZHX matrix.
-                    # 'zhx_collapse_with' gets the energy, handling cases where the subproblem's hole is empty.
-                    l_u[t] = zhx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=False,
-                                               can_pair_mask=can_pair_mask)
-                    r_u[t] = zhx_collapse_with(eddy_rivas_fold_state, r + 1, j, r + 1, l, charged=False,
-                                               can_pair_mask=can_pair_mask)
-                    l_c[t] = zhx_collapse_with(eddy_rivas_fold_state, i, r, k, r, charged=True,
-                                               can_pair_mask=can_pair_mask)
-                    r_c[t] = zhx_collapse_with(eddy_rivas_fold_state, r + 1, j, r + 1, l, charged=True,
-                                               can_pair_mask=can_pair_mask)
-
-                    # Calculate the coaxial stacking energy bonus for this specific split point 'r'.
-                    adjacent = (r == k) # Check if the helices are adjacent for a flush stack.
-                    cx_total, cx_bonus = coax_pack(
-                        seq, i, j, r, k, l, self.cfg, self.cfg.costs, adjacent
-                    )
-                    coax_total[t] = cx_total
-                    coax_bonus[t] = cx_bonus
-
-                # Calculate penalty for very short loops between helices.
-                cap_pen = short_hole_penalty(self.cfg.costs, k, l)
-
-                # --- Kernel Execution ---
-                # Pass the energy vectors to the optimized Numba kernel. It efficiently finds the
-                # best split point 'r' (returned as t_star) and the minimum energy 'cand'.
-                cand, t_star, base_case = compose_vx_best_over_r(
-                    l_u, r_u, l_c, r_c, coax_total, coax_bonus,
-                    float(pseudoknot_penalty), float(cap_pen), float(coaxial_scale)
+                cand, bp = compose_vx_for_hole(
+                    eddy_rivas_fold_state, self.cfg, seq, i, j, k, l, pseudoknot_penalty, coaxial_scale, can_pair_mask
                 )
-
-                # --- Update Step ---
-                # If the candidate energy from the kernel is better than the best found so far...
-                if cand < best_c:
-                    # ...update the best energy and create a new backpointer for this configuration.
-                    best_c = cand
-                    r_star = k + t_star
-
-                    # Decide if this composition truly formed a PK (cc case only)
-                    charged = (base_case == 3)
-
-                    # Only consider 'charged' if both charged sides are finite
-                    if charged and (not (np.isfinite(l_c[t_star]) and np.isfinite(r_c[t_star]))):
-                        charged = False
-
-                    k_l, l_l = (k, r_star)
-                    k_r, l_r = (r_star + 1, l)
-                    if (l_l - k_l) <= 1 or (l_r - k_r) <= 1:
-                        # Skip publishing this split; search continues
-                        pass
-                    else:
-                        best_bp = EddyRivasBackPointer(
-                            op=EddyRivasBacktrackOp.RE_PK_COMPOSE_VX,
-                            outer=(i, j), hole=(k, l), split=r_star, charged=True
-                        )
+                if cand < best_c and bp is not None:
+                    best_c, best_bp = cand, bp
 
             # After checking all possible holes (k, l) for the current span (i, j),
             # commit the best result to the composed matrix and its backpointer store.
-            eddy_rivas_fold_state.vxc_matrix.set(i, j, best_c)
-            if best_bp is not None:
-                eddy_rivas_fold_state.vx_back_ptr.set(i, j, best_bp)
+            publish_2d_cell(eddy_rivas_fold_state.vxc_matrix, eddy_rivas_fold_state.vx_back_ptr, i, j, best_c, best_bp)
 
     @staticmethod
     def _publish_vx(re: EddyRivasFoldState) -> None:

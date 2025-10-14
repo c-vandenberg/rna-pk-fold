@@ -19,8 +19,8 @@ from importlib.resources import files as importlib_files
 from rna_pk_fold.energies import SecondaryStructureEnergyLoader
 from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
 from rna_pk_fold.folding.zucker import make_fold_state as make_zucker_state
-from rna_pk_fold.folding.zucker.zucker_recurrences import ZuckerFoldingConfig, ZuckerFoldingEngine
-from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences
+from rna_pk_fold.folding.zucker.zucker_dynamic_programming import ZuckerFoldingConfig, ZuckerFoldingEngine
+from rna_pk_fold.folding.eddy_rivas import eddy_rivas_dynamic_programming
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 
 
@@ -77,7 +77,7 @@ def load_energy_model(temp_c: float = 37.0) -> SecondaryStructureEnergyModel:
     return model
 
 
-def build_eddy_rivas_costs(energy_model: SecondaryStructureEnergyModel) -> eddy_rivas_recurrences.PseudoknotEnergies:
+def build_eddy_rivas_costs(energy_model: SecondaryStructureEnergyModel) -> eddy_rivas_dynamic_programming.PseudoknotEnergies:
     """
     Extract and build pseudoknot energy parameters from the loaded energy model.
 
@@ -140,7 +140,7 @@ def eddy_rivas_fold(sequence: str, energy_model: SecondaryStructureEnergyModel) 
     er_costs = build_eddy_rivas_costs(energy_model)
 
     # Configuration matches hardcoded defaults used in the actual prediction script
-    er_config = eddy_rivas_recurrences.EddyRivasFoldingConfig(
+    er_config = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
         enable_coax=False,
         enable_coax_variants=False,
         enable_coax_mismatch=False,
@@ -154,7 +154,7 @@ def eddy_rivas_fold(sequence: str, energy_model: SecondaryStructureEnergyModel) 
         verbose=False,
     )
 
-    er_engine = eddy_rivas_recurrences.EddyRivasFoldingEngine(er_config)
+    er_engine = eddy_rivas_dynamic_programming.EddyRivasFoldingEngine(er_config)
     eddy_rivas_state = init_eddy_rivas_fold_state(len(sequence))
 
     # Run DP algorithm

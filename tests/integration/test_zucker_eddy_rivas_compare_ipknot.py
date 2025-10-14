@@ -33,10 +33,10 @@ from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
 
 # Zuker (nested) folding components
 from rna_pk_fold.folding.zucker import make_fold_state
-from rna_pk_fold.folding.zucker.zucker_recurrences import ZuckerFoldingConfig, ZuckerFoldingEngine
+from rna_pk_fold.folding.zucker.zucker_dynamic_programming import ZuckerFoldingConfig, ZuckerFoldingEngine
 
 # Eddy-Rivas (pseudoknot) folding components
-from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences as eddy_rivas_engine
+from rna_pk_fold.folding.eddy_rivas import eddy_rivas_dynamic_programming as eddy_rivas_engine
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested_interval as zucker_traceback_interval
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pk as eddy_rivas_traceback

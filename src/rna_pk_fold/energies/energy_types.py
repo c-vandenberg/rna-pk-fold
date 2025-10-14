@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Mapping, Dict, Optional, Tuple, List
+from typing import Mapping, Dict, Optional, Tuple
 
 # A mapping from a base to its canonical complement, e.g., {"A": "U", "C": "G"}.
 BasePairMap = Mapping[str, str]

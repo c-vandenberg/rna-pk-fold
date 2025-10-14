@@ -1,5 +1,4 @@
 from __future__ import annotations
-import math
 
 
 def delta_g(dh: float, ds: float, temp_k: float) -> float:

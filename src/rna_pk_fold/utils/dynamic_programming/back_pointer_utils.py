@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import EddyRivasBackPointer
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasBackPointer
 
 def wx_bp(state: EddyRivasFoldState, i: int, j: int) -> Optional[EddyRivasBackPointer]:
     """

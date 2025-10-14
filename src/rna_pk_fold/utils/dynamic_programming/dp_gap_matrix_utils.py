@@ -5,6 +5,7 @@ import math
 import numpy as np
 
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
                                                 dangle_outer_right)
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_whx_with_collapse, get_zhx_with_collapse, get_wxi_or_wx
@@ -339,8 +340,6 @@ def consider_yhx_wrap_whx(
 
 import math
 
-
-# Reuse CandTracker, best_split, scan_is2_outer_simple from earlier utilities
 
 def consider_whx_hole_shrinks(
     tracker: "CandTracker",

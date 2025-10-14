@@ -14,7 +14,7 @@ from rna_pk_fold.energies.energy_pk_ops import (
     coax_pack as pk_coax_pack_fn,
     short_hole_penalty as pk_short_hole_penalty_fn,
 )
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import EddyRivasFoldingConfig
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasFoldingConfig
 
 
 class SecondaryStructureEnergyModelProtocol(Protocol):

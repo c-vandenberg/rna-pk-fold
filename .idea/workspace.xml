@@ -5,32 +5,20 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="412c1b24-9f3a-48e6-b1d0-5a7a528ee298" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_composition_utils.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/energy/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/energies/energy_pk_ops.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/energies/energy_pk_ops.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_recurrences.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/energies/data/thermo_math.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/energies/data/thermo_math.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/energies/energy_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/energies/energy_model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/energies/energy_ops.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/energies/energy_ops.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/energies/energy_types.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/energies/energy_types.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_traceback.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_traceback.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/zucker/zucker_recurrences.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/zucker/zucker_dynamic_programming.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/back_pointer_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/back_pointer_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/energy_pk_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/energy/energy_pk_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/energy_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/energy/energy_base_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/is2_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/energy/is2_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/matrix_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/matrix_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/recurrence_cand_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_cand_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/recurrence_gap_matrix_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_gap_matrix_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/recurrence_scaffold_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_scaffold_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/recurrence_split_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_split_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/table_lookup_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/table_lookup_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/traceback_ops_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/traceback_ops_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/vector_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/vector_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_rivas_eddy_table3.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_rivas_eddy_table3.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/utils/test_back_pointer_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/utils/test_back_pointer_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/utils/test_energy_pk_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/utils/test_energy_pk_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/utils/test_is2_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/utils/test_is2_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/utils/test_matrix_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/utils/test_matrix_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/utils/test_traceback_ops_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/utils/test_traceback_ops_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/rules/constraints.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/rules/constraints.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/scripts/algorithm_performance.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/scripts/algorithm_performance.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/back_pointer_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/back_pointer_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_gap_matrix_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_gap_matrix_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/traceback_ops_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/traceback_ops_utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -100,24 +88,24 @@
     "Python.tensor_utils.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "git-widget-placeholder": "feature/phase-3-full-rivas-eddy-matrices-optimizing-algorithm-2",
-    "last_opened_file_path": "/home/chris-vdb/Computational-Chemistry/instadeep/pseudoknots_assessment/rna-pk-fold/src/rna_pk_fold/utils/sequences",
+    "last_opened_file_path": "/home/chris-vdb/Computational-Chemistry/instadeep/pseudoknots_assessment/rna-pk-fold/src/rna_pk_fold/utils/logging",
     "run.code.analysis.last.selected.profile": "pProject Default"
   }
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/logging" />
+      <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/data" />
       <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/sequences" />
       <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/energy" />
       <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming" />
-      <recent name="$PROJECT_DIR$/src/rna_pk_fold/data" />
-      <recent name="$PROJECT_DIR$/src/rna_pk_fold/folding/zucker" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/logging" />
+      <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/data" />
+      <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/sequences" />
       <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/energy" />
       <recent name="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming" />
-      <recent name="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas" />
-      <recent name="$PROJECT_DIR$/tests/unit/folding/eddy_rivas" />
-      <recent name="$PROJECT_DIR$/tests/unit/utils" />
     </key>
   </component>
   <component name="SharedIndexes">
