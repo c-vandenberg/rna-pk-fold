@@ -25,6 +25,7 @@ from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
 from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (compose_wx_for_hole,
                                                                         compose_wx_yhx_overlap_for_span,
                                                                         publish_2d_cell, compose_vx_for_hole)
+from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import fallback_composed_if_inf, select_and_publish_min
 from rna_pk_fold.utils.logging.debug_utils import debug_print, count_finite_cells
 from rna_pk_fold.utils.logging.logging_utils import setup_logger
 
@@ -1159,66 +1160,6 @@ class EddyRivasFoldingEngine:
                     print(f"  WHX_L backptr: {whx_bp_l}", flush=True)
                     print(f"  WHX_R backptr: {whx_bp_r}", flush=True)
 
-    def _publish_wx(self, eddy_rivas_fold_state: EddyRivasFoldState) -> None:
-        """
-        Finalizes the WX matrix by selecting the optimal energy for each span.
-
-        This method compares the energy of the best nested-only structure
-        (the "uncomposed" energy from `wxu_matrix`) with the energy of the
-        best pseudoknotted structure (the "composed" energy from `wxc_matrix`).
-        It selects the minimum of the two and populates the final `wx_matrix`.
-
-        Parameters
-        ----------
-        eddy_rivas_fold_state : EddyRivasFoldState
-            The state object containing all DP matrices for the Eddy-Rivas fold.
-
-        Notes
-        -----
-        For each span (i, j), this function performs the final selection:
-        - If `uncomposed_energy <= composed_energy`, the optimal structure is
-          nested. The final `wx_matrix` is set to the uncomposed energy, and
-          a backpointer is created to indicate this choice.
-        - If `composed_energy < uncomposed_energy`, the optimal structure
-          contains a pseudoknot. The final `wx_matrix` is set to the composed
-          energy. The backpointer for this case was already set during the
-          `_compose_wx` step and is implicitly retained.
-        """
-        for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
-            # Retrieve the optimal energy for the nested-only structure for this span.
-            # This 'uncharged' energy comes from the initial Zuker-style fold.
-            wxu = eddy_rivas_fold_state.wxu_matrix.get(i, j)
-
-            # Retrieve the optimal energy for any pseudoknotted structure for this span.
-            # This 'charged' energy was calculated in the _compose_wx step.
-            wxc = eddy_rivas_fold_state.wxc_matrix.get(i, j)
-
-            if i == 0 and j == 27:
-                wx_bp = eddy_rivas_fold_state.wx_back_ptr.get(i, j)
-                print(f"[PUBLISH] WXU={wxu:.2f} WXC={wxc:.2f} BP={wx_bp}", flush=True)
-
-            # This is a fallback mechanism. If the overlap feature is enabled but no
-            # finite-energy pseudoknot was found (wxc is infinity), we consider the
-            # uncharged (nested) energy as the best possible 'composed' energy.
-            if self.cfg.enable_wx_overlap and not math.isfinite(wxc):
-                eddy_rivas_fold_state.wxc_matrix.set(i, j, wxu)
-                wxc = wxu
-
-            # --- Final Selection ---
-            # Compare the energy of the best nested structure with the best pseudoknotted one.
-            if wxu <= wxc:
-                # If the nested structure is more stable (or equally stable), select it and set a
-                # backpointer indicating that the uncharged (nested) path was chosen.
-                eddy_rivas_fold_state.wx_matrix.set(i, j, wxu)
-                eddy_rivas_fold_state.wx_back_ptr.set(i, j, EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED))
-            else:
-                # If the pseudoknotted structure is more stable, select it. The backpointer for this
-                # case was already set in _compose_wx
-                eddy_rivas_fold_state.wx_matrix.set(i, j, wxc)
-                existing_bp = eddy_rivas_fold_state.wx_back_ptr.get(i, j)
-                if i == 0 and j == 27:
-                    print(f"[PUBLISH ELSE] Keeping WXC, existing BP: {existing_bp}", flush=True)
-
     # --------- VX Composition & Publish ---------
     def _compose_vx(
         self,
@@ -1283,6 +1224,74 @@ class EddyRivasFoldingEngine:
             # commit the best result to the composed matrix and its backpointer store.
             publish_2d_cell(eddy_rivas_fold_state.vxc_matrix, eddy_rivas_fold_state.vx_back_ptr, i, j, best_c, best_bp)
 
+    def _publish_wx(self, eddy_rivas_fold_state: EddyRivasFoldState) -> None:
+        """
+        Finalizes the WX matrix by selecting the optimal energy for each span.
+
+        This method compares the energy of the best nested-only structure
+        (the "uncomposed" energy from `wxu_matrix`) with the energy of the
+        best pseudoknotted structure (the "composed" energy from `wxc_matrix`).
+        It selects the minimum of the two and populates the final `wx_matrix`.
+
+        Parameters
+        ----------
+        eddy_rivas_fold_state : EddyRivasFoldState
+            The state object containing all DP matrices for the Eddy-Rivas fold.
+
+        Notes
+        -----
+        For each span (i, j), this function performs the final selection:
+        - If `uncomposed_energy <= composed_energy`, the optimal structure is
+          nested. The final `wx_matrix` is set to the uncomposed energy, and
+          a backpointer is created to indicate this choice.
+        - If `composed_energy < uncomposed_energy`, the optimal structure
+          contains a pseudoknot. The final `wx_matrix` is set to the composed
+          energy. The backpointer for this case was already set during the
+          `_compose_wx` step and is implicitly retained.
+        """
+        # Iterate over all possible spans (i, j) in the sequence.
+        for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
+            # Retrieve the optimal energy for the nested-only structure for this span.
+            # This 'uncharged' energy comes from the initial Zuker-style fold.
+            wxu = eddy_rivas_fold_state.wxu_matrix.get(i, j)
+
+            # Retrieve the optimal energy for any pseudoknotted structure for this span.
+            # This 'charged' energy was calculated in the _compose_wx step. If `enable_fallback`
+            # is `True` and `charged` energy is `+inf`, we use the `uncharged` (Zucker) energy
+            # for `wxc`.
+            wxc = fallback_composed_if_inf(
+                enable_fallback=self.cfg.enable_wx_overlap,
+                charged_matrix=eddy_rivas_fold_state.wxc_matrix,
+                uncharged_energy=wxu,
+                i=i, j=j
+            )
+
+            if i == 0 and j == 27:
+                wx_bp = eddy_rivas_fold_state.wx_back_ptr.get(i, j)
+                print(f"[PUBLISH] WXU={wxu:.2f} WXC={wxc:.2f} BP={wx_bp}", flush=True)
+
+            # This is a fallback mechanism. If the overlap feature is enabled but no
+            # finite-energy pseudoknot was found (wxc is infinity), we consider the
+            # uncharged (nested) energy as the best possible 'composed' energy.
+            if self.cfg.enable_wx_overlap and not math.isfinite(wxc):
+                eddy_rivas_fold_state.wxc_matrix.set(i, j, wxu)
+                wxc = wxu
+
+            # --- Final Selection ---
+            # Compare the energy of the best nested structure with the best pseudoknotted one.
+            select_and_publish_min(
+                i=i, j=j,
+                uncharged_energy=wxu, charged_energy=wxc,
+                final_matrix=eddy_rivas_fold_state.wx_matrix,
+                backptr_store=eddy_rivas_fold_state.wx_back_ptr,
+                uncharged_op=EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED,
+            )
+
+            # Optional debug
+            if i == 0 and j == 27:
+                existing_bp = eddy_rivas_fold_state.wx_back_ptr.get(i, j)
+                print(f"[PUBLISH ELSE] Keeping WXC, existing BP: {existing_bp}", flush=True)
+
     @staticmethod
     def _publish_vx(re: EddyRivasFoldState) -> None:
         """
@@ -1319,13 +1328,10 @@ class EddyRivasFoldingEngine:
             vxc = re.vxc_matrix.get(i, j)
 
             # --- Final Selection ---
-            # Compare the energy of the best nested structure with the best pseudoknotted one.
-            if vxu <= vxc:
-                # If the nested structure is more stable (or equally stable), select it and set a
-                # back pointer indicating that the uncharged (nested) path was chosen for this pair.
-                re.vx_matrix.set(i, j, vxu)
-                re.vx_back_ptr.set(i, j, EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED))
-            else:
-                # If the pseudoknotted structure is more stable, select its energy.The back pointer
-                # for this pseudoknotted case was already set in _compose_vx,
-                re.vx_matrix.set(i, j, vxc)
+            select_and_publish_min(
+                i=i, j=j,
+                uncharged_energy=vxu, charged_energy=vxc,
+                final_matrix=re.vx_matrix,
+                backptr_store=re.vx_back_ptr,
+                uncharged_op=EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED,
+            )
