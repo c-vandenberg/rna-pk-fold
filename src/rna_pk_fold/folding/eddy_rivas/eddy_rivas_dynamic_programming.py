@@ -12,8 +12,8 @@ from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_holes_pairable
-from rna_pk_fold.utils.dynamic_programming.matrix_utils import (clear_matrix_caches, get_whx_with_collapse,
-                                                                get_zhx_with_collapse,get_wxi_or_wx)
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import (reset_matrix_lookup_caches, get_whx_energy_with_collapse,
+                                                                get_zhx_energy_with_collapse, get_wxi_or_wx)
 from rna_pk_fold.rules.constraints import can_pair
 from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
     should_skip_dp_cell, BestCandidateTracker, update_tracker_for_vhx_inner_dangles, compute_best_split_sum, scan_is2_outer_min_bridge,
@@ -25,7 +25,7 @@ from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
 from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (evaluate_wx_composition_for_hole,
                                                                         evaluate_wx_yhx_overlap_for_span,
                                                                         set_span_cell_with_backpointer, evaluate_vx_composition_for_hole)
-from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import fallback_composed_if_inf, select_and_publish_min
+from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import use_nested_energy_if_composed_infinite, publish_min_energy_with_default_backpointer
 from rna_pk_fold.utils.logging.debug_utils import debug_print, count_finite_cells
 from rna_pk_fold.utils.logging.logging_utils import setup_logger
 
@@ -300,7 +300,7 @@ class EddyRivasFoldingEngine:
         logger.info(f"  Compositions: O(N⁶) ≈ {seq_len ** 6:,} operations")
         logger.info("=" * 60)
 
-        clear_matrix_caches()
+        reset_matrix_lookup_caches()
 
         # --- Load model configuration
         config = self._load_config()
@@ -704,7 +704,7 @@ class EddyRivasFoldingEngine:
                 )
 
                 # -------- Case 4: Add an Unpaired Base in the Hole (From ZHX) With Tie-Break to Right. --------
-                v_zhx = get_zhx_with_collapse(
+                v_zhx = get_zhx_energy_with_collapse(
                     eddy_rivas_fold_state.zhx_matrix,
                     eddy_rivas_fold_state.vxu_matrix,
                     i, j, k, l
@@ -723,7 +723,7 @@ class EddyRivasFoldingEngine:
                 if lr > 0:
                     cand, t = compute_best_split_sum(
                         lr,
-                        left_fetch=lambda t: get_zhx_with_collapse(
+                        left_fetch=lambda t: get_zhx_energy_with_collapse(
                             eddy_rivas_fold_state.zhx_matrix,
                             eddy_rivas_fold_state.vxu_matrix, i, j, i + t, l
                         ),
@@ -739,7 +739,7 @@ class EddyRivasFoldingEngine:
                 if ls > 0:
                     cand, t = compute_best_split_sum(
                         ls,
-                        left_fetch=lambda t: get_zhx_with_collapse(
+                        left_fetch=lambda t: get_zhx_energy_with_collapse(
                             eddy_rivas_fold_state.zhx_matrix,
                             eddy_rivas_fold_state.vxu_matrix, i, j, k,
                             (l + 1) + t
@@ -769,7 +769,7 @@ class EddyRivasFoldingEngine:
                 # 5) Multiloop close/wrap on WHX
                 update_tracker_for_vhx_multiloop_close_and_wrap(
                     tracker,
-                    lambda I, J, K, L: get_whx_with_collapse(
+                    lambda I, J, K, L: get_whx_energy_with_collapse(
                         eddy_rivas_fold_state.whx_matrix,
                         eddy_rivas_fold_state.wxu_matrix, I, J, K, L
                     ),
@@ -1259,11 +1259,12 @@ class EddyRivasFoldingEngine:
             # This 'charged' energy was calculated in the _compose_wx step. If `enable_fallback`
             # is `True` and `charged` energy is `+inf`, we use the `uncharged` (Zucker) energy
             # for `wxc`.
-            wxc = fallback_composed_if_inf(
-                enable_fallback=self.cfg.enable_wx_overlap,
+            wxc = use_nested_energy_if_composed_infinite(
+                enable_overlap_fallback=self.cfg.enable_wx_overlap,
                 charged_matrix=eddy_rivas_fold_state.wxc_matrix,
-                uncharged_energy=wxu,
-                i=i, j=j
+                nested_energy=wxu,
+                i_idx=i,
+                j_idx=j
             )
 
             if i == 0 and j == 27:
@@ -1279,11 +1280,13 @@ class EddyRivasFoldingEngine:
 
             # --- Final Selection ---
             # Compare the energy of the best nested structure with the best pseudoknotted one.
-            select_and_publish_min(
-                i=i, j=j,
-                uncharged_energy=wxu, charged_energy=wxc,
+            publish_min_energy_with_default_backpointer(
+                i_idx=i,
+                j_idx=j,
+                nested_energy=wxu,
+                non_nested_energy=wxc,
                 final_matrix=eddy_rivas_fold_state.wx_matrix,
-                backptr_store=eddy_rivas_fold_state.wx_back_ptr,
+                backpointer_store=eddy_rivas_fold_state.wx_back_ptr,
                 uncharged_op=EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED,
             )
 
@@ -1328,10 +1331,12 @@ class EddyRivasFoldingEngine:
             vxc = re.vxc_matrix.get(i, j)
 
             # --- Final Selection ---
-            select_and_publish_min(
-                i=i, j=j,
-                uncharged_energy=vxu, charged_energy=vxc,
+            publish_min_energy_with_default_backpointer(
+                i_idx=i,
+                j_idx=j,
+                nested_energy=vxu,
+                non_nested_energy=vxc,
                 final_matrix=re.vx_matrix,
-                backptr_store=re.vx_back_ptr,
+                backpointer_store=re.vx_back_ptr,
                 uncharged_op=EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED,
             )

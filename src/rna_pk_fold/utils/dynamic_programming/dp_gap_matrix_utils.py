@@ -8,7 +8,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBack
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
                                                 dangle_outer_right)
-from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_whx_with_collapse, get_zhx_with_collapse, get_wxi_or_wx
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_whx_energy_with_collapse, get_zhx_energy_with_collapse, get_wxi_or_wx
 from rna_pk_fold.utils.energy.is2_utils import is2_outer, is2_outer_yhx
 
 
@@ -113,11 +113,11 @@ def scan_is2_outer_min_bridge(
     if inner_matrix == "vhx":
         inner_get = lambda r, s2: state.vhx_matrix.get(r, s2, k_idx, l_idx)
     elif inner_matrix == "zhx":
-        inner_get = lambda r, s2: get_zhx_with_collapse(state.zhx_matrix, state.vxu_matrix, r, s2, k_idx, l_idx)
+        inner_get = lambda r, s2: get_zhx_energy_with_collapse(state.zhx_matrix, state.vxu_matrix, r, s2, k_idx, l_idx)
     elif inner_matrix == "yhx":
         inner_get = lambda r, s2: state.yhx_matrix.get(r, s2, k_idx, l_idx)
     elif inner_matrix == "whx":
-        inner_get = lambda r, s2: get_whx_with_collapse(state.whx_matrix, state.wxu_matrix, r, s2, k_idx, l_idx)
+        inner_get = lambda r, s2: get_whx_energy_with_collapse(state.whx_matrix, state.wxu_matrix, r, s2, k_idx, l_idx)
     else:
         raise ValueError(f"unsupported inner matrix: {inner_matrix}")
 
@@ -446,7 +446,7 @@ def update_tracker_for_whx_hole_shrinks(
     q_single_strand: float,
 ) -> None:
     # 1. Add An Unpaired Base at The 5' End of The Hole (Shrink Hole Left: (k+1,l))
-    energy = get_whx_with_collapse(state.whx_matrix, state.wxu_matrix, i_idx, j_idx, k_idx + 1, l_idx)
+    energy = get_whx_energy_with_collapse(state.whx_matrix, state.wxu_matrix, i_idx, j_idx, k_idx + 1, l_idx)
     if math.isfinite(energy):
         tracker.update_if_better(
             energy + q_single_strand,
@@ -454,7 +454,7 @@ def update_tracker_for_whx_hole_shrinks(
         )
 
     # 2. Add an Unpaired Base at The 3' End of The Hole (Shrink Hole Right: (k,l-1))
-    energy = get_whx_with_collapse(state.whx_matrix, state.wxu_matrix, i_idx, j_idx, k_idx, l_idx - 1)
+    energy = get_whx_energy_with_collapse(state.whx_matrix, state.wxu_matrix, i_idx, j_idx, k_idx, l_idx - 1)
     if math.isfinite(energy):
         tracker.update_if_better(
             energy + q_single_strand,
@@ -497,7 +497,7 @@ def update_tracker_for_whx_collapse(
     k_idx: int,
     l_idx: int,
 ) -> None:
-    energy = get_whx_with_collapse(state.whx_matrix, state.wxu_matrix, i_idx, j_idx, k_idx, l_idx)
+    energy = get_whx_energy_with_collapse(state.whx_matrix, state.wxu_matrix, i_idx, j_idx, k_idx, l_idx)
     if math.isfinite(energy):
         tracker.update_if_better(
             energy,

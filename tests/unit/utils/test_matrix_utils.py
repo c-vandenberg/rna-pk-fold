@@ -16,11 +16,11 @@ import math
 import pytest
 
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import (
-    clear_matrix_caches,
-    get_whx_with_collapse,
-    get_zhx_with_collapse,
-    get_yhx_with_collapse,
-    get_vhx_with_collapse,
+    reset_matrix_lookup_caches,
+    get_whx_energy_with_collapse,
+    get_zhx_energy_with_collapse,
+    get_yhx_energy_with_collapse,
+    get_vhx_energy_with_collapse,
     get_wxi_or_wx,
     whx_collapse_with,
     zhx_collapse_with,
@@ -71,9 +71,9 @@ def auto_clear_matrix_caches():
     This is critical for ensuring test isolation, as it prevents results from one
     test run from affecting the outcome of another.
     """
-    clear_matrix_caches()
+    reset_matrix_lookup_caches()
     yield
-    clear_matrix_caches()
+    reset_matrix_lookup_caches()
 
 
 # -------------------------------
@@ -90,7 +90,7 @@ def test_get_whx_with_collapse_uses_wx_for_unit_hole():
     wx.set(i, j, -2.25)
 
     # The helper should retrieve the value from the WX matrix, not the WHX matrix.
-    assert math.isclose(get_whx_with_collapse(whx, wx, i, j, k, l), -2.25, rel_tol=1e-12)
+    assert math.isclose(get_whx_energy_with_collapse(whx, wx, i, j, k, l), -2.25, rel_tol=1e-12)
 
 
 def test_get_whx_with_collapse_returns_whx_when_noncollapse():
@@ -103,7 +103,7 @@ def test_get_whx_with_collapse_returns_whx_when_noncollapse():
     whx.set(i, j, k, l, -3.5)
     wx.set(i, j, +1.0)  # This value should be ignored.
 
-    assert math.isclose(get_whx_with_collapse(whx, wx, i, j, k, l), -3.5, rel_tol=1e-12)
+    assert math.isclose(get_whx_energy_with_collapse(whx, wx, i, j, k, l), -3.5, rel_tol=1e-12)
 
 
 def test_get_whx_with_collapse_invalid_geometry_yields_inf():
@@ -112,7 +112,7 @@ def test_get_whx_with_collapse_invalid_geometry_yields_inf():
     """
     whx, wx = DummyGap(), DummyTri()
     # An example of invalid geometry where k is outside the [i, j] span.
-    assert math.isinf(get_whx_with_collapse(whx, wx, i=2, j=5, k=10, l=11))
+    assert math.isinf(get_whx_energy_with_collapse(whx, wx, i=2, j=5, k=10, l=11))
 
 
 def test_get_zhx_with_collapse_mirrors_whx_behavior():
@@ -125,11 +125,11 @@ def test_get_zhx_with_collapse_mirrors_whx_behavior():
 
     # Test the collapse case: for a unit hole, it should use the VX matrix.
     vx.set(i, j, -1.1)
-    assert math.isclose(get_zhx_with_collapse(zhx, vx, i, j, k, k + 1), -1.1, rel_tol=1e-12)
+    assert math.isclose(get_zhx_energy_with_collapse(zhx, vx, i, j, k, k + 1), -1.1, rel_tol=1e-12)
 
     # Test the non-collapse case: it should use the ZHX matrix.
     zhx.set(i, j, k, k + 2, -4.4)
-    assert math.isclose(get_zhx_with_collapse(zhx, vx, i, j, k, k + 2), -4.4, rel_tol=1e-12)
+    assert math.isclose(get_zhx_energy_with_collapse(zhx, vx, i, j, k, k + 2), -4.4, rel_tol=1e-12)
 
 
 # -------------------------------
@@ -145,14 +145,14 @@ def test_get_yhx_with_collapse_returns_invalid_on_unit_hole_and_reads_value_else
     i, j, k, l = 2, 7, 4, 5  # Unit hole (l = k+1) is an invalid state for YHX.
 
     # With the default invalid_value, it should return +infinity.
-    assert math.isinf(get_yhx_with_collapse(yhx, i, j, k, l))
+    assert math.isinf(get_yhx_energy_with_collapse(yhx, i, j, k, l))
 
     # With a custom invalid_value, it should return that value.
-    assert math.isclose(get_yhx_with_collapse(yhx, i, j, k, l, invalid_value=123.456), 123.456)
+    assert math.isclose(get_yhx_energy_with_collapse(yhx, i, j, k, l, invalid_value=123.456), 123.456)
 
     # For a non-collapse case, it should return the stored value from the YHX matrix.
     yhx.set(i, j, 4, 6, -0.75)
-    assert math.isclose(get_yhx_with_collapse(yhx, i, j, 4, 6), -0.75, rel_tol=1e-12)
+    assert math.isclose(get_yhx_energy_with_collapse(yhx, i, j, 4, 6), -0.75, rel_tol=1e-12)
 
 
 def test_get_vhx_with_collapse_returns_invalid_on_unit_hole_and_reads_value_else():
@@ -163,14 +163,14 @@ def test_get_vhx_with_collapse_returns_invalid_on_unit_hole_and_reads_value_else
     vhx = DummyGap()
     i, j, k, l = 0, 4, 1, 2  # Unit hole.
     # Should return +infinity by default.
-    assert math.isinf(get_vhx_with_collapse(vhx, i, j, k, l))
+    assert math.isinf(get_vhx_energy_with_collapse(vhx, i, j, k, l))
 
     # Should return the custom invalid value when provided.
-    assert math.isclose(get_vhx_with_collapse(vhx, i, j, k, l, invalid_value=-9.9), -9.9, rel_tol=1e-12)
+    assert math.isclose(get_vhx_energy_with_collapse(vhx, i, j, k, l, invalid_value=-9.9), -9.9, rel_tol=1e-12)
 
     # Should return the stored value for non-collapse cases.
     vhx.set(i, j, 1, 3, -6.0)
-    assert math.isclose(get_vhx_with_collapse(vhx, i, j, 1, 3), -6.0, rel_tol=1e-12)
+    assert math.isclose(get_vhx_energy_with_collapse(vhx, i, j, 1, 3), -6.0, rel_tol=1e-12)
 
 
 # -------------------------------
@@ -225,7 +225,7 @@ def test_zhx_collapse_with_switches_between_charged_and_uncharged():
     Tests that `zhx_collapse_with` mirrors the behavior of `whx_collapse_with`,
     but for the VXC and VXU matrices.
     """
-    clear_matrix_caches()
+    reset_matrix_lookup_caches()
     st = DummyState()
     i, j, k = 0, 4, 1
 
