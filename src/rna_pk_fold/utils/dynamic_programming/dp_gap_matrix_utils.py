@@ -49,9 +49,9 @@ def should_skip_cell(
 ) -> bool:
     # Hole width guard
     hole_w = (l - k - 1)
-    if cfg.min_hole_width and hole_w < cfg.min_hole_width:
+    if cfg.min_hole_width != 0 and hole_w < cfg.min_hole_width:
         return True
-    if cfg.max_hole_width and hole_w > cfg.max_hole_width:
+    if cfg.max_hole_width != 0 and hole_w > cfg.max_hole_width:
         return True
 
     # Beam guard

@@ -412,9 +412,9 @@ def main(argv=None) -> int:
     parser.add_argument("--pk-gw", type=float, default=None,
                       help="Override pseudoknot penalty Gw (kcal/mol).")
     parser.add_argument("--coax", action="store_true",
-                      help="Enable coaxial stacking terms in ER (default: off).")
+                      help="Enable coaxial stacking terms in ER (default: on).", default=True)
     parser.add_argument("--overlap", action="store_true",
-                      help="Enable WX overlap path in ER (default: off).")
+                      help="Enable WX overlap path in ER (default: on).", default=True)
     parser.add_argument("--min-hole-width", type=int, default=0,
                       help="Minimum hole width (k,l) seam interior (default: 0).")
     parser.add_argument("--max-hole-width", type=int, default=0,

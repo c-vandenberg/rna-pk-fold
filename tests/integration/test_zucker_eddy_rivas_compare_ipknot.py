@@ -184,7 +184,7 @@ def engines_and_costs(energy_model: SecondaryStructureEnergyModel) -> Tuple[
         enable_coax_variants=True,
         enable_coax_mismatch=True,
         enable_wx_overlap=True,
-        strict_complement_order=False,
+        strict_complement_order=True,
         enable_join_drift=False,  # Experimental feature
         enable_is2=False,  # Experimental feature
         pk_penalty_gw=pk_params.pk_penalty_gw,

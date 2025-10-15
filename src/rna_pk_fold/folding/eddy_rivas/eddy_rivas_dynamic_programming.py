@@ -520,8 +520,8 @@ class EddyRivasFoldingEngine:
         - The final `wx` and `vx` matrices are also set to the nested values,
           acting as the starting point for the DP updates.
         """
-        n = eddy_rivas_fold_state.seq_len
-        for i, j in iter_spans(n):
+        seq_len = eddy_rivas_fold_state.seq_len
+        for i, j in iter_spans(seq_len):
             base_w = nested_fold_state.w_matrix.get(i, j)
             base_v = nested_fold_state.v_matrix.get(i, j)
 
