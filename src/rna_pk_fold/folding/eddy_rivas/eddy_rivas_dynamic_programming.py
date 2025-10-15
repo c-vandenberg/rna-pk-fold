@@ -22,9 +22,9 @@ from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
     consider_ss_outer_both, consider_whx_hole_shrinks, consider_whx_outer_trims, consider_whx_collapse,
     consider_whx_ss_both, consider_whx_splits, consider_whx_overlap_split, consider_whx_is2
 )
-from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (compose_wx_for_hole,
-                                                                        compose_wx_yhx_overlap_for_span,
-                                                                        publish_2d_cell, compose_vx_for_hole)
+from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (evaluate_wx_composition_for_hole,
+                                                                        evaluate_wx_yhx_overlap_for_span,
+                                                                        set_span_cell_with_backpointer, evaluate_vx_composition_for_hole)
 from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import fallback_composed_if_inf, select_and_publish_min
 from rna_pk_fold.utils.logging.debug_utils import debug_print, count_finite_cells
 from rna_pk_fold.utils.logging.logging_utils import setup_logger
@@ -1116,7 +1116,7 @@ class EddyRivasFoldingEngine:
                 if should_skip_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxu_matrix.get):
                     continue
 
-                cand, bp = compose_wx_for_hole(
+                cand, bp = evaluate_wx_composition_for_hole(
                     eddy_rivas_fold_state, self.cfg, seq, i, j, k, l, pseudoknot_penalty, can_pair_mask
                 )
                 if cand < best_c and bp is not None:
@@ -1128,13 +1128,13 @@ class EddyRivasFoldingEngine:
                 print(f"[COMPOSE END] WXU={wxu_val:.2f}, best_c={best_c:.2f}, best_bp={best_bp}", flush=True)
 
             # Optional YHX-overlap path
-            cand_ov, bp_ov = compose_wx_yhx_overlap_for_span(eddy_rivas_fold_state, self.cfg, i, j, g_wh_wx)
+            cand_ov, bp_ov = evaluate_wx_yhx_overlap_for_span(eddy_rivas_fold_state, self.cfg, i, j, g_wh_wx)
             if cand_ov < best_c and bp_ov is not None:
                 best_c, best_bp = cand_ov, bp_ov
 
             # After checking all possible holes (k, l) for the current span (i, j),
             # commit the best result to the composed matrix and its backpointer store.
-            publish_2d_cell(eddy_rivas_fold_state.wxc_matrix, eddy_rivas_fold_state.wx_back_ptr, i, j, best_c, best_bp)
+            set_span_cell_with_backpointer(eddy_rivas_fold_state.wxc_matrix, eddy_rivas_fold_state.wx_back_ptr, i, j, best_c, best_bp)
 
             # --- Final Debugging Block ---
             # This block prints the final winning configuration for the entire sequence.
@@ -1214,7 +1214,7 @@ class EddyRivasFoldingEngine:
                 if should_skip_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxc_matrix.get):
                     continue
 
-                cand, bp = compose_vx_for_hole(
+                cand, bp = evaluate_vx_composition_for_hole(
                     eddy_rivas_fold_state, self.cfg, seq, i, j, k, l, pseudoknot_penalty, coaxial_scale, can_pair_mask
                 )
                 if cand < best_c and bp is not None:
@@ -1222,7 +1222,7 @@ class EddyRivasFoldingEngine:
 
             # After checking all possible holes (k, l) for the current span (i, j),
             # commit the best result to the composed matrix and its backpointer store.
-            publish_2d_cell(eddy_rivas_fold_state.vxc_matrix, eddy_rivas_fold_state.vx_back_ptr, i, j, best_c, best_bp)
+            set_span_cell_with_backpointer(eddy_rivas_fold_state.vxc_matrix, eddy_rivas_fold_state.vx_back_ptr, i, j, best_c, best_bp)
 
     def _publish_wx(self, eddy_rivas_fold_state: EddyRivasFoldState) -> None:
         """

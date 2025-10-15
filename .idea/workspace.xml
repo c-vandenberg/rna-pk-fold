@@ -7,8 +7,9 @@
     <list default="true" id="412c1b24-9f3a-48e6-b1d0-5a7a528ee298" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/integration/test_zucker_eddy_rivas_compare_ipknot.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/integration/test_zucker_eddy_rivas_compare_ipknot.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_cand_utils.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_composition_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_composition_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_scaffold_utils.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -158,6 +159,16 @@
           <url>file://$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py</url>
           <line>1122</line>
           <option name="timeStamp" value="18" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py</url>
+          <line>335</line>
+          <option name="timeStamp" value="19" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py</url>
+          <line>348</line>
+          <option name="timeStamp" value="23" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
