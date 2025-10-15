@@ -324,14 +324,6 @@ def zhx_collapse_with(eddy_rivas_state: EddyRivasFoldState, i, j, k, l, charged:
     return result
 
 
-def get_with_collapse(kind: str, state, i, j, k, l):
-    if kind == "whx":
-        return get_whx_with_collapse(state.whx_matrix, state.wxu_matrix, i, j, k, l)
-    if kind == "zhx":
-        return get_zhx_with_collapse(state.zhx_matrix, state.vxu_matrix, i, j, k, l)
-    raise ValueError(kind)
-
-
 def get_inner_matrix_energy(state, inner_matrix: str, r: int, s2: int, k: int, l: int) -> float:
     if inner_matrix == "yhx":
         return state.yhx_matrix.get(r, s2, k, l)
