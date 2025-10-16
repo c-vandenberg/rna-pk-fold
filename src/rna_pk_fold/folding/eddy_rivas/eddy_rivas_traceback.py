@@ -7,7 +7,7 @@ from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import pairs_to_multilayer_dotbracket, TraceResult
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasBacktrackOp
-from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import merge_nested_interval, place_pair_non_crossing, audit_layer_map
+from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import merge_nested_region_pairs, place_pair_in_first_non_crossing_layer, audit_layer_assignments
 from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
 
 logger = logging.getLogger(__name__)
@@ -149,8 +149,8 @@ def traceback_with_pk(
                 if i == 0 and j == seq_len - 1:
                     print(f"  → Going nested!", flush=True)
                 # ...delegate this entire interval to the nested traceback function.
-                merge_nested_interval(seq, nested_state, i, j, layer,
-                                      trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, i, j, layer,
+                                          trace_nested_interval, pairs, pair_layer)
                 continue
 
             if i == 0 and j == seq_len - 1:
@@ -225,8 +225,8 @@ def traceback_with_pk(
                 continue
 
             # 1.6. Fallback for any other WX operation: treat as a simple nested interval.
-            merge_nested_interval(seq, nested_state, i, j, layer,
-                                  trace_nested_interval, pairs, pair_layer)
+            merge_nested_region_pairs(seq, nested_state, i, j, layer,
+                                      trace_nested_interval, pairs, pair_layer)
             continue
 
         # --- 2. WHX Frame Processing ---
@@ -239,8 +239,8 @@ def traceback_with_pk(
             # 2.1. If no backpointer, it implies the hole collapsed. Treat the outer span as nested.
             if not bp:
                 print(f"[WHX MISS] merging nested [{i},{j}] hole=({k},{l}) layer={layer}", flush=True)
-                merge_nested_interval(seq, nested_state, i, j, layer,
-                                      trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, i, j, layer,
+                                          trace_nested_interval, pairs, pair_layer)
                 continue
 
             print(f"[WHX] ({i},{j}:{k},{l}) layer={layer} op={bp.op}", flush=True)
@@ -270,24 +270,24 @@ def traceback_with_pk(
             elif op is EddyRivasBacktrackOp.RE_WHX_COLLAPSE:
                 if bp.outer:
                     oi, oj = bp.outer
-                    merge_nested_interval(seq, nested_state, oi, oj, layer,
-                                          trace_nested_interval, pairs, pair_layer)
+                    merge_nested_region_pairs(seq, nested_state, oi, oj, layer,
+                                              trace_nested_interval, pairs, pair_layer)
                 else:
-                    merge_nested_interval(seq, nested_state, i, j, layer,
-                                          trace_nested_interval, pairs, pair_layer)
+                    merge_nested_region_pairs(seq, nested_state, i, j, layer,
+                                              trace_nested_interval, pairs, pair_layer)
 
             # 2.8. Bifurcation into a smaller WHX and a nested WX.
             elif op is EddyRivasBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX:
                 r = bp.split if bp.split is not None else (i + j) // 2
                 stack.append(("WHX", i, r, k, l, layer))
-                merge_nested_interval(seq, nested_state, r + 1, j, layer,
-                                      trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, r + 1, j, layer,
+                                          trace_nested_interval, pairs, pair_layer)
 
             # 2.9. Bifurcation into a nested WX and a smaller WHX.
             elif op is EddyRivasBacktrackOp.RE_WHX_SPLIT_RIGHT_WX_WHX:
                 s2 = bp.split if bp.split is not None else (i + j) // 2
-                merge_nested_interval(seq, nested_state, i, s2, layer,
-                                      trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, i, s2, layer,
+                                          trace_nested_interval, pairs, pair_layer)
                 stack.append(("WHX", s2 + 1, j, k, l, layer))
 
             # 2.10. Overlapping pseudoknot from two smaller WHX subproblems.
@@ -299,8 +299,8 @@ def traceback_with_pk(
             else:
                 # Fallback for unknown operations.
                 logger.warning(f"Unknown WHX op: {op}, falling back to nested")
-                merge_nested_interval(seq, nested_state, i, j, layer,
-                                      trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, i, j, layer,
+                                          trace_nested_interval, pairs, pair_layer)
 
             continue
 
@@ -308,7 +308,7 @@ def traceback_with_pk(
         # YHX has a paired inner hole (k,l) but an undetermined outer span (i,j).
         if tag == "YHX":
             _, i, j, k, l, layer = frame
-            place_pair_non_crossing(pairs, pair_layer, k, l, layer)
+            place_pair_in_first_non_crossing_layer(pairs, pair_layer, k, l, layer)
             logger.debug(f"YHX[{i},{j},{k},{l}] layer={layer}")
 
             print(f"[YHX PROCESS] ({i},{j}:{k},{l}) layer={layer}", flush=True)
@@ -357,12 +357,12 @@ def traceback_with_pk(
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX:
                 r = bp.split if bp.split is not None else (i + j) // 2
                 stack.append(("YHX", i, r, k, l, layer))
-                merge_nested_interval(seq, nested_state, r + 1, j, 0,
-                                      trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, r + 1, j, 0,
+                                          trace_nested_interval, pairs, pair_layer)
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_RIGHT_WX_YHX:
                 s2 = bp.split if bp.split is not None else (i + j) // 2
-                merge_nested_interval(seq, nested_state, i, s2, 0,
-                                      trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, i, s2, 0,
+                                          trace_nested_interval, pairs, pair_layer)
                 stack.append(("YHX", s2 + 1, j, k, l, layer))
 
             # 3.4. For IS2 motif, delegate to WHX
@@ -406,13 +406,13 @@ def traceback_with_pk(
             elif op is EddyRivasBacktrackOp.RE_ZHX_SPLIT_LEFT_ZHX_WX:
                 r = bp.split if bp.split is not None else (i + k) // 2
                 stack.append(("ZHX", i, j, r, l, layer))
-                merge_nested_interval(seq, nested_state, r + 1, k, 0,
-                                      trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, r + 1, k, 0,
+                                          trace_nested_interval, pairs, pair_layer)
             elif op is EddyRivasBacktrackOp.RE_ZHX_SPLIT_RIGHT_ZHX_WX:
                 s2 = bp.split if bp.split is not None else (l + j) // 2
                 stack.append(("ZHX", i, j, k, s2, layer))
-                merge_nested_interval(seq, nested_state, l, s2 - 1, 0,
-                                      trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, l, s2 - 1, 0,
+                                          trace_nested_interval, pairs, pair_layer)
 
             # 4.4. An IS2 motif,
             elif op is EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX:
@@ -455,11 +455,11 @@ def traceback_with_pk(
             elif op is EddyRivasBacktrackOp.RE_VHX_SPLIT_LEFT_ZHX_WX:
                 r = bp.split if bp.split is not None else (i + k) // 2
                 stack.append(("ZHX", i, j, r, l, layer))
-                merge_nested_interval(seq, nested_state, r + 1, k, 0, trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, r + 1, k, 0, trace_nested_interval, pairs, pair_layer)
             elif op is EddyRivasBacktrackOp.RE_VHX_SPLIT_RIGHT_ZHX_WX:
                 s2 = bp.split if bp.split is not None else (l + j) // 2
                 stack.append(("ZHX", i, j, k, s2, layer))
-                merge_nested_interval(seq, nested_state, i, s2, 0, trace_nested_interval, pairs, pair_layer)
+                merge_nested_region_pairs(seq, nested_state, i, s2, 0, trace_nested_interval, pairs, pair_layer)
 
             # 5.4. An IS2 motif.
             elif op is EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX:
@@ -474,8 +474,8 @@ def traceback_with_pk(
             # 5.6. Where BOTH pairs (i,j) and (k,l) are formed simultaneously.
             elif op is EddyRivasBacktrackOp.RE_VHX_CLOSE_BOTH:
                 # Place both helices, assigning them to non-conflicting layers.
-                layer_outer = place_pair_non_crossing(pairs, pair_layer, i, j, layer)  # outer helix
-                layer_inner = place_pair_non_crossing(pairs, pair_layer, k, l, layer)  # inner helix
+                layer_outer = place_pair_in_first_non_crossing_layer(pairs, pair_layer, i, j, layer)  # outer helix
+                layer_inner = place_pair_in_first_non_crossing_layer(pairs, pair_layer, k, l, layer)  # inner helix
 
                 # Optional debug to see where they landed
                 if layer_outer != layer or layer_inner != layer:
@@ -498,7 +498,7 @@ def traceback_with_pk(
     dot = pairs_to_multilayer_dotbracket(seq_len, ordered, pair_layer)
 
     # Perform a final sanity check on the layer assignments.
-    audit_layer_map(pair_layer)
+    audit_layer_assignments(pair_layer)
 
     # Log the final results and performance and return final structure.
     elapsed = time.perf_counter() - start_time

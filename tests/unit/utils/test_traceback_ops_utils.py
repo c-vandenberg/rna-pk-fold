@@ -11,8 +11,8 @@ from rna_pk_fold.structures import Pair
 from rna_pk_fold.utils.sequences.indices_utils import canonical_pair
 
 from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import (
-    add_pair_once,
-    merge_nested_interval,
+    add_canonical_pair_if_absent,
+    merge_nested_region_pairs,
 )
 
 
@@ -27,7 +27,7 @@ def test_add_pair_once_adds_new_and_records_layer():
     pair_layer = {}
 
     # Intentionally give reversed order to exercise canonicalization: (5, 3) -> (3, 5).
-    add_pair_once(pairs, pair_layer, i=5, j=3, layer=2)
+    add_canonical_pair_if_absent(pairs, pair_layer, i_index=5, j_index=3, layer_index=2)
 
     i2, j2 = canonical_pair(5, 3)
     # Assert the canonicalized pair is in the set.
@@ -48,10 +48,10 @@ def test_add_pair_once_does_not_overwrite_existing_layer_on_duplicate():
     pair_layer = {}
 
     # 1. First insertion establishes the pair and its layer (1).
-    add_pair_once(pairs, pair_layer, i=1, j=4, layer=1)
+    add_canonical_pair_if_absent(pairs, pair_layer, i_index=1, j_index=4, layer_index=1)
 
     # 2. Duplicate insertion with different coordinates (reversed) and a new layer (9).
-    add_pair_once(pairs, pair_layer, i=4, j=1, layer=9)
+    add_canonical_pair_if_absent(pairs, pair_layer, i_index=4, j_index=1, layer_index=9)
 
     assert Pair(1, 4) in pairs
     assert pair_layer[(1, 4)] == 1      # Original layer (1) preserved.
@@ -84,15 +84,15 @@ def test_merge_nested_interval_collects_unique_pairs_and_applies_layer(monkeypat
     pair_layer = {}
 
     # Merge the results, applying layer 3.
-    merge_nested_interval(
+    merge_nested_region_pairs(
         seq="AUGCGA",
         nested_state=None,
-        i=0,
-        j=5,
-        layer=3,
-        collect_pairs_fn=collect_fn,
+        i_index=0,
+        j_index=5,
+        layer_index=3,
+        collect_pairs=collect_fn,
         pairs=pairs,
-        pair_layer_map=pair_layer,
+        pair_to_layer=pair_layer,
     )
 
     # Verify that only the unique pairs were captured.
@@ -120,15 +120,15 @@ def test_merge_nested_interval_does_not_change_existing_layer_for_prepopulated_p
         return DummyTraceResult([Pair(5, 6)])
 
     # Merge with a new layer (9) which should be ignored for the existing pair.
-    merge_nested_interval(
+    merge_nested_region_pairs(
         seq="CCCCCCCC",
         nested_state=None,
-        i=0,
-        j=7,
-        layer=9,
-        collect_pairs_fn=collect_fn,
+        i_index=0,
+        j_index=7,
+        layer_index=9,
+        collect_pairs=collect_fn,
         pairs=pairs,
-        pair_layer_map=pair_layer,
+        pair_to_layer=pair_layer,
     )
 
     # Assert that the pair is still present, and the original layer (1) is preserved.

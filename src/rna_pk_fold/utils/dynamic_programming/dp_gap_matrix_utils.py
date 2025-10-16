@@ -9,7 +9,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldSt
 from rna_pk_fold.energies.energy_pk_ops import (dangle_hole_left, dangle_hole_right, dangle_outer_left,
                                                 dangle_outer_right)
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_whx_energy_with_collapse, get_zhx_energy_with_collapse, get_wxi_or_wx
-from rna_pk_fold.utils.energy.is2_utils import is2_outer, is2_outer_yhx
+from rna_pk_fold.utils.energy.is2_utils import compute_is2_outer_bridge_energy, compute_is2_outer_bridge_energy_yhx
 
 
 # ---------- Best Candidate Tracker with Tie-break to RIGHT ----------
@@ -122,9 +122,9 @@ def scan_is2_outer_min_bridge(
         raise ValueError(f"unsupported inner matrix: {inner_matrix}")
 
     if bridge_kind == "yhx":
-        bridge_get = lambda r, s2: is2_outer_yhx(config, seq, i_idx, j_idx, r, s2)
+        bridge_get = lambda r, s2: compute_is2_outer_bridge_energy_yhx(config, seq, i_idx, j_idx, r, s2)
     else:
-        bridge_get = lambda r, s2: is2_outer(seq, config.tables, i_idx, j_idx, r, s2)
+        bridge_get = lambda r, s2: compute_is2_outer_bridge_energy(seq, config.tables, i_idx, j_idx, r, s2)
 
     best_val = math.inf
     best_bridge: Optional[Tuple[int, int]] = None
