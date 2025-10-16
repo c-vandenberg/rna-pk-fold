@@ -45,6 +45,31 @@ def can_pair(base_i: str, base_j: str) -> bool:
     return (base_i_norm + base_j_norm) in _RNA_ALLOWED_PAIRS
 
 
+def build_can_pair_mask(seq: str) -> list[list[bool]]:
+    """
+    Creates a boolean mask indicating which nucleotides can form pairs.
+
+    Parameters
+    ----------
+    seq : str
+        The RNA sequence.
+
+    Returns
+    -------
+    np.ndarray
+        A 2D numpy array of booleans where `mask[i, j]` is True if the
+        bases at `sequence[i]` and `sequence[j]` can form a Watson-Crick
+        or wobble pair.
+    """
+    seq_len = len(seq)
+    mask = [[False] * seq_len for _ in range(seq_len)]
+    for k in range(seq_len):
+        base_k = seq[k]
+        for l in range(k + 1, seq_len):
+            mask[k][l] = can_pair(base_k, seq[l])
+    return mask
+
+
 def hairpin_size(i: int, j: int) -> int:
     """
     Compute the number of unpaired nucleotides inside a hairpin closed by (i, j).

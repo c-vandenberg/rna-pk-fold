@@ -21,15 +21,12 @@ import math
 import sys
 import logging
 import time
+from dataclasses import replace
 from typing import Tuple, Optional
-
-# --- Third-Party Imports ---
-from importlib.resources import files as importlib_files
 
 # --- Local Application Imports ---
 # Energy model loading and definition
 from rna_pk_fold.utils.logging.logging_utils import setup_logger, DEFAULT_LOG_DIR
-from rna_pk_fold.energies import SecondaryStructureEnergyLoader
 from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
 
 # Nested (Zuker) folding components
@@ -42,6 +39,10 @@ from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested_interva
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_dynamic_programming
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pk as eddy_rivas_traceback
+
+# Utility functions
+from rna_pk_fold.utils.sequences.nucleotide_utils import validate_and_normalize_seq
+from rna_pk_fold.utils.energy.energy_model_utils import load_energy_model
 
 # Set up module logger
 logger = logging.getLogger(__name__)
@@ -103,92 +104,11 @@ def setup_cli_logging(verbose_level: int, log_file: Optional[str] = None) -> Non
 # --------------------------
 # Helpers
 # --------------------------
-def validate_and_normalize_seq(raw_sequence: str) -> str:
-    """
-    Validates and normalizes an RNA sequence.
-
-    This function strips whitespace, converts the sequence to uppercase,
-    replaces 'T' with 'U', and checks for any invalid characters.
-
-    Parameters
-    ----------
-    raw_sequence : str
-        The input RNA sequence string.
-
-    Returns
-    -------
-    str
-        The validated and normalized RNA sequence.
-
-    Raises
-    ------
-    ValueError
-        If the sequence is empty or contains characters other than A, C, G, U, T.
-    """
-    logger.debug(f"Validating sequence: {raw_sequence[:50]}{'...' if len(raw_sequence) > 50 else ''}")
-    # Normalize the sequence: strip whitespace, convert to uppercase, and replace T with U.
-    normalized_sequence = raw_sequence.strip().upper().replace("T", "U")
-
-    # Check if the sequence is empty after normalization.
-    if not normalized_sequence:
-        logger.error("Sequence is empty")
-        raise ValueError("Sequence is empty.")
-
-    # Check for any characters that are not in the allowed set (A, C, G, U).
-    allowed_chars = set("ACGU")
-    invalid_char_indices = [i for i, char in enumerate(normalized_sequence) if char not in allowed_chars]
-    if invalid_char_indices:
-        pos = invalid_char_indices[0]
-        invalid_char = normalized_sequence[pos]
-        error_message = f"Invalid character at position {pos} ('{invalid_char}'). Only A,C,G,U (or T) are allowed."
-        logger.error(f"Invalid character at position {pos}: '{invalid_char}'")
-        raise ValueError(error_message)
-
-    logger.info(f"Sequence validated: length={len(normalized_sequence)}")
-    return normalized_sequence
-
-
-def load_energy_model(yaml_path: Optional[str], temp_c: float) -> SecondaryStructureEnergyModel:
-    """
-    Loads the RNA thermodynamic parameters and creates an energy model.
-
-    If no YAML file path is provided, it loads the default parameters bundled
-    with the package.
-
-    Parameters
-    ----------
-    yaml_path : Optional[str]
-        The file path to the energy parameter YAML file.
-    temp_c : float
-        The temperature in Celsius for the energy calculations.
-
-    Returns
-    -------
-    SecondaryStructureEnergyModel
-        An initialized energy model object ready for use by the folding engines.
-    """
-    # Use the default bundled parameter file if no path is provided.
-    if yaml_path is None:
-        yaml_path = str(importlib_files("rna_pk_fold") / "data" / "turner2004_eddyrivas1999_min.yaml")
-
-    logger.info(f"Loading energy model from: {yaml_path}")
-    temp_k = 273.15 + temp_c
-    logger.info(f"Temperature: {temp_c}°C ({temp_k:.2f}K)")
-
-    # Load the raw parameters from the YAML file.
-    params = SecondaryStructureEnergyLoader().load(kind="RNA", yaml_path=yaml_path)
-
-    # Create the energy model instance with the loaded parameters and specified temperature.
-    model = SecondaryStructureEnergyModel(params=params, temp_k=temp_k)
-
-    logger.debug("Energy model loaded successfully")
-
-    return model
-
-
-def build_eddy_rivas_costs(energy_model: SecondaryStructureEnergyModel,
-                           q_ss_override: Optional[float],
-                           gw_override: Optional[float]) -> eddy_rivas_dynamic_programming.PseudoknotEnergies:
+def build_eddy_rivas_costs(
+    energy_model: SecondaryStructureEnergyModel,
+    q_ss_override: Optional[float],
+    gw_override: Optional[float]
+) -> eddy_rivas_dynamic_programming.PseudoknotEnergies:
     """
     Constructs the pseudoknot energy parameter object, applying CLI overrides.
 
@@ -232,11 +152,10 @@ def build_eddy_rivas_costs(energy_model: SecondaryStructureEnergyModel,
         return base_pk_params
 
     # Otherwise, create a new dataclass instance with the overrides applied.
-    from dataclasses import replace
     return replace(base_pk_params, **cli_overrides)
 
 
-def predict_nested(seq: str, energy_model: SecondaryStructureEnergyModel) -> Tuple[str, float]:
+def predict_zucker_nested(seq: str, energy_model: SecondaryStructureEnergyModel) -> Tuple[str, float]:
     """
     Runs the Zuker (nested-only) folding algorithm on a sequence.
 
@@ -278,7 +197,7 @@ def predict_nested(seq: str, energy_model: SecondaryStructureEnergyModel) -> Tup
     return trace_result.dot_bracket, float(energy)
 
 
-def predict_eddy_rivas(
+def predict_eddy_rivas_non_nested(
     seq: str,
     energy_model: SecondaryStructureEnergyModel,
     pk_penalty_gw: Optional[float],
@@ -457,9 +376,9 @@ def main(argv=None) -> int:
 
     try:
         if cli_args.engine == "zucker":
-            dot_bracket, delta_g = predict_nested(normalized_sequence, energy_model)
+            dot_bracket, delta_g = predict_zucker_nested(normalized_sequence, energy_model)
         elif cli_args.engine == "eddy_rivas":
-            dot_bracket, delta_g = predict_eddy_rivas(
+            dot_bracket, delta_g = predict_eddy_rivas_non_nested(
                 normalized_sequence,
                 energy_model,
                 pk_penalty_gw=cli_args.pk_gw,
@@ -473,7 +392,7 @@ def main(argv=None) -> int:
             try:
                 # First, attempt the full pseudoknot prediction.
                 logger.info("Attempting Eddy-Rivas (auto mode)...")
-                dot_bracket, delta_g = predict_eddy_rivas(
+                dot_bracket, delta_g = predict_eddy_rivas_non_nested(
                     normalized_sequence,
                     energy_model,
                     pk_penalty_gw=cli_args.pk_gw,
@@ -487,7 +406,7 @@ def main(argv=None) -> int:
             except Exception as e:
                 # If the pseudoknot engine fails for any reason, fall back to the nested-only engine.
                 logger.warning(f"Eddy-Rivas failed, falling back to Zuker: {e}")
-                dot_bracket, delta_g = predict_nested(normalized_sequence, energy_model)
+                dot_bracket, delta_g = predict_zucker_nested(normalized_sequence, energy_model)
                 engine_used = "zucker"
     except Exception as e:
         logger.error(f"Prediction failed: {e}", exc_info=True)

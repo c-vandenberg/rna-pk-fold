@@ -127,7 +127,7 @@ def test_publish_wx_prefers_unscaled_uncharged_and_sets_backpointer():
     re_state.wxc_matrix.set(0, 1, 5.0)
 
     # Run the publish step.
-    eng._publish_wx(re_state)
+    eng._publish_wx_min_energy(re_state)
 
     # The final WX score should be the better one (from uncharged).
     assert re_state.wx_matrix.get(0, 1) == 3.0
@@ -155,7 +155,7 @@ def test_publish_vx_prefers_unscaled_uncharged_and_sets_backpointer():
     re_state.vxc_matrix.set(0, 1, 7.0)
 
     # Run the publish step.
-    eng._publish_vx(re_state)
+    eng._publish_vx_min_energy(re_state)
 
     # The final VX score should be the better one.
     assert re_state.vx_matrix.get(0, 1) == 1.25

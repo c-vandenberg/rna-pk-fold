@@ -1,4 +1,7 @@
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_base(base_raw: str) -> str:
@@ -96,6 +99,51 @@ def pair_key(base_a: str, base_b: str) -> str:
         Two-character key representing the pair, e.g., ``"AU"`` or ``"GU"``.
     """
     return normalize_base(base_a) + normalize_base(base_b)
+
+
+def validate_and_normalize_seq(raw_sequence: str) -> str:
+    """
+    Validates and normalizes an RNA sequence.
+
+    This function strips whitespace, converts the sequence to uppercase,
+    replaces 'T' with 'U', and checks for any invalid characters.
+
+    Parameters
+    ----------
+    raw_sequence : str
+        The input RNA sequence string.
+
+    Returns
+    -------
+    str
+        The validated and normalized RNA sequence.
+
+    Raises
+    ------
+    ValueError
+        If the sequence is empty or contains characters other than A, C, G, U, T.
+    """
+    logger.debug(f"Validating sequence: {raw_sequence[:50]}{'...' if len(raw_sequence) > 50 else ''}")
+    # Normalize the sequence: strip whitespace, convert to uppercase, and replace T with U.
+    normalized_sequence = raw_sequence.strip().upper().replace("T", "U")
+
+    # Check if the sequence is empty after normalization.
+    if not normalized_sequence:
+        logger.error("Sequence is empty")
+        raise ValueError("Sequence is empty.")
+
+    # Check for any characters that are not in the allowed set (A, C, G, U).
+    allowed_bases = set("ACGU")
+    invalid_char_indices = [i for i, char in enumerate(normalized_sequence) if char not in allowed_bases]
+    if invalid_char_indices:
+        pos = invalid_char_indices[0]
+        invalid_char = normalized_sequence[pos]
+        error_message = f"Invalid character at position {pos} ('{invalid_char}'). Only A,C,G,U (or T) are allowed."
+        logger.error(f"Invalid character at position {pos}: '{invalid_char}'")
+        raise ValueError(error_message)
+
+    logger.info(f"Sequence validated: length={len(normalized_sequence)}")
+    return normalized_sequence
 
 
 def dangle5_key(nt: str, pair: str) -> str:
