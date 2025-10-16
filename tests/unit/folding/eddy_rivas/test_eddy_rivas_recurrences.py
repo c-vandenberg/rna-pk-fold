@@ -212,7 +212,7 @@ def test_fill_with_costs_calls_internal_steps_in_expected_order(monkeypatch):
     monkeypatch.setattr(EddyRivasFoldingEngine, "_publish_vx", make_stub("_publish_vx"))
 
     # Execute the main folding method.
-    eng.fill_with_costs("ACG", nested, re_state)
+    eng.run_eddy_rivas_dp_with_costs("ACG", nested, re_state)
 
     # Assert that the recorded call order matches the expected algorithm flow.
     assert calls == [

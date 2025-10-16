@@ -7,7 +7,9 @@ from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import pairs_to_multilayer_dotbracket, TraceResult
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasBacktrackOp
-from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import merge_nested_region_pairs, place_pair_in_first_non_crossing_layer, audit_layer_assignments
+from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import (merge_nested_region_pairs,
+                                                                       place_pair_in_first_non_crossing_layer,
+                                                                       audit_layer_assignments)
 from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
 
 logger = logging.getLogger(__name__)

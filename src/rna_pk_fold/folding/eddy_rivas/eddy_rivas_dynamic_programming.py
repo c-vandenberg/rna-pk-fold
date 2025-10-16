@@ -12,7 +12,7 @@ from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_holes_pairable
-from rna_pk_fold.utils.dynamic_programming.matrix_utils import (reset_matrix_lookup_caches, get_whx_energy_with_collapse,
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import (clear_matrix_lookup_caches, get_whx_energy_with_collapse,
                                                                 get_zhx_energy_with_collapse, get_wxi_or_wx)
 from rna_pk_fold.rules.constraints import can_pair
 from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
@@ -24,7 +24,9 @@ from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
 )
 from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (evaluate_wx_composition_for_hole,
                                                                         evaluate_wx_yhx_overlap_for_span,
-                                                                        set_span_cell_with_backpointer, evaluate_vx_composition_for_hole)
+                                                                        set_span_cell_with_backpointer,
+                                                                        evaluate_vx_composition_for_hole)
+from rna_pk_fold.utils.dynamic_programming.dp_split_utils import zhx_wx_split_min_vhx, VhxSplitMode
 from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import use_nested_energy_if_composed_infinite, publish_min_energy_with_default_backpointer
 from rna_pk_fold.utils.logging.debug_utils import debug_print, count_finite_cells
 from rna_pk_fold.utils.logging.logging_utils import setup_logger
@@ -39,7 +41,7 @@ logger = setup_logger(
 # -----------------------
 # Helper Functions
 # -----------------------
-def take_best(
+def update_best_energy_and_backpointer(
     current_best_energy: float,
     current_back_pointer: Optional[EddyRivasBackPointer],
     candidate_energy: float,
@@ -76,8 +78,11 @@ def take_best(
     return current_best_energy, current_back_pointer
 
 
-def make_back_pointer_factory(
-    i: int, j: int, k: int, l: int
+def build_backpointer_factory(
+    outer_i: int,
+    outer_j: int,
+    hole_k: int,
+    hole_l: int
 ) -> Callable[..., EddyRivasBackPointer]:
     """
     Create a factory for generating `EddyRivasBackPointer` objects.
@@ -88,13 +93,13 @@ def make_back_pointer_factory(
 
     Parameters
     ----------
-    i : int
+    outer_i : int
         The 5' index of the outer span.
-    j : int
+    outer_j : int
         The 3' index of the outer span.
-    k : int
+    hole_k : int
         The 5' index of the inner hole.
-    l : int
+    hole_l : int
         The 3' index of the inner hole.
 
     Returns
@@ -104,13 +109,14 @@ def make_back_pointer_factory(
         arguments to produce a fully-formed `EddyRivasBackPointer`.
     """
     def create_back_pointer(
-        op: EddyRivasBacktrackOp, **kwargs: Any
+        op: EddyRivasBacktrackOp,
+        **kwargs: Any
     ) -> EddyRivasBackPointer:
         """Instantiate a backpointer with pre-filled coordinates."""
         return EddyRivasBackPointer(
             op=op,
-            outer=(i, j),
-            hole=(k, l),
+            outer=(outer_i, outer_j),
+            hole=(hole_k, hole_l),
             **kwargs
         )
     return create_back_pointer
@@ -169,23 +175,24 @@ class EddyRivasFoldingConfig:
         If True, enables verbose logging.
     """
     enable_coax: bool = True
-    enable_wx_overlap: bool = False # turn on WX same-hole overlap terms
-    enable_coax_variants: bool = False  # NEW: add extra coax topologies in VX composition
-    enable_coax_mismatch: bool = False  # allow |k-r|==1 seam as "mismatch coax"
-    enable_join_drift: bool = False  # enable slight hole drift at join
-    drift_radius: int = 0  # how far to drift (0 = off)
+    enable_wx_overlap: bool = False
+    enable_coax_variants: bool = False
+    enable_coax_mismatch: bool = False
+    enable_join_drift: bool = False
+    drift_radius: int = 0
     enable_is2: bool = False
-    pk_penalty_gw: float = 1.0 # Gw: pseudoknot introduction penalty (kcal/mol)
+    pk_penalty_gw: float = 1.0
     max_hole_width: int = 0
-    min_hole_width: int = 0  # 0 = identical behavior; 1+ prunes zero/narrow holes
-    min_outer_left: int = 0  # minimal length of [i..r]
-    min_outer_right: int = 0  # minimal length of [r+1..j]
-    beam_k: int = 0                 # 0 = disabled, else keep at most K (k,l) per (i,j)
-    beam_v_threshold: float = 0.0  # keep (k,l) only if nested V[k][l] <= this (e.g. -0.1)
-    strict_complement_order: bool = True  # enforce i<k<=r<l<=j
+    min_hole_width: int = 0
+    min_outer_left: int = 0
+    min_outer_right: int = 0
+    beam_k: int = 0
+    beam_v_threshold: float = 0.0
+    strict_complement_order: bool = True
     costs: Optional[PseudoknotEnergies] = None
     tables: object = None
     verbose: bool = False
+
 
 # -----------------------
 # Engine
@@ -205,7 +212,7 @@ class EddyRivasFoldingEngine:
        pseudoknotted structures in O(N⁶) time.
     """
     def __init__(self, config: EddyRivasFoldingConfig):
-        self.cfg = config
+        self.config = config
         self.timings = {}
 
     @staticmethod
@@ -233,7 +240,12 @@ class EddyRivasFoldingEngine:
                 mask[k][l] = can_pair(base_k, seq[l])
         return mask
 
-    def fill_with_costs(self, seq: str, nested: ZuckerFoldState, eddy_rivas_fold_state: EddyRivasFoldState) -> None:
+    def run_eddy_rivas_dp_with_costs(
+        self,
+        seq: str,
+        nested_state: ZuckerFoldState,
+        eddy_rivas_fold_state: EddyRivasFoldState
+    ) -> None:
         """
         Executes the main Eddy-Rivas dynamic programming algorithm.
 
@@ -245,7 +257,7 @@ class EddyRivasFoldingEngine:
         ----------
         seq : str
             The RNA sequence to fold.
-        nested : ZuckerFoldState
+        nested_state : ZuckerFoldState
             A pre-filled state object containing the results of a nested-only
             (e.g., Zuker) folding algorithm.
         eddy_rivas_fold_state : EddyRivasFoldState
@@ -257,13 +269,13 @@ class EddyRivasFoldingEngine:
         The algorithm follows a precise sequence of steps as outlined in the
         Rivas and Eddy paper:
 
-        1.  **Seeding**: The process begins by populating the primary DP
+        1.  Seeding: The process begins by populating the primary DP
             matrices, `wx` (best energy for subsequence `i` to `j`) and `vx`
             (best energy given `i` and `j` are paired), with the results from
             the `nested_fold_state`. This establishes a baseline of optimal
             non-pseudoknotted structures.
 
-        2.  **Gap Matrix Filling (O(N⁴) Complexity)**: This is the core of the
+        2.  Gap Matrix Filling (O(N⁴) Complexity): This is the core of the
             pseudoknot detection. The algorithm fills four "gap matrices" that
             store energies for structures spanning two disconnected segments,
             `[i..k]` and `[l..j]`, leaving a "hole" `[k+1..l-1]`.
@@ -274,7 +286,7 @@ class EddyRivasFoldingEngine:
             These are filled iteratively, building larger gapped structures
             from smaller nested and gapped ones.
 
-        3.  **Composition (O(N⁶) Complexity)**: After the gap matrices are
+        3.  Composition (O(N⁶) Complexity): After the gap matrices are
             complete, this phase updates the `wx` and `vx` matrices by
             considering all possible ways to form a pseudoknot. For each span
             `(i, j)`, the algorithm iterates through all split points `r` to
@@ -283,7 +295,7 @@ class EddyRivasFoldingEngine:
             either maintaining the existing nested structure or introducing a
             more stable pseudoknotted one.
 
-        4.  **Final Energy**: The optimal free energy for the entire sequence
+        4.  Final Energy: The optimal free energy for the entire sequence
             is the value stored in `wx[0, n-1]`. The structure itself can be
             reconstructed via a traceback procedure using the backpointers
             stored during the DP fill.
@@ -300,7 +312,8 @@ class EddyRivasFoldingEngine:
         logger.info(f"  Compositions: O(N⁶) ≈ {seq_len ** 6:,} operations")
         logger.info("=" * 60)
 
-        reset_matrix_lookup_caches()
+        # Reset any memoized matrix lookups (module-level caches).
+        clear_matrix_lookup_caches()
 
         # --- Load model configuration
         config = self._load_config()
@@ -323,12 +336,16 @@ class EddyRivasFoldingEngine:
 
         # --- Phase 1: Seeding ---
         seed_start = time.perf_counter()
-        self._seed_from_nested(nested, eddy_rivas_fold_state)
+        self._seed_from_nested(nested_state, eddy_rivas_fold_state)
+
+        # Densify working matrices that will be heavily written.
         eddy_rivas_fold_state.wxu_matrix.enable_dense()
         eddy_rivas_fold_state.wxc_matrix.enable_dense()
         eddy_rivas_fold_state.vxu_matrix.enable_dense()
         eddy_rivas_fold_state.vxc_matrix.enable_dense()
+
         can_pair_mask = self._build_can_pair_mask(seq)
+
         self.timings['seed'] = time.perf_counter() - seed_start
         logger.info(f"Seeding completed in {self.timings['seed']:.2f}s")
 
@@ -336,24 +353,24 @@ class EddyRivasFoldingEngine:
         # WHX
         logger.info("Filling WHX matrix...")
         whx_start = time.perf_counter()
-        self._dp_whx(seq, eddy_rivas_fold_state, q_ss, g_wh_whx, can_pair_mask)
+        self._fill_whx_gap_matrix(seq, eddy_rivas_fold_state, q_ss, g_wh_whx, can_pair_mask)
         self.timings['whx'] = time.perf_counter() - whx_start
         logger.info(f"WHX filled in {self.timings['whx']:.2f}s")
 
         # Targeted debug checks (guarded)
         debug_print(
-            self.cfg,
+            self.config,
             f"[REF CHECK] WHX[0,33:23,33] = {eddy_rivas_fold_state.whx_matrix.get(0, 33, 23, 33):.2f}"
         )
         debug_print(
-            self.cfg,
+            self.config,
             f"[REF CHECK] WHX[34,69:63,68] = {eddy_rivas_fold_state.whx_matrix.get(34, 69, 63, 68):.2f}"
         )
 
         # VHX
         logger.info("Filling VHX matrix...")
         vhx_start = time.perf_counter()
-        self._dp_vhx(
+        self._fill_vhx_gap_matrix(
             seq, eddy_rivas_fold_state,
             g_wi, p_hole, l_tilde, r_tilde,
             q_tilde_hole, m_tilde_vhx, m_tilde_whx,
@@ -383,24 +400,24 @@ class EddyRivasFoldingEngine:
 
         # Optional inspection (guarded)
         debug_print(
-            self.cfg,
+            self.config,
             f"YHX[37,42:37,40] = {eddy_rivas_fold_state.yhx_matrix.get(37, 42, 37, 40):.2f}"
         )
-        debug_print(self.cfg, f"YHX BP: {eddy_rivas_fold_state.yhx_back_ptr.get(37, 42, 37, 40)}")
+        debug_print(self.config, f"YHX BP: {eddy_rivas_fold_state.yhx_back_ptr.get(37, 42, 37, 40)}")
 
         # Gap stats (using helper)
         whx_count = count_finite_cells(eddy_rivas_fold_state.whx_matrix)
         yhx_count = count_finite_cells(eddy_rivas_fold_state.yhx_matrix)
         zhx_count = count_finite_cells(eddy_rivas_fold_state.zhx_matrix)
         vhx_count = count_finite_cells(eddy_rivas_fold_state.vhx_matrix)
-        debug_print(self.cfg, "\n[GAP STATS]")
-        debug_print(self.cfg, f"  WHX: {whx_count} finite cells")
-        debug_print(self.cfg, f"  YHX: {yhx_count} finite cells")
-        debug_print(self.cfg, f"  ZHX: {zhx_count} finite cells")
-        debug_print(self.cfg, f"  VHX: {vhx_count} finite cells")
+        debug_print(self.config, "\n[GAP STATS]")
+        debug_print(self.config, f"  WHX: {whx_count} finite cells")
+        debug_print(self.config, f"  YHX: {yhx_count} finite cells")
+        debug_print(self.config, f"  ZHX: {zhx_count} finite cells")
+        debug_print(self.config, f"  VHX: {vhx_count} finite cells")
 
-        # --- Phase 3: Composition ---
-        # WX Composition
+        # --- Phase 3: Composition & Publish ---
+        # WX Composition & Publish
         logger.info("Composing WX matrix...")
         wx_start = time.perf_counter()
         self._compose_wx(seq, eddy_rivas_fold_state, g_w, g_wh_wx, can_pair_mask)
@@ -408,7 +425,7 @@ class EddyRivasFoldingEngine:
         self.timings['wx_compose'] = time.perf_counter() - wx_start
         logger.info(f"WX composed in {self.timings['wx_compose']:.2f}s")
 
-        # VX Composition
+        # VX Composition & Publish
         logger.info("Composing VX matrix...")
         vx_start = time.perf_counter()
         self._compose_vx(seq, eddy_rivas_fold_state, g_w, g_coax_scale, can_pair_mask)
@@ -419,6 +436,7 @@ class EddyRivasFoldingEngine:
         # --- Final Logging ---
         self.timings['total'] = time.perf_counter() - total_start
         final_energy = eddy_rivas_fold_state.wx_matrix.get(0, seq_len - 1)
+
         logger.info("=" * 60)
         logger.info(f"Eddy-Rivas DP completed in {self.timings['total']:.2f}s")
         logger.info(f"Final WX[0,{seq_len - 1}] = {final_energy:.3f} kcal/mol")
@@ -445,18 +463,20 @@ class EddyRivasFoldingEngine:
         logger.info(
             f"  VX composition: {self.timings['vx_compose']:7.2f}s ({self.timings['vx_compose'] / self.timings['total'] * 100:5.1f}%)"
         )
+
         gap_total = self.timings['whx'] + self.timings['vhx'] + self.timings['zhx'] + self.timings['yhx']
         comp_total = self.timings['wx_compose'] + self.timings['vx_compose']
+
         logger.info(f"  Gap matrices:   {gap_total:7.2f}s ({gap_total / self.timings['total'] * 100:5.1f}%)")
         logger.info(f"  Compositions:   {comp_total:7.2f}s ({comp_total / self.timings['total'] * 100:5.1f}%)")
         logger.info("=" * 60)
 
     def _load_config(self):
-        costs_config = self.cfg.costs
-        config_tables = getattr(self.cfg, "tables", None)
+        costs_config = self.config.costs
+        config_tables = getattr(self.config, "tables", None)
         return dict(
             q_ss=costs_config.q_ss,
-            g_w=self.cfg.pk_penalty_gw,
+            g_w=self.config.pk_penalty_gw,
             g_wh=getattr(costs_config, "Gwh", 0.0),
             g_wi=costs_config.g_wi,
             g_wh_wx=getattr(costs_config, "Gwh_wx", 0.0),
@@ -472,22 +492,6 @@ class EddyRivasFoldingEngine:
             m_tilde_vhx=getattr(config_tables, "M_tilde_vhx", getattr(costs_config, "M_tilde_vhx", 0.0)),
             m_tilde_whx=getattr(config_tables, "M_tilde_whx", getattr(costs_config, "M_tilde_whx", 0.0)),
         )
-
-    def time_phase(self, label: str, fn: Callable, *args, **kwargs):
-        t0 = time.perf_counter()
-        result = fn(*args, **kwargs)
-        dt = time.perf_counter() - t0
-        self.timings[label] = dt
-        logger.info(f"{label} completed in {dt:.2f}s")
-        return result
-
-    @staticmethod
-    def count_finite_cells(gap_matrix) -> int:
-        total = 0
-        for holes in gap_matrix.data.values():
-            for v in holes.values():
-                if math.isfinite(v): total += 1
-        return total
 
     # --------- Seeding ---------
     @staticmethod
@@ -522,26 +526,35 @@ class EddyRivasFoldingEngine:
         """
         seq_len = eddy_rivas_fold_state.seq_len
         for i, j in iter_spans(seq_len):
-            base_w = nested_fold_state.w_matrix.get(i, j)
-            base_v = nested_fold_state.v_matrix.get(i, j)
+            # Nested (Zucker) Energies
+            base_wx_energy = nested_fold_state.w_matrix.get(i, j)
+            base_vx_energy = nested_fold_state.v_matrix.get(i, j)
 
-            eddy_rivas_fold_state.wxu_matrix.set(i, j, base_w)
-            eddy_rivas_fold_state.vxu_matrix.set(i, j, base_v)
+            # Uncomposed (Baseline) Energies
+            eddy_rivas_fold_state.wxu_matrix.set(i, j, base_wx_energy)
+            eddy_rivas_fold_state.vxu_matrix.set(i, j, base_vx_energy)
 
+            # Composed energies start as +inf for non-trivial spans
             if i != j:
                 eddy_rivas_fold_state.wxc_matrix.set(i, j, math.inf)
                 eddy_rivas_fold_state.vxc_matrix.set(i, j, math.inf)
 
-            eddy_rivas_fold_state.wx_matrix.set(i, j, base_w)
-            eddy_rivas_fold_state.vx_matrix.set(i, j, base_v)
+            # Final matrices start with the nested baseline
+            eddy_rivas_fold_state.wx_matrix.set(i, j, base_wx_energy)
+            eddy_rivas_fold_state.vx_matrix.set(i, j, base_vx_energy)
 
-            if hasattr(eddy_rivas_fold_state, "wxi_matrix") and eddy_rivas_fold_state.wxi_matrix is not None:
-                eddy_rivas_fold_state.wxi_matrix.set(i, j, base_w)
+            if getattr(eddy_rivas_fold_state, "wxi_matrix", None) is not None:
+                eddy_rivas_fold_state.wxi_matrix.set(i, j, base_wx_energy)
 
     # --------- WHX ---------
-    def _dp_whx(self, seq: str, eddy_rivas_fold_state: EddyRivasFoldState,
-                unpaired_base_penalty: float, overlap_penalty: float,
-                can_pair_mask: list[list[bool]]) -> None:
+    def _fill_whx_gap_matrix(
+        self,
+        seq: str,
+        eddy_rivas_fold_state: EddyRivasFoldState,
+        unpaired_base_penalty: float,
+        overlap_penalty: float,
+        can_pair_mask: list[list[bool]]
+    ) -> None:
         """
         Fills the WHX gap matrix using dynamic programming.
 
@@ -584,13 +597,13 @@ class EddyRivasFoldingEngine:
         for i, j in tqdm(spans, desc="WHX", leave=False):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold, Watson-Crick Base Pairing) ----------
-                if should_skip_dp_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxu_matrix.get,
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get,
                                        can_pair_mask=can_pair_mask, require_kl_pairable=True):
                     continue
 
                 # ---------- Targeted Debug Probes ----------
-                dbg_cell = (i, j, k, l) == (0, 33, 23, 33)
-                debug_print(dbg_cell, "\n[WHX DEBUG] Filling (0,33:23,33)")
+                debug_cell = (i, j, k, l) == (0, 33, 23, 33)
+                debug_print(debug_cell, "\n[WHX DEBUG] Filling (0,33:23,33)")
 
                 # ---------- Initialize Best Candidate Tracker ----------
                 tracker = BestCandidateTracker()
@@ -614,11 +627,11 @@ class EddyRivasFoldingEngine:
                 update_tracker_for_whx_overlap_split(tracker, eddy_rivas_fold_state, i, j, k, l, overlap_penalty)
 
                 # ---------- Case 10: IS2 motif (Outer Bridge + Inner YHX). ----------
-                if self.cfg.enable_is2:
-                    update_tracker_for_whx_is2(tracker, eddy_rivas_fold_state, self.cfg, seq, i, j, k, l)
+                if self.config.enable_is2:
+                    update_tracker_for_whx_is2(tracker, eddy_rivas_fold_state, self.config, seq, i, j, k, l)
 
                 # -------- Publish Cell --------
-                debug_print(dbg_cell, f"  FINAL: best={tracker.best_energy:.2f} bp={tracker.backpointer}")
+                debug_print(debug_cell, f"  FINAL: best={tracker.best_energy:.2f} bp={tracker.backpointer}")
                 eddy_rivas_fold_state.whx_matrix.set(i, j, k, l, tracker.best_energy)
                 eddy_rivas_fold_state.whx_back_ptr.set(i, j, k, l, tracker.backpointer)
 
@@ -627,7 +640,7 @@ class EddyRivasFoldingEngine:
                     print(f"[WHX {status}] ({i},{j}:{k},{l}) = {tracker.best_energy:.2f}", flush=True)
 
     # --------- VHX ---------
-    def _dp_vhx(
+    def _fill_vhx_gap_matrix(
         self,
         seq: str,
         eddy_rivas_fold_state: EddyRivasFoldState,
@@ -673,21 +686,21 @@ class EddyRivasFoldingEngine:
         Notes
         -----
         The recursion for VHX involves several cases:
-        - **Dangles**: Adding a dangling base next to the (k,l) pair inside
+        - Dangles: Adding a dangling base next to the (k,l) pair inside
           the hole.
-        - **Unpaired Base**: Adding a single-stranded base adjacent to the hole,
+        - Unpaired Base: Adding a single-stranded base adjacent to the hole,
           transitioning from a ZHX state.
-        - **Bifurcation**: Splitting the region between the outer and inner
+        - Bifurcation: Splitting the region between the outer and inner
           helices into a nested part (WX) and a gapped part (ZHX).
-        - **IS2 Motif**: Forming an Irreducible Surface of order 2 by bridging
+        - IS2 Motif: Forming an Irreducible Surface of order 2 by bridging
           the (i, j) pair with an inner ZHX structure.
-        - **Multiloop**: Closing a multiloop around a WHX subproblem.
+        - Multiloop: Closing a multiloop around a WHX subproblem.
         """
         spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
         for i, j in tqdm(spans, desc="VHX", leave=False):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxu_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
                     continue
 
                 # ---------- Initialize Best Candidate Tracker ----------
@@ -704,59 +717,53 @@ class EddyRivasFoldingEngine:
                 )
 
                 # -------- Case 4: Add an Unpaired Base in the Hole (From ZHX) With Tie-Break to Right. --------
-                v_zhx = get_zhx_energy_with_collapse(
+                zhx_energy = get_zhx_energy_with_collapse(
                     eddy_rivas_fold_state.zhx_matrix,
                     eddy_rivas_fold_state.vxu_matrix,
                     i, j, k, l
                 )
-                if math.isfinite(v_zhx):
+                if math.isfinite(zhx_energy):
                     tracker.update_pair_with_right_tiebreak(
-                        tilde_q_hole + v_zhx,  # Left view
-                        tilde_q_hole + v_zhx,  # Right view (same energy)
+                        tilde_q_hole + zhx_energy,  # Left view
+                        tilde_q_hole + zhx_energy,  # Right view (same energy)
                         EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_VHX_SS_LEFT, outer=(i, j), hole=(k, l)),
                         EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_VHX_SS_RIGHT, outer=(i, j), hole=(k, l)),
                     )
 
-                # -------- Cases 5 & 6: Split on the 5' (Left) & 3' (Right) Sides (ZHX + WX). --------
-                # LEFT: r in [i..k-1]   val = ZHX(i,j:r,l) + WX(r+1,k)
-                lr = max(0, k - i)
-                if lr > 0:
-                    cand, t = compute_best_split_sum(
-                        lr,
-                        left_fetch=lambda t: get_zhx_energy_with_collapse(
-                            eddy_rivas_fold_state.zhx_matrix,
-                            eddy_rivas_fold_state.vxu_matrix, i, j, i + t, l
-                        ),
-                        right_fetch=lambda t: get_wxi_or_wx(eddy_rivas_fold_state, i + t + 1, k),
-                    )
-                    if t >= 0:
-                        tracker.update_if_better(cand, EddyRivasBackPointer(
+                # -------- Cases 5: Split on the 5' (Left Side) - r in [i..k-1]  →  ZHX(i,j:r,l) + WX(r+1,k) --------
+                cand_left, t_left = zhx_wx_split_min_vhx(
+                    VhxSplitMode.LEFT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
+                )
+                if t_left >= 0:
+                    r_star = i + t_left
+                    tracker.update_if_better(
+                        cand_left,
+                        EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_VHX_SPLIT_LEFT_ZHX_WX,
-                            outer=(i, j), hole=(k, l), split=i + t
-                        ))
-                # RIGHT: s2 in [l+1..j] val = ZHX(i,j:k,s2) + WX(l, s2-1)
-                ls = max(0, j - l)
-                if ls > 0:
-                    cand, t = compute_best_split_sum(
-                        ls,
-                        left_fetch=lambda t: get_zhx_energy_with_collapse(
-                            eddy_rivas_fold_state.zhx_matrix,
-                            eddy_rivas_fold_state.vxu_matrix, i, j, k,
-                            (l + 1) + t
+                            outer=(i, j), hole=(k, l), split=r_star
                         ),
-                        right_fetch=lambda t: get_wxi_or_wx(eddy_rivas_fold_state, l, (l + 1) + t - 1),
                     )
-                    if t >= 0:
-                        tracker.update_if_better(cand, EddyRivasBackPointer(
-                            op=EddyRivasBacktrackOp.RE_VHX_SPLIT_RIGHT_ZHX_WX,
-                            outer=(i, j), hole=(k, l), split=(l + 1) + t
-                        ))
 
-                # 4) IS2 (outer bridge + inner ZHX)
-                if self.cfg.enable_is2:
+                # -------- Case 6: Split on the 3' (Right) Side - s2 in [l+1..j]  →  ZHX(i,j:k,s2) + WX(l, s2-1) --------
+                cand_right, t_right = zhx_wx_split_min_vhx(
+                    VhxSplitMode.RIGHT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
+                )
+                if t_right >= 0:
+                    s2_star = (l + 1) + t_right
+                    tracker.update_if_better(
+                        cand_right,
+                        EddyRivasBackPointer(
+                            op=EddyRivasBacktrackOp.RE_VHX_SPLIT_RIGHT_ZHX_WX,
+                            outer=(i, j), hole=(k, l), split=s2_star
+                        ),
+                    )
+
+                # -------- Case 7: IS2 (Outer Bridge + Inner ZHX) --------
+                if self.config.enable_is2:
                     is2_best, is2_bp, _ = scan_is2_outer_min_bridge(
-                        eddy_rivas_fold_state, self.cfg, seq, i, j, k, l,
-                        inner_matrix="zhx", bridge_kind="default",
+                        eddy_rivas_fold_state, self.config, seq, i, j, k, l,
+                        inner_matrix="zhx", # VHX uses ZHX as the inner problem here
+                        bridge_kind="default",
                         op=EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX
                     )
                     if is2_bp is not None:
@@ -766,12 +773,12 @@ class EddyRivasFoldingEngine:
                             outer=(i, j), hole=(k, l), bridge=(r2, s2)
                         ))
 
-                # 5) Multiloop close/wrap on WHX
+                # -------- Case 8: Multiloop - Close Around/Wrap on WHX Sub-problem --------
                 update_tracker_for_vhx_multiloop_close_and_wrap(
                     tracker,
-                    lambda I, J, K, L: get_whx_energy_with_collapse(
+                    lambda idx_i, idx_j, idx_k, idx_l: get_whx_energy_with_collapse(
                         eddy_rivas_fold_state.whx_matrix,
-                        eddy_rivas_fold_state.wxu_matrix, I, J, K, L
+                        eddy_rivas_fold_state.wxu_matrix, idx_i, idx_j, idx_k, idx_l
                     ),
                     i, j, k, l,
                     tilde_p_hole, tilde_m_vhx, tilde_m_whx, internal_pk_penalty,
@@ -833,7 +840,7 @@ class EddyRivasFoldingEngine:
         for i, j in tqdm(spans, desc="ZHX", leave=False):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxu_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
                     continue
 
                 # ---------- Initialize Best Candidate Tracker ----------
@@ -850,7 +857,7 @@ class EddyRivasFoldingEngine:
                 # ---------- Case 2: Dangles around the newly formed (k,l) pair from VHX. ----------
                 update_tracker_for_hole_dangles_from_vhx(
                     tracker, eddy_rivas_fold_state.vhx_matrix.get,
-                    seq, self.cfg.costs,
+                    seq, self.config.costs,
                     i, j, k, l,
                     tilde_p_hole, internal_pk_penalty,
                     EddyRivasBacktrackOp.RE_ZHX_DANGLE_L,
@@ -896,9 +903,9 @@ class EddyRivasFoldingEngine:
                         ))
 
                 # ---------- Case 5: IS2 Motif (Outer Bridge + Inner VHX)). ----------
-                if self.cfg.enable_is2:
+                if self.config.enable_is2:
                     is2_best, is2_bp, _ = scan_is2_outer_min_bridge(
-                        eddy_rivas_fold_state, self.cfg, seq, i, j, k, l,
+                        eddy_rivas_fold_state, self.config, seq, i, j, k, l,
                         inner_matrix="vhx", bridge_kind="default",
                         op=EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX
                     )
@@ -969,7 +976,7 @@ class EddyRivasFoldingEngine:
         for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxu_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
                     continue
 
                 # ---------- Initialize Best Candidate Tracker ----------
@@ -978,7 +985,7 @@ class EddyRivasFoldingEngine:
                 # ---------- Case 1: Dangles on the Outer Pair (i,j) From VHX. ----------
                 update_tracker_for_outer_dangles_from_vhx(
                     tracker, eddy_rivas_fold_state.vhx_matrix.get,
-                    seq, self.cfg.costs,
+                    seq, self.config.costs,
                     i, j, k, l,
                     tilde_p_out, internal_pk_penalty,
                     EddyRivasBacktrackOp.RE_YHX_DANGLE_L,
@@ -1002,7 +1009,7 @@ class EddyRivasFoldingEngine:
                 # ---------- Case 3: Multiloop wrap of WHX. ----------
                 update_tracker_for_yhx_wrap_whx(
                     tracker, eddy_rivas_fold_state.whx_matrix.get,
-                    seq, self.cfg.costs,
+                    seq, self.config.costs,
                     i, j, k, l,
                     tilde_p_out, tilde_m_yhx, tilde_m_whx, internal_pk_penalty,
                     EddyRivasBacktrackOp.RE_YHX_WRAP_WHX,
@@ -1039,9 +1046,9 @@ class EddyRivasFoldingEngine:
                         ))
 
                 # ---------- Case 5: IS2 motif (Outer Bridge + Inner WHX. ----------
-                if self.cfg.enable_is2:
+                if self.config.enable_is2:
                     is2_best, is2_bp, _ = scan_is2_outer_min_bridge(
-                        eddy_rivas_fold_state, self.cfg, seq, i, j, k, l,
+                        eddy_rivas_fold_state, self.config, seq, i, j, k, l,
                         inner_matrix="whx", bridge_kind="yhx",
                         op=EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX
                     )
@@ -1113,11 +1120,11 @@ class EddyRivasFoldingEngine:
             # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
             for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxu_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
                     continue
 
                 cand, bp = evaluate_wx_composition_for_hole(
-                    eddy_rivas_fold_state, self.cfg, seq, i, j, k, l, pseudoknot_penalty, can_pair_mask
+                    eddy_rivas_fold_state, self.config, seq, i, j, k, l, pseudoknot_penalty, can_pair_mask
                 )
                 if cand < best_c and bp is not None:
                     best_c, best_bp = cand, bp
@@ -1128,7 +1135,7 @@ class EddyRivasFoldingEngine:
                 print(f"[COMPOSE END] WXU={wxu_val:.2f}, best_c={best_c:.2f}, best_bp={best_bp}", flush=True)
 
             # Optional YHX-overlap path
-            cand_ov, bp_ov = evaluate_wx_yhx_overlap_for_span(eddy_rivas_fold_state, self.cfg, i, j, g_wh_wx)
+            cand_ov, bp_ov = evaluate_wx_yhx_overlap_for_span(eddy_rivas_fold_state, self.config, i, j, g_wh_wx)
             if cand_ov < best_c and bp_ov is not None:
                 best_c, best_bp = cand_ov, bp_ov
 
@@ -1211,11 +1218,11 @@ class EddyRivasFoldingEngine:
             # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
             for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.cfg, eddy_rivas_fold_state.vxc_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxc_matrix.get):
                     continue
 
                 cand, bp = evaluate_vx_composition_for_hole(
-                    eddy_rivas_fold_state, self.cfg, seq, i, j, k, l, pseudoknot_penalty, coaxial_scale, can_pair_mask
+                    eddy_rivas_fold_state, self.config, seq, i, j, k, l, pseudoknot_penalty, coaxial_scale, can_pair_mask
                 )
                 if cand < best_c and bp is not None:
                     best_c, best_bp = cand, bp
@@ -1260,7 +1267,7 @@ class EddyRivasFoldingEngine:
             # is `True` and `charged` energy is `+inf`, we use the `uncharged` (Zucker) energy
             # for `wxc`.
             wxc = use_nested_energy_if_composed_infinite(
-                enable_overlap_fallback=self.cfg.enable_wx_overlap,
+                enable_overlap_fallback=self.config.enable_wx_overlap,
                 charged_matrix=eddy_rivas_fold_state.wxc_matrix,
                 nested_energy=wxu,
                 i_idx=i,
@@ -1274,7 +1281,7 @@ class EddyRivasFoldingEngine:
             # This is a fallback mechanism. If the overlap feature is enabled but no
             # finite-energy pseudoknot was found (wxc is infinity), we consider the
             # uncharged (nested) energy as the best possible 'composed' energy.
-            if self.cfg.enable_wx_overlap and not math.isfinite(wxc):
+            if self.config.enable_wx_overlap and not math.isfinite(wxc):
                 eddy_rivas_fold_state.wxc_matrix.set(i, j, wxu)
                 wxc = wxu
 

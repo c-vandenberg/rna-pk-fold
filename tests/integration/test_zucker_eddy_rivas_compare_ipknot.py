@@ -284,7 +284,7 @@ def test_full_vs_ipknot_shape_and_energy(seq: str, engines_and_costs: tuple):
 
     # --- 2. Run Eddy-Rivas (pseudoknot) fold ---
     eddy_rivas_state = init_eddy_rivas_fold_state(len(seq))
-    er_engine.fill_with_costs(seq, zucker_state, eddy_rivas_state)
+    er_engine.run_eddy_rivas_dp_with_costs(seq, zucker_state, eddy_rivas_state)
     our_full_energy = eddy_rivas_state.wx_matrix.get(0, len(seq) - 1)
     assert math.isfinite(our_full_energy), "Eddy-Rivas prediction resulted in a non-finite energy."
 

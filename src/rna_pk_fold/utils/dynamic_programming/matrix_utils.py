@@ -22,7 +22,7 @@ _whx_lookup_cache: Dict[CoordKey, float] = {}
 _zhx_lookup_cache: Dict[CoordKey, float] = {}
 
 
-def reset_matrix_lookup_caches():
+def clear_matrix_lookup_caches():
     """
     Clear all module-level caches for matrix lookups.
 

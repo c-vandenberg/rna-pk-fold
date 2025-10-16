@@ -16,7 +16,7 @@ import math
 import pytest
 
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import (
-    reset_matrix_lookup_caches,
+    clear_matrix_lookup_caches,
     get_whx_energy_with_collapse,
     get_zhx_energy_with_collapse,
     get_yhx_energy_with_collapse,
@@ -71,9 +71,9 @@ def auto_clear_matrix_caches():
     This is critical for ensuring test isolation, as it prevents results from one
     test run from affecting the outcome of another.
     """
-    reset_matrix_lookup_caches()
+    clear_matrix_lookup_caches()
     yield
-    reset_matrix_lookup_caches()
+    clear_matrix_lookup_caches()
 
 
 # -------------------------------
@@ -225,7 +225,7 @@ def test_zhx_collapse_with_switches_between_charged_and_uncharged():
     Tests that `zhx_collapse_with` mirrors the behavior of `whx_collapse_with`,
     but for the VXC and VXU matrices.
     """
-    reset_matrix_lookup_caches()
+    clear_matrix_lookup_caches()
     st = DummyState()
     i, j, k = 0, 4, 1
 

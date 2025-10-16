@@ -262,7 +262,7 @@ def test_coax_eligibility_and_never_hurts(adjacent, expect_nontrivial_caps):
         enable_coax=False, costs=base_costs
     )
     eng_off = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_off)
-    eng_off.fill_with_costs(seq, nested, re_state)
+    eng_off.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     vx_off = re_state.vx_matrix.get(i, j)
 
     # --- Run with coax enabled ---
@@ -271,7 +271,7 @@ def test_coax_eligibility_and_never_hurts(adjacent, expect_nontrivial_caps):
         enable_coax=True, costs=base_costs
     )
     eng_on = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_on)
-    eng_on.fill_with_costs(seq, nested2, re_state2)
+    eng_on.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     vx_on = re_state2.vx_matrix.get(i, j)
 
     # If the structure is eligible for coax, the score should improve or stay the same.
@@ -300,13 +300,13 @@ def test_coax_positive_values_are_clamped_to_zero():
 
     # Run with coax off to get a baseline score.
     eng_off = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_off)
-    eng_off.fill_with_costs(seq, nested, re_state)
+    eng_off.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     vx_off = re_state.vx_matrix.get(0, n - 1)
 
     # Run with coax on.
     nested2, re_state2 = _try_build_states(n)
     eng_on = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_on)
-    eng_on.fill_with_costs(seq, nested2, re_state2)
+    eng_on.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     vx_on = re_state2.vx_matrix.get(0, n - 1)
 
     # The score should be identical, as the positive energy was clamped.
@@ -337,13 +337,13 @@ def test_coax_variants_can_help_when_only_variant_is_scored():
 
     # Baseline with variants disabled.
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_base)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     vx0 = re_state.vx_matrix.get(i, j)
 
     # With variants enabled.
     nested2, re_state2 = _try_build_states(n)
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_var)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     vx1 = re_state2.vx_matrix.get(i, j)
 
     # Enabling variants should improve the score.
@@ -377,12 +377,12 @@ def test_pruning_guards_do_not_worsen_optimum():
     )
 
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_loose)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     w0, v0 = re_state.wx_matrix.get(0, n - 1), re_state.vx_matrix.get(0, n - 1)
 
     nested2, re_state2 = _try_build_states(n)
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_tight)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     w1, v1 = re_state2.wx_matrix.get(0, n - 1), re_state2.vx_matrix.get(0, n - 1)
 
     assert w1 <= w0
@@ -405,12 +405,12 @@ def test_enable_wx_overlap_with_negative_Gwh_wx_can_only_help():
     cfg_yes = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_wx_overlap=True, costs=costs_yes)
 
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_no)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     w0 = re_state.wx_matrix.get(0, n - 1)
 
     nested2, re_state2 = _try_build_states(n)
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_yes)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     w1 = re_state2.wx_matrix.get(0, n - 1)
 
     # The score with the bonus feature enabled should be better or equal.
@@ -466,12 +466,12 @@ def test_P_out_increases_yhx_min_energy_monotonically():
     cfg1 = eddy_rivas_recurrences.EddyRivasFoldingConfig(costs=make_costs(p_tilde_out=2.0))
 
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg0)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     y0 = _min_finite_yhx(re_state, n)
 
     nested2, re_state2 = _try_build_states(n)
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg1)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     y1 = _min_finite_yhx(re_state2, n)
 
     assert y1 >= y0
@@ -491,12 +491,12 @@ def test_P_hole_increases_vhx_min_energy_monotonically():
     cfg1 = eddy_rivas_recurrences.EddyRivasFoldingConfig(costs=make_costs(p_tilde_hole=2.0))
 
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg0)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     v0 = _min_finite_vhx(re_state, n)
 
     nested2, re_state2 = _try_build_states(n)
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg1)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     v1 = _min_finite_vhx(re_state2, n)
 
     assert v1 >= v0
@@ -518,7 +518,7 @@ def test_wx_selects_uncharged_on_tie_and_sets_backpointer():
     # Use pk_penalty_gw=0.0 to make ties between charged and uncharged paths more likely.
     cfg = eddy_rivas_recurrences.EddyRivasFoldingConfig(pk_penalty_gw=0.0, costs=make_costs())
     eng = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg)
-    eng.fill_with_costs(seq, nested, re_state)
+    eng.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
 
     i, j = 0, n - 1
     bp = re_state.wx_back_ptr.get(i, j)
@@ -571,7 +571,7 @@ def test_coax_min_helix_len_gates_effect():
     costs = make_costs(coax_pairs={("GC", "GG"): -1.5}, coax_min_helix_len=10)
     cfg_strict = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_coax=True, costs=costs)
     eng_strict = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_strict)
-    eng_strict.fill_with_costs(seq, nested, re_state)
+    eng_strict.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     vx_strict = re_state.vx_matrix.get(i, j)
 
     # Run again with a relaxed requirement that can be met.
@@ -579,7 +579,7 @@ def test_coax_min_helix_len_gates_effect():
     costs2 = make_costs(coax_pairs={("GC", "GG"): -1.5}, coax_min_helix_len=1)
     cfg_relaxed = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_coax=True, costs=costs2)
     eng_relaxed = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_relaxed)
-    eng_relaxed.fill_with_costs(seq, nested2, re_state2)
+    eng_relaxed.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     vx_relaxed = re_state2.vx_matrix.get(i, j)
 
     # Relaxing the gate should allow the favorable coax energy, improving the score.
@@ -601,7 +601,7 @@ def test_coax_mismatch_requires_enable_flag():
         enable_coax=True, enable_coax_mismatch=False, costs=costs
     )
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_no_mismatch)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     vx0 = re_state.vx_matrix.get(0, n - 1)
 
     # Run with mismatch enabled.
@@ -610,7 +610,7 @@ def test_coax_mismatch_requires_enable_flag():
         enable_coax=True, enable_coax_mismatch=True, costs=costs
     )
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_yes_mismatch)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     vx1 = re_state2.vx_matrix.get(0, n - 1)
 
     # Enabling the feature should lead to a better or equal score.
@@ -639,7 +639,7 @@ def test_coax_directional_scales_affect_variants():
         enable_coax=True, enable_coax_variants=False, costs=costs
     )
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_base)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     vx0 = re_state.vx_matrix.get(0, n - 1)
 
     # Case 1: Variants enabled, but scales are zero.
@@ -648,7 +648,7 @@ def test_coax_directional_scales_affect_variants():
         enable_coax=True, enable_coax_variants=True, costs=costs
     )
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_var_zero)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     vx1 = re_state2.vx_matrix.get(0, n - 1)
     # No change is expected.
     assert vx1 == vx0
@@ -663,7 +663,7 @@ def test_coax_directional_scales_affect_variants():
         enable_coax=True, enable_coax_variants=True, costs=costs2
     )
     eng2 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_var_scaled)
-    eng2.fill_with_costs(seq, nested3, re_state3)
+    eng2.run_eddy_rivas_dp_with_costs(seq, nested3, re_state3)
     vx2 = re_state3.vx_matrix.get(0, n - 1)
     # The score should now improve.
     assert vx2 <= vx1
@@ -688,12 +688,12 @@ def test_short_hole_caps_raise_charged_vx_when_hole_is_tiny():
     cfg_yes = eddy_rivas_recurrences.EddyRivasFoldingConfig(costs=costs_yes)
 
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_no)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     vxc0 = re_state.vxc_matrix.get(0, n - 1)
 
     nested2, re_state2 = _try_build_states(n)
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_yes)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     vxc1 = re_state2.vxc_matrix.get(0, n - 1)
 
     # The penalty should make the charged path energy worse or equal.
@@ -716,12 +716,12 @@ def test_join_drift_cannot_worsen_vx():
     cfg_on = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_join_drift=True, costs=base_costs)
 
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_off)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     vxc0 = re_state.vxc_matrix.get(0, n - 1)
 
     nested2, re_state2 = _try_build_states(n)
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_on)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     vxc1 = re_state2.vxc_matrix.get(0, n - 1)
 
     # Even with a penalty, the `take_best` logic ensures the final score is not worsened.
@@ -744,7 +744,7 @@ def test_join_drift_with_negative_penalty_can_win_and_sets_bp():
         enable_coax=True, enable_join_drift=False, costs=base_costs
     )
     eng_off = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_off)
-    eng_off.fill_with_costs(seq, nested0, re0)
+    eng_off.run_eddy_rivas_dp_with_costs(seq, nested0, re0)
     vxc_off = re0.vxc_matrix.get(0, n - 1)
     vx_off = re0.vx_matrix.get(0, n - 1)
 
@@ -755,7 +755,7 @@ def test_join_drift_with_negative_penalty_can_win_and_sets_bp():
         enable_coax=True, enable_join_drift=True, drift_radius=1, costs=drift_costs
     )
     eng_on = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg_on)
-    eng_on.fill_with_costs(seq, nested1, re1)
+    eng_on.run_eddy_rivas_dp_with_costs(seq, nested1, re1)
 
     vxc_on = re1.vxc_matrix.get(0, n - 1)
     vxu_on = re1.vxu_matrix.get(0, n - 1)
@@ -799,7 +799,7 @@ def test_IS2_outer_yhx_lowers_best_yhx_when_negative():
     # Baseline with no IS2 energy.
     cfg0 = eddy_rivas_recurrences.EddyRivasFoldingConfig(costs=make_costs())
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg0)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     y0 = _min_finite_yhx(re_state, n)
 
     # With a favorable (negative) IS2 energy.
@@ -807,7 +807,7 @@ def test_IS2_outer_yhx_lowers_best_yhx_when_negative():
     cfg1 = eddy_rivas_recurrences.EddyRivasFoldingConfig(costs=make_costs())
     cfg1.tables = _TablesYHX(-1.5)
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg1)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     y1 = _min_finite_yhx(re_state2, n)
 
     assert y1 <= y0
@@ -824,14 +824,14 @@ def test_IS2_outer_yhx_can_lower_whx_via_yhx_bridge():
 
     cfg0 = eddy_rivas_recurrences.EddyRivasFoldingConfig(costs=make_costs())
     eng0 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg0)
-    eng0.fill_with_costs(seq, nested, re_state)
+    eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
     w0 = _min_finite_whx(re_state, n)
 
     nested2, re_state2 = _try_build_states(n)
     cfg1 = eddy_rivas_recurrences.EddyRivasFoldingConfig(costs=make_costs())
     cfg1.tables = _TablesYHX(-2.0)  # Inject favorable YHX energy
     eng1 = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg1)
-    eng1.fill_with_costs(seq, nested2, re_state2)
+    eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     w1 = _min_finite_whx(re_state2, n)
 
     # The improved YHX score should propagate to improve the WHX score.
@@ -853,7 +853,7 @@ def test_wx_overlap_respects_short_hole_caps_on_charged_path():
     costs_overlap = make_costs(g_wh_wx=-0.5, short_hole_caps={1: +1.0})
     cfg = eddy_rivas_recurrences.EddyRivasFoldingConfig(enable_wx_overlap=True, costs=costs_overlap)
     eng = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg)
-    eng.fill_with_costs(seq, nested, re_state)
+    eng.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
 
     wxc = re_state.wxc_matrix.get(0, n - 1)
     # The main check is that the calculation completes to a finite number,
@@ -874,7 +874,7 @@ def test_vx_selects_uncharged_on_tie_and_sets_backpointer():
 
     cfg = eddy_rivas_recurrences.EddyRivasFoldingConfig(pk_penalty_gw=0.0, costs=make_costs())
     eng = eddy_rivas_recurrences.EddyRivasFoldingEngine(cfg)
-    eng.fill_with_costs(seq, nested, re_state)
+    eng.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
 
     i, j = 0, n - 1
     bp = re_state.vx_back_ptr.get(i, j)

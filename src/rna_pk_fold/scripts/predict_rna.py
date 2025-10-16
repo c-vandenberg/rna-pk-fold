@@ -352,7 +352,7 @@ def predict_eddy_rivas(
     eddy_rivas_state = init_eddy_rivas_fold_state(len(seq))
 
     # Run the main DP algorithm, seeding it with the results from the Zuker phase.
-    er_engine.fill_with_costs(seq, zucker_state, eddy_rivas_state)
+    er_engine.run_eddy_rivas_dp_with_costs(seq, zucker_state, eddy_rivas_state)
 
     # Get the final energy for the entire sequence.
     energy = eddy_rivas_state.wx_matrix.get(0, len(seq) - 1)
