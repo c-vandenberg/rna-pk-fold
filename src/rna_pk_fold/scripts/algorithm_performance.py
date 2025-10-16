@@ -22,62 +22,13 @@ from rna_pk_fold.folding.zucker import make_fold_state as make_zucker_state
 from rna_pk_fold.folding.zucker.zucker_dynamic_programming import ZuckerFoldingConfig, ZuckerFoldingEngine
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_dynamic_programming
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
+from rna_pk_fold.utils.energy.energy_model_utils import load_energy_model
+from rna_pk_fold.utils.sequences.nucleotide_utils import generate_random_sequence
 
 
-def generate_random_sequence(length: int, seed: int = None) -> str:
-    """
-    Generate a random RNA sequence of a given length.
-
-    Parameters
-    ----------
-    length : int
-        The desired length of the RNA sequence ($N$).
-    seed : int, optional
-        Seed for the random number generator for reproducibility.
-        The default is None.
-
-    Returns
-    -------
-    str
-        A random RNA sequence composed of 'A', 'C', 'G', 'U' bases.
-    """
-    if seed is not None:
-        random.seed(seed)
-    return ''.join(random.choices(['A', 'C', 'G', 'U'], k=length))
-
-
-def load_energy_model(temp_c: float = 37.0) -> SecondaryStructureEnergyModel:
-    """
-    Load the RNA thermodynamic energy model.
-
-    This function loads Turner 2004 parameters augmented with Rivas & Eddy
-    (1999) pseudoknot heuristic parameters.
-
-    Parameters
-    ----------
-    temp_c : float, optional
-        Temperature in Celsius for $\Delta G$ calculations. The default is $37.0$.
-
-    Returns
-    -------
-    SecondaryStructureEnergyModel
-        An initialized energy model object.
-    """
-    # Use default bundled parameter file
-    yaml_path = str(importlib_files("rna_pk_fold") / "data" / "turner2004_eddyrivas1999_min.yaml")
-
-    temp_k = 273.15 + temp_c
-
-    # Load raw parameters from YAML
-    params = SecondaryStructureEnergyLoader().load(kind="RNA", yaml_path=yaml_path)
-
-    # Create energy model
-    model = SecondaryStructureEnergyModel(params=params, temp_k=temp_k)
-
-    return model
-
-
-def build_eddy_rivas_costs(energy_model: SecondaryStructureEnergyModel) -> eddy_rivas_dynamic_programming.PseudoknotEnergies:
+def build_eddy_rivas_costs(
+    energy_model: SecondaryStructureEnergyModel
+) -> eddy_rivas_dynamic_programming.PseudoknotEnergies:
     """
     Extract and build pseudoknot energy parameters from the loaded energy model.
 
@@ -115,7 +66,7 @@ def eddy_rivas_fold(sequence: str, energy_model: SecondaryStructureEnergyModel) 
     sequence : str
         The RNA sequence to fold.
     energy_model : SecondaryStructureEnergyModel
-        The energy model containing $\Delta G$ parameters.
+        The energy model containing ΔG parameters.
 
     Returns
     -------
@@ -173,12 +124,12 @@ def eddy_rivas_fold(sequence: str, energy_model: SecondaryStructureEnergyModel) 
 
 def benchmark_runtime(sequence_lengths: list[int], num_trials: int = 3) -> dict:
     """
-    Benchmark the mean runtime across different sequence lengths ($N$).
+    Benchmark the mean runtime across different sequence lengths (N).
 
     Parameters
     ----------
     sequence_lengths : list of int
-        List of sequence lengths ($N$) to test.
+        List of sequence lengths (N) to test.
     num_trials : int, optional
         Number of folding runs per length for averaging. The default is 3.
 
@@ -209,6 +160,7 @@ def benchmark_runtime(sequence_lengths: list[int], num_trials: int = 3) -> dict:
     for n in sequence_lengths:
         print(f"\nBenchmarking N={n}...")
         trial_times = []
+        result = {}
 
         for trial in range(num_trials):
             # Sequence changes per trial to avoid caching effects
@@ -233,7 +185,7 @@ def benchmark_runtime(sequence_lengths: list[int], num_trials: int = 3) -> dict:
 
 def benchmark_memory(sequence_lengths: list[int]) -> dict:
     """
-    Benchmark peak memory usage across different sequence lengths ($N$).
+    Benchmark peak memory usage across different sequence lengths (N).
 
     Uses Python's `tracemalloc` to measure the peak memory allocated
     during the DP calculation.
@@ -241,7 +193,7 @@ def benchmark_memory(sequence_lengths: list[int]) -> dict:
     Parameters
     ----------
     sequence_lengths : list of int
-        List of sequence lengths ($N$) to test.
+        List of sequence lengths (N) to test.
 
     Returns
     -------
@@ -282,23 +234,23 @@ def benchmark_memory(sequence_lengths: list[int]) -> dict:
 
 def analyze_complexity(lengths: list[int], times: list[float]) -> tuple[float, np.ndarray]:
     """
-    Fit empirical runtime data to the relationship $T \propto N^{k}$ and
+    Fit empirical runtime data to the relationship T∝N^k and
     estimate the time complexity exponent $k$.
 
     This is done by performing a linear regression on the log-log transformed data:
-    $\log(T) = k \cdot \log(N) + c$
+    log(T) = k⋅log(N) + c
 
     Parameters
     ----------
     lengths : list of int
-        Sequence lengths ($N$).
+        Sequence lengths (N).
     times : list of float
-        Mean runtimes ($T$) corresponding to each length.
+        Mean runtimes (T) corresponding to each length.
 
     Returns
     -------
     tuple of (float, numpy.ndarray)
-        The estimated exponent $k$ and an array of fitted times.
+        The estimated exponent k and an array of fitted times.
     """
     log_n = np.log(lengths)
     log_time = np.log(times)

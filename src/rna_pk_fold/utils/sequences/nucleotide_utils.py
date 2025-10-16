@@ -1,4 +1,5 @@
 import logging
+import random
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -157,3 +158,24 @@ def dangle3_key(pair: str, nt: str) -> str:
 def pair_str(seq: str, i: int, j: int) -> str:
     return normalize_base(seq[i]) + normalize_base(seq[j])
 
+
+def generate_random_sequence(length: int, seed: int = None) -> str:
+    """
+    Generate a random RNA sequence of a given length.
+
+    Parameters
+    ----------
+    length : int
+        The desired length of the RNA sequence ($N$).
+    seed : int, optional
+        Seed for the random number generator for reproducibility.
+        The default is None.
+
+    Returns
+    -------
+    str
+        A random RNA sequence composed of 'A', 'C', 'G', 'U' bases.
+    """
+    if seed is not None:
+        random.seed(seed)
+    return ''.join(random.choices(['A', 'C', 'G', 'U'], k=length))
