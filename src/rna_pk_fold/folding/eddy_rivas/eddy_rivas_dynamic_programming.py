@@ -26,8 +26,10 @@ from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (evaluate
                                                                         evaluate_wx_yhx_overlap_for_span,
                                                                         set_span_cell_with_backpointer,
                                                                         evaluate_vx_composition_for_hole)
-from rna_pk_fold.utils.dynamic_programming.dp_split_utils import zhx_wx_split_min_vhx, VhxSplitMode
-from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import use_nested_energy_if_composed_infinite, publish_min_energy_with_default_backpointer
+from rna_pk_fold.utils.dynamic_programming.dp_split_utils import (zhx_wx_split_min_vhx, compute_zhx_split_min_over_zhx_wx,
+                                                                  VhxSplitMode, ZhxSplitMode)
+from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import (use_nested_energy_if_composed_infinite,
+                                                                    publish_min_energy_with_default_backpointer)
 from rna_pk_fold.utils.logging.debug_utils import debug_print, count_finite_cells
 from rna_pk_fold.utils.logging.logging_utils import setup_logger
 
@@ -382,7 +384,7 @@ class EddyRivasFoldingEngine:
         # ZHX
         logger.info("Filling ZHX matrix...")
         zhx_start = time.perf_counter()
-        self._dp_zhx(seq, eddy_rivas_fold_state, g_wi, p_hole, q_tilde_hole, can_pair_mask)
+        self._fill_zhx_gap_matrix(seq, eddy_rivas_fold_state, g_wi, p_hole, q_tilde_hole, can_pair_mask)
         self.timings['zhx'] = time.perf_counter() - zhx_start
         logger.info(f"ZHX filled in {self.timings['zhx']:.2f}s")
 
@@ -791,7 +793,7 @@ class EddyRivasFoldingEngine:
                 eddy_rivas_fold_state.vhx_back_ptr.set(i, j, k, l, tracker.backpointer)
 
     # --------- ZHX ---------
-    def _dp_zhx(
+    def _fill_zhx_gap_matrix(
         self,
         seq: str,
         eddy_rivas_fold_state: EddyRivasFoldState,
@@ -846,11 +848,11 @@ class EddyRivasFoldingEngine:
                 # ---------- Initialize Best Candidate Tracker ----------
                 tracker = BestCandidateTracker()
 
-                # ---------- Case 1: Form a pair at (k,l), transitioning from VHX. ----------
-                v = eddy_rivas_fold_state.vhx_matrix.get(i, j, k, l)
-                if math.isfinite(v):
+                # ---------- Case 1: From VHX, Form a pair at (k,l) ----------
+                vhx_energy = eddy_rivas_fold_state.vhx_matrix.get(i, j, k, l)
+                if math.isfinite(vhx_energy):
                     tracker.update_if_better(
-                        tilde_p_hole + v + internal_pk_penalty,
+                        tilde_p_hole + vhx_energy + internal_pk_penalty,
                         EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_ZHX_FROM_VHX, outer=(i, j), hole=(k, l))
                     )
 
@@ -875,32 +877,32 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 4: Split into ZHX + WX. ----------
                 # 4.1. Split on the 5' (Left) Side: ZHX(i,j:r,l) + WX(r+1,k)
-                lr = max(0, k - i)
-                if lr > 0:
-                    cand, t = compute_best_split_sum(
-                        lr,
-                        left_fetch=lambda t: eddy_rivas_fold_state.zhx_matrix.get(i, j, i + t, l),
-                        right_fetch=lambda t: get_wxi_or_wx(eddy_rivas_fold_state, i + t + 1, k),
-                    )
-                    if t >= 0:
-                        tracker.update_if_better(cand, EddyRivasBackPointer(
+                cand_left, t_left = compute_zhx_split_min_over_zhx_wx(
+                    ZhxSplitMode.LEFT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
+                )
+                if t_left >= 0:
+                    r_star = i + t_left
+                    tracker.update_if_better(
+                        cand_left,
+                        EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_ZHX_SPLIT_LEFT_ZHX_WX,
-                            outer=(i, j), hole=(k, l), split=i + t
-                        ))
+                            outer=(i, j), hole=(k, l), split=r_star
+                        ),
+                    )
 
                 # 4.2. Split on the 3' (Right) Side: ZHX(i,j:k,s2) + WX(l, s2-1)
-                ls = max(0, j - l)
-                if ls > 0:
-                    cand, t = compute_best_split_sum(
-                        ls,
-                        left_fetch=lambda t: eddy_rivas_fold_state.zhx_matrix.get(i, j, k, (l + 1) + t),
-                        right_fetch=lambda t: get_wxi_or_wx(eddy_rivas_fold_state, l, (l + 1) + t - 1),
-                    )
-                    if t >= 0:
-                        tracker.update_if_better(cand, EddyRivasBackPointer(
+                cand_right, t_right = compute_zhx_split_min_over_zhx_wx(
+                    ZhxSplitMode.RIGHT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
+                )
+                if t_right >= 0:
+                    s2_star = (l + 1) + t_right
+                    tracker.update_if_better(
+                        cand_right,
+                        EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_ZHX_SPLIT_RIGHT_ZHX_WX,
-                            outer=(i, j), hole=(k, l), split=(l + 1) + t
-                        ))
+                            outer=(i, j), hole=(k, l), split=s2_star
+                        ),
+                    )
 
                 # ---------- Case 5: IS2 Motif (Outer Bridge + Inner VHX)). ----------
                 if self.config.enable_is2:

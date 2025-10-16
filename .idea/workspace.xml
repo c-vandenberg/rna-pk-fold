@@ -5,16 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="412c1b24-9f3a-48e6-b1d0-5a7a528ee298" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_traceback.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_traceback.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/scripts/algorithm_performance.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/scripts/algorithm_performance.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/matrix_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/matrix_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/integration/test_zucker_eddy_rivas_compare_ipknot.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/integration/test_zucker_eddy_rivas_compare_ipknot.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_recurrences.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_recurrences.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_rivas_eddy_table3.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_rivas_eddy_table3.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/utils/test_matrix_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/utils/test_matrix_utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -157,12 +148,12 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py</url>
-          <line>422</line>
+          <line>424</line>
           <option name="timeStamp" value="11" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py</url>
-          <line>1129</line>
+          <line>1131</line>
           <option name="timeStamp" value="18" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
