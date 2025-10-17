@@ -70,7 +70,7 @@ The implementation strictly follows the recursive relations laid out in the Riva
 
 ### Phase 1: Nested Structure Baseline (Zucker Algorithm)
 * Computes optimal nested-only structures using 2D dynamic programming.
-* Fill matrices $W(i, j)$ (unconstrained MFE) and V(i, j)$ (constrained with $i-j$ pairing).
+* Fill matrices $W(i, j)$ (unconstrained MFE) and $V(i, j)$ (constrained with $i-j$ pairing).
 * Provides baseline energies for pseudoknot composition phase.
 
 ### Phase 2: Pseudoknot Extension (Eddy-Rivas Algorithm)
@@ -86,14 +86,14 @@ The algorithm utilizes five main dynamic programming matrices to track optimal f
   * $YHX(i, j: k, l)$: Outer helix context allowing varied stem configurations
   * $VHX(i, j: k, l)$: Inner helix extension matrix
 
-**Gap Matrix Filling ($O(N^4)$)** 
+**Gap Matrix Filling $O(N^4)$** 
 For each outer span $(i, j)$ and hole $(k, l)$ where bases $k$ and $l$ can form Watson-Crick pairs, compute optimal substructure energies using:
 - Single-stranded penalties for unpaired bases
 - Helix extension/initiation costs
 - Dangles and coaxial stacking terms (when enabled)
 - Splits over intermediate positions $r$ to build composite structures
 
-**Composition Phase ($O(N^6)$)**
+**Composition Phase $O(N^6)$**
 For each span $(i, j)$ and pairable hole $(k, l)$:
 1. Precompute energy vectors over all split positions $r \in [k, l-1]$
 2. Query gap matrices for left ($WHX[i, r: k, r]$) and right ($WHX[r+1, j: r+1, l]$) components
@@ -137,7 +137,7 @@ r_star = np.argmin(Lu + Ru + penalties)  # Single vectorized operation
 Gap matrices only compute holes $(k,l)$ where bases can form Watson-Crick pairs (A-U, G-C, G-U). This reduces the search space by ~75% compared to evaluating all possible (k,l)(k, l)
 $(k,l)$ combinations.
 
-**Implementation:** Pre-computed boolean mask can_pair_mask[k][l] gates iteration:
+**Implementation:** Pre-computed boolean mask `can_pair_mask[k][l]` gates iteration:
 ```
 for k, l in iter_holes_pairable(i, j, can_pair_mask):
     # Only process valid holes
@@ -152,7 +152,7 @@ Users can specify minimum/maximum hole widths to prune energetically unlikely co
 **Typical Settings:** min_hole_width=0 (no minimum), max_hole_width=0 (unlimited) for maximum accuracy.
 
 ### 5. Optional Beam Pruning
-An experimental beam_v_threshold parameter allows skipping holes $(k,l)$ where the nested inner helix $V(k,l)$ exceeds an energy threshold:
+An experimental `beam_v_threshold` parameter allows skipping holes $(k,l)$ where the nested inner helix $V(k,l)$ exceeds an energy threshold:
 ```
 if V_nested[k,l] > threshold:
     skip_hole  # Inner helix too weak, unlikely to form stable PK
@@ -262,16 +262,16 @@ This contains a pseudoknot with crossing stems at positions 31-36 paired with 63
 
 **Actual Output (RNA PK Fold Prediction)**
 ```
-(((((.......(((.....))).)))))((((.....))))(((((....(((...))).)))))....
+............(((.....))).(((..((((.....))))(((((....(((...))).))))).)))
 ```
-This is predicted structure is purely nested (no crossings). Similar issues have been observed with other pseudoknot test sequences (e.g. `AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU`). Further investigation showed that the algorithm was indeed predicted charged (i.e. crossed/pseudoknot) composition paths with a lower free energy, however these were being filtered out.
+This is predicted structure is purely nested (no crossings). Similar issues have been observed with other pseudoknot test sequences (e.g. `AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU`). Further investigation showed that during composition the algorithm frequently predicts charged (i.e. crossed/pseudoknot) paths with a lower ΔG, but they were being filtered out or collapsed away downstream.
 
 ### Debugging
 
 All debugging was carried out via the use of the PyCharm debugger tool, logging, and print statemnts.
 
-### Phase 1: Composition Layer Investigation
-**Finding 1:** The WX composition correctly identifies pseudoknot holes with favorable energies:
+### Debug 1: Composition Layer Investigation
+**Finding:** The WX composition correctly identifies pseudoknot holes with favorable energies:
 * Hole (30,67): ΔG = -49.91 kcal/mol
 * Hole (31,68): ΔG = -48.36 kcal/mol
 
@@ -280,7 +280,7 @@ Issue: Despite printing "✓ NEW WINNER!", these holes were not being committed 
 
 **Root Cause:** The update logic (`best_c = cand`) was accidentally placed inside a debug conditional block, causing it to only update for specifically monitored holes. This was fixed by moving the update logic outside the debug block.
 
-### Phase 2: Outer Interval Mismatch
+### Debug 2: Outer Interval Mismatch
 **Finding:** The composition was querying incorrect outer intervals in gap matrices:
 ```
 # WRONG (original):
@@ -293,7 +293,7 @@ Ru[t] = whx_collapse_with(re, r + 1, j, r + 1, l, ...)  # Outer: (r+1, j)
 **Impact:** This mismatch caused the composition to query different cells than traceback expected, leading to inconsistent energy calculations.
 **Fix:** Corrected outer intervals to match traceback expectations.
 
-### Phase 3: Filter Logic Analysis
+### Debug 3: Filter Logic Analysis
 Multiple filters were investigated that could block pseudoknot formation:
 1. **Sparse matrix filter:** Checked if both WHX/YHX sides had finite values in raw sparse matrices. This was too strict because it rejected compositions using valid WXU baseline collapse.
 2. **Zero-width hole filter:** Rejected holes where either `hole_left` or `hole_right` had width ≤ 1. Initially placed after `best_c` update, causing orphan energies (updated energy but no backpointer).
@@ -302,7 +302,7 @@ Multiple filters were investigated that could block pseudoknot formation:
 * Removed sparse matrix filter entirely
 * Moved zero-width filter before best_c update to ensure atomic updates
 
-### Phase 4: Gap Matrix Coverage Analysis
+### Debug 4: Gap Matrix Coverage Analysis
 **Critical Finding:** Even after all composition fixes, pseudoknot holes still fail to form true crossings. Traceback shows:
 ```
 Winner: hole=(11,68), split=65
@@ -327,7 +327,7 @@ However:
 * Bases 31 & 63: **G-A** (not pairable)
 * Bases 64 & 68: **C-C** (not pairable)
 
-Since these hole boundaries don't form Watson-Crick pairs, gap filling skips them entirely, leaving the sparse matrices at infinity. Composition then has no choice but to fall back to the WXU baseline (nested structure).
+Since these hole boundaries don't form Watson-Crick pairs, gap filling skips them entirely, leaving the sparse matrices at infinity. Composition then has no choice but to fall back to the WXU baseline (nested structure). This implicitly forbids many valid pseudoknots (e.g., H-type) whose crossing stems **do not** use `(k,l)` as a base pair. In the Rivas–Eddy scheme, `(k,l)` are structural markers that bound the inner region; they aren’t guaranteed to pair. Restricting hole filling to WC seams therefore prevents genuine PK crossings from ever being representable during composition.
 
 ### Suspected Root Cause
 The pairability constraint on hole boundaries is fundamentally incompatible with pseudoknot prediction. In the Eddy-Rivas model:
@@ -335,9 +335,9 @@ The pairability constraint on hole boundaries is fundamentally incompatible with
 2. **Pseudoknot crossings arise from gap structure**, not from (k,l) pairing
 3. **The algorithm should compute gaps for ALL holes**, regardless of endpoint pairability
 
-The current implementation incorrectly assumes that if (k,l) can't pair, no meaningful gap structure exists between them. This is false for pseudoknots, where the crossing stems may involve completely different base pairs inside the hole boundaries.
+The current implementation incorrectly assumes that if `(k,l)` can't pair, no meaningful gap structure exists between them. For pseudoknots, `(k,l)` are **structural seam markers**, not necessarily a base pair. Crossing stems can be entirely inside the hole and involve completely different base pairs from `(k, l)` inside the hole boundaries.
 
-### Attempted Solution
+### Fixes to Apply
 The fix should be to remove pairability constraints from gap filling:
 ```
 # Change in _dp_whx(), _dp_yhx():
@@ -354,10 +354,66 @@ It should be noted that this will affect:
 1. **Performance:** Removes O(N²) filtering, significantly increasing computation
 2. **Memory:** Sparse matrices would need many more entries
 
-The above has been implemented, but the issue has persisted. further testing is required to ensure that logic elsewhere is not filtering non-pariable holes.
+**Actual Impact:**
+The above has been implemented, but the issue persisted, with composition winners still tracing back to **full collapsed** sub-problems (i.e. no crossings). For example:
+```
+Winner: hole=(11,68), split=65
+WHX_L=inf, WHX_R=inf   # collapsed to baseline
+YHX_L=inf, YHX_R=inf
+crossings_within_layer=0
+```
 
-### Current Status (10/10/2025)
-✅ Performs O(N⁶) composition with proper energy calculations<br>
+### Debug 5: “Collapse on non-pairable (k,l)” Optimization Too Aggressive
+**Critical Finding:** During the performance refactor we introduced cached wrappers:
+* `whx_collapse_with(...)`
+* `zhx_collapse_with(...)`
+
+These treat a non-pairable `(k,l)` as a collapse (i.e., they fall back to WXU/VXU) when `can_pair_mask[k][l] == False`. This is correct for states that require a pair at `(k,l)`, but it is not correct for the general WHX/ZHX semantics:
+* WHX: pairing at `(k,l)` is undetermined; marking “unpairable ⇒ collapse” removes valid gapped structure.
+* ZHX: outer `(i,j)` is paired, the hole (k,l) is undetermined; same problem.
+
+**Effect**
+Even though we fill gaps for all holes, the composition arrays (which use these wrappers) silently substitute nested energies for non-pairable `(k,l)` and starve the PK path of real gapped energies. The kernel then “wins” with numbers that ultimately don’t produce crossings during traceback.
+
+**What is Correct by State**
+1. **YHX**: requires inner hole (k,l) to be paired.
+   * If `(k,l)` cannot pair ➜ the state is **invalid** (`+inf`), **not** a collapse.
+2. **VHX**: requires both outer (i,j) and inner (k,l) to be paired.
+   * If `(k,l)` cannot pair ➜ **invalid**, **not** a collapse.
+3. **WHX/ZHX**: `(k,l)` pairing is undetermined.
+   * If `(k,l)` cannot pair ➜ still valid as a gapped state; **do not collapse**.
+   * Only collapse when the hole width is zero (`l == k+1`).
+
+**Fixes to Apply**
+1. **Stop collapsing WHX/ZHX when `(k,l)` are non-pairable**
+   * Remove the `can_pair_mask`-based collapse in:
+     - `whx_collapse_with(...)`
+     - `zhx_collapse_with(...)`
+   * Keep only the zero-width collapse:
+     - `WHX(i,j:k,k+1) = WXU(i,j)`
+     - `ZHX(i,j:k,k+1) = VXU(i,j)`
+2. **Keep YHX/VHX strict**
+   * YHX and VHX remain invalid when `(k,l)` cannot pair (consistent with their definitions).
+3. Composition array builders
+   * In WX and VX array construction, use the non-aggressive wrappers (or direct `.get(...)`) consistent with the above.
+   * Continue to keep `_wx_case_has_gapped_structure` so we only accept real gapped fragments (not both-side collapses).
+
+**Expected Impact:**
+1. **Correctness**: PK holes with non-pairable boundaries (common in H-type) will retain their gapped energies; traceback should produce true crossings where the kernel already finds lower ΔG charged paths.
+2. **Performance/Memory**: Slight increase versus the “aggressive collapse” version (more WHX/ZHX cells survive), but still mitigated by:
+   * Memoized lookups
+   * Beam pruning and hole-width caps
+   * Early zero-width collapse
+   * Dense-enable only for top-level WXU/VXU during seeding
+  
+**Actual Impact:**
+* Implementing the above has expanded the state space and increased the number of plausible candidates.
+* However, the the algorithm still does not predict non-nested structures for the test sequences.
+* Additionally, the algorithm performs worse on the `test_zucker_eddy_rivas_compare_ipknot.py` smoke test, with 10/47 tests now failing compared to 6/47 tests failing prior to these changes being implemented. These additional failures are from the algorithm incorrectly predicting non-PK structures.
+* This is likely because these increased number of plausible collapsed gap routes candidates are now **competing with the Zucker nested structure** and are winning. However further investigation is needed.
+
+### Current Status (17/10/2025)
+✅ Performs $O(N^{4.5})$ composition with proper energy calculations<br>
 ✅ Identifies pseudoknot holes with favorable free energies<br>
 ✅ Handles backpointer creation and traceback mechanics<br>
 
