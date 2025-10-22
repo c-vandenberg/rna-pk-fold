@@ -12,32 +12,44 @@ except Exception:
 Interval = Tuple[int, int]
 
 
-class _AutoName(StrEnum):
+class _AutoNameStr(StrEnum):
     """
     An Enum helper that automatically uses the member name as its string value.
     """
-    def _generate_next_value_(name, start, count, last_values):
+    def _generate_next_value_(member_name, start_value, member_index, previous_values):
         """
-        This method is called by the Enum machinery to get the value for 'auto()'.
-        Simply returns the member's name as a string.
+        Compute the value for an `Enum.auto()` member.
+
+        Returns the enum member's name so that each member's value equals
+        its identifier (e.g., `FOO.value == "FOO"`).
 
         Parameters
         ----------
-        start : Any
-        count : int
-        last_values : Any
+        member_name : str
+            The member name being created.
+        start_value : int
+            Starting value for the first enumeration (unused here).
+        member_index : int
+            0-based index of the member within the enumeration (unused here).
+        previous_values : list of Any
+            Values already assigned in this enumeration (unused here).
+
+        Returns
+        -------
+        str
+            The member name, used as the enum value.
         """
-        return name
+        return member_name
 
 
-class EddyRivasBacktrackOp(_AutoName):
+class EddyRivasBacktrackOp(_AutoNameStr):
     """
     Defines all possible backtrack operations for the Eddy & Rivas algorithm.
 
     This enumeration provides a comprehensive, serializable list of every
     dynamic programming recursion rule used in the folding process. Each member
     represents a specific transition from a larger problem to one or more
-    smaller subproblems. During the DP fill, the chosen operation is stored
+    smaller sub-problems. During the DP fill, the chosen operation is stored
     in a backpointer, allowing for the reconstruction of the optimal RNA
     secondary structure via a traceback procedure.
 
@@ -50,12 +62,12 @@ class EddyRivasBacktrackOp(_AutoName):
     # These operations represent the O(N^6) step where gapped fragments are
     # combined to form pseudoknots, or the final choice is made.
     # ----------------------------------------------------------------------
-    RE_PK_COMPOSE_WX = auto()              # WX composition: Forms a pseudoknot from two WHX subproblems.
-    RE_PK_COMPOSE_VX = auto()              # VX composition: Forms a pseudoknot inside a closing pair from two ZHX subproblems.
-    RE_PK_COMPOSE_WX_YHX = auto()          # WX composition: Forms a pseudoknot from two YHX subproblems.
-    RE_PK_COMPOSE_WX_YHX_WHX = auto()      # WX composition: Forms a pseudoknot from a YHX (left) and WHX (right) subproblem.
-    RE_PK_COMPOSE_WX_WHX_YHX = auto()      # WX composition: Forms a pseudoknot from a WHX (left) and YHX (right) subproblem.
-    RE_PK_COMPOSE_WX_YHX_OVERLAP = auto()  # WX composition: Forms an overlapping pseudoknot from two YHX subproblems sharing a hole.
+    RE_PK_COMPOSE_WX = auto()              # WX composition: Forms a pseudoknot from two WHX sub-problems.
+    RE_PK_COMPOSE_VX = auto()              # VX composition: Forms a pseudoknot inside a closing pair from two ZHX sub-problems.
+    RE_PK_COMPOSE_WX_YHX = auto()          # WX composition: Forms a pseudoknot from two YHX sub-problems.
+    RE_PK_COMPOSE_WX_YHX_WHX = auto()      # WX composition: Forms a pseudoknot from a YHX (left) and WHX (right) sub-problem.
+    RE_PK_COMPOSE_WX_WHX_YHX = auto()      # WX composition: Forms a pseudoknot from a WHX (left) and YHX (right) sub-problem.
+    RE_PK_COMPOSE_WX_YHX_OVERLAP = auto()  # WX composition: Forms an overlapping pseudoknot from two YHX sub-problems sharing a hole.
     RE_WX_SELECT_UNCHARGED = auto()        # WX finalization: The optimal structure was nested (uncharged), not pseudoknotted.
     RE_VX_SELECT_UNCHARGED = auto()        # VX finalization: The optimal structure within a pair was nested (uncharged).
     RE_PK_COMPOSE_WX_DRIFT = auto()        # WX composition: An experimental variant allowing hole positions to shift.
@@ -64,12 +76,12 @@ class EddyRivasBacktrackOp(_AutoName):
     # ----------------------------------------------------------------------
     # IS2: Irreducible Surface of Order 2
     # These operations represent forming a loop closed by two base pairs,
-    # one of which is part of a gapped subproblem.
+    # one of which is part of a gapped sub-problem.
     # ----------------------------------------------------------------------
-    RE_YHX_IS2_INNER_WHX = auto()  # YHX calculation: Forms an IS2 loop around an inner WHX subproblem.
-    RE_WHX_IS2_INNER_YHX = auto()  # WHX calculation: Forms an IS2 loop around an inner YHX subproblem.
-    RE_VHX_IS2_INNER_ZHX = auto()  # VHX calculation: Forms an IS2 loop around an inner ZHX subproblem.
-    RE_ZHX_IS2_INNER_VHX = auto()  # ZHX calculation: Forms an IS2 loop around an inner VHX subproblem.
+    RE_YHX_IS2_INNER_WHX = auto()  # YHX calculation: Forms an IS2 loop around an inner WHX sub-problem.
+    RE_WHX_IS2_INNER_YHX = auto()  # WHX calculation: Forms an IS2 loop around an inner YHX sub-problem.
+    RE_VHX_IS2_INNER_ZHX = auto()  # VHX calculation: Forms an IS2 loop around an inner ZHX sub-problem.
+    RE_ZHX_IS2_INNER_VHX = auto()  # ZHX calculation: Forms an IS2 loop around an inner VHX sub-problem.
 
     # ----------------------------------------------------------------------
     # WHX: The most general gap matrix (undetermined pairs at all ends).
@@ -83,7 +95,7 @@ class EddyRivasBacktrackOp(_AutoName):
     RE_WHX_SS_BOTH = auto()             # WHX(i,j:k,l) -> Adds unpaired bases at i and j, recursing on WHX(i+1,j-1:k,l).
     RE_WHX_SPLIT_LEFT_WHX_WX = auto()   # WHX bifurcation: Splits into a gapped WHX(i,r:k,l) and a nested WX(r+1,j).
     RE_WHX_SPLIT_RIGHT_WX_WHX = auto()  # WHX bifurcation: Splits into a nested WX(i,s) and a gapped WHX(s+1,j:k,l).
-    RE_WHX_OVERLAP_SPLIT = auto()       # WHX overlap: Joins two WHX subproblems that share the same hole (k,l).
+    RE_WHX_OVERLAP_SPLIT = auto()       # WHX overlap: Joins two WHX sub-problems that share the same hole (k,l).
 
     # ----------------------------------------------------------------------
     # VHX: Outer span (i,j) and inner hole (k,l) are both paired.
@@ -92,18 +104,18 @@ class EddyRivasBacktrackOp(_AutoName):
     RE_VHX_DANGLE_L = auto()            # VHX(i,j:k,l) -> Adds a 5' dangle to the (k,l) pair, from VHX(i,j:k+1,l).
     RE_VHX_DANGLE_R = auto()            # VHX(i,j:k,l) -> Adds a 3' dangle to the (k,l) pair, from VHX(i,j:k,l-1).
     RE_VHX_DANGLE_LR = auto()           # VHX(i,j:k,l) -> Adds dangles on both sides of (k,l), from VHX(i,j:k+1,l-1).
-    RE_VHX_SS_LEFT = auto()             # VHX(i,j:k,l) -> Adds an unpaired base in the hole, from a ZHX subproblem.
+    RE_VHX_SS_LEFT = auto()             # VHX(i,j:k,l) -> Adds an unpaired base in the hole, from a ZHX sub-problem.
     RE_VHX_SS_RIGHT = auto()            # VHX(i,j:k,l) -> Same as SS_LEFT, used for tie-breaking during DP fill.
     RE_VHX_SPLIT_LEFT_ZHX_WX = auto()   # VHX bifurcation: Splits region into ZHX(i,j:r,l) and a nested WX(r+1,k).
     RE_VHX_SPLIT_RIGHT_ZHX_WX = auto()  # VHX bifurcation: Splits region into ZHX(i,j:k,s) and a nested WX(l,s-1).
-    RE_VHX_WRAP_WHX = auto()            # VHX multiloop: Forms a multiloop around a WHX(i+1,j-1:k,l) subproblem.
+    RE_VHX_WRAP_WHX = auto()            # VHX multiloop: Forms a multiloop around a WHX(i+1,j-1:k,l) sub-problem.
     RE_VHX_CLOSE_BOTH = auto()          # VHX multiloop: Closes a multiloop around a smaller WHX(i+1,j-1:k-1,l+1).
 
     # ----------------------------------------------------------------------
     # ZHX: Outer span (i,j) is paired, inner hole (k,l) is undetermined.
     # Recursions define the structure around the hole.
     # ----------------------------------------------------------------------
-    RE_ZHX_FROM_VHX = auto()            # ZHX(i,j:k,l) -> Forms a pair at (k,l), transitioning from a VHX(i,j:k,l) subproblem.
+    RE_ZHX_FROM_VHX = auto()            # ZHX(i,j:k,l) -> Forms a pair at (k,l), transitioning from a VHX(i,j:k,l) sub-problem.
     RE_ZHX_DANGLE_LR = auto()           # ZHX(i,j:k,l) -> Forms dangles around a new (k,l) pair, from VHX(i,j:k-1,l+1).
     RE_ZHX_DANGLE_L = auto()            # ZHX(i,j:k,l) -> Forms a 5' dangle on (k,l), from VHX(i,j:k,l+1).
     RE_ZHX_DANGLE_R = auto()            # ZHX(i,j:k,l) -> Forms a 3' dangle on (k,l), from VHX(i,j:k-1,l).
@@ -138,7 +150,7 @@ class EddyRivasBackPointer:
     This immutable and memory-efficient object represents a single node in the
     backtrack path. It records the specific dynamic programming rule (`op`) used
     to calculate an optimal energy, along with the coordinates of the
-    subproblems that were combined. The traceback algorithm follows these
+    sub-problems that were combined. The traceback algorithm follows these
     pointers from the final state `WX(0, N-1)` to reconstruct the full secondary
     structure.
 
@@ -163,7 +175,7 @@ class EddyRivasBackPointer:
     drift : Optional[int]
         The distance `d` of a hole-drift operation, if used.
     charged : Optional[bool]
-        Indicates if the chosen path involved a pseudoknotted ("charged") subproblem.
+        Indicates if the chosen path involved a pseudoknotted ("charged") sub-problem.
     note : Optional[str]
         Free-form text for debugging or additional metadata.
     args : Tuple[Any, ...]
@@ -184,17 +196,21 @@ class EddyRivasBackPointer:
     # A generic tuple to hold arguments for simplified validation in unit tests.
     args: Tuple[Any, ...] = field(default_factory=tuple)
 
-    # --- Serialization Helpers ---
+    # ---------------------------------------------------------------------
+    # Serialization Helpers
+    # ---------------------------------------------------------------------
     def to_dict(self) -> Dict[str, Any]:
         """
-        Converts the backpointer to a JSON-serializable dictionary.
+        Serialize the backpointer to a plain dictionary.
 
-        This is useful for logging, debugging, or saving the backtrack path to a file.
+        Produces a JSON-serializable view of the most relevant fields for
+        logging, debugging, or persistence.
 
         Returns
         -------
         Dict[str, Any]
-            A dictionary representation of the backpointer's fields.
+            A dictionary with keys `op`, `outer`, `hole`, `split`,
+            `bridge`, `drift`, `charged`, and `meta`.
         """
         return {
             "op": self.op.value,
@@ -210,20 +226,27 @@ class EddyRivasBackPointer:
     @staticmethod
     def from_dict(d: Dict[str, Any]) -> "EddyRivasBackPointer":
         """
-        Creates an EddyRivasBackPointer instance from a dictionary.
+        Deserialize a backpointer from a dictionary.
 
-        This is the counterpart to `to_dict`, allowing for deserialization.
-        It will fail with a KeyError if the 'op' value is not a valid
-        `EddyRivasBacktrackOp` member name.
+        This is the inverse of `to_dict`. The `op` string must match a
+        member of `EddyRivasBacktrackOp`.
 
         Parameters
         ----------
         d : Dict[str, Any]
-            A dictionary containing the backpointer's data.
+            Dictionary produced by `to_dict` (or equivalent), containing
+            at least the key `"op"` and optionally `"outer"`, `"hole"`,
+            `"split"`, `"bridge"`, `"drift"`, `"charged"`, and `"note"`.
 
         Returns
         -------
         EddyRivasBackPointer
+            A new backpointer instance built from the provided mapping.
+
+        Raises
+        ------
+        KeyError
+            If `"op"` is missing or not a valid `EddyRivasBacktrackOp`.
         """
         op = EddyRivasBacktrackOp(d["op"])
         return EddyRivasBackPointer(
@@ -237,39 +260,162 @@ class EddyRivasBackPointer:
             note=d.get("note"),
         )
 
-    # --- Factory Methods ---
-    # Prove a clean API for creating specific, commonly used backpointers within the main DP loops,
-    # reducing boilerplate.
+    # ---------------------------------------------------------------------
+    # Factory methods
+    # ---------------------------------------------------------------------
     @classmethod
-    def compose_vx(cls, r: int, k: int, l: int) -> "EddyRivasBackPointer":
-        """Creates a backpointer for a standard VX composition."""
-        return cls(op=EddyRivasBacktrackOp.RE_PK_COMPOSE_VX,
-                   split=r, hole=(k, l), args=(r, k, l))
+    def create_vx_composition_backpointer(
+        cls,
+        split_index:int,
+        hole_left_index: int,
+        hole_right_index: int
+    ) -> "EddyRivasBackPointer":
+        """
+        Construct a backpointer for a standard VX composition.
+
+        Represents the O(N^6) composition that forms a pseudoknot enclosed by
+        a closing pair `(i, j)` by splitting at index `r` with inner hole
+        endpoints `(k, l)`. (The surrounding `(i, j)` span is carried in
+        the consumer's context.)
+
+        Parameters
+        ----------
+        split_index : int
+            Split index within `[k, l-1]`.
+        hole_left_index : int
+            5' endpoint of the inner hole.
+        hole_right_index : int
+            3' endpoint of the inner hole.
+
+        Returns
+        -------
+        EddyRivasBackPointer
+            Factory backpointer with operation
+            `EddyRivasBacktrackOp.RE_PK_COMPOSE_VX`.
+        """
+        return cls(op=EddyRivasBacktrackOp.RE_PK_COMPOSE_VX, split=split_index,
+                   hole=(hole_left_index, hole_right_index), args=(split_index, hole_left_index, hole_right_index))
 
     @classmethod
-    def compose_vx_drift(cls, r: int, k: int, l: int, d: int) -> "EddyRivasBackPointer":
-        """Creates a backpointer for a VX composition with hole drift."""
-        return cls(op=EddyRivasBacktrackOp.RE_PK_COMPOSE_VX_DRIFT,
-                   split=r, hole=(k, l), drift=d, args=(r, k, l, d))
+    def create_vx_composition_with_drift_backpointer(
+        cls,
+        split_index: int,
+        hole_left_index: int,
+        hole_right_index: int,
+        drift_distance: int
+    ) -> "EddyRivasBackPointer":
+        """
+        Construct a backpointer for a VX composition with hole drift.
+
+        This experimental variant allows the inner hole to shift by `d`
+        nucleotides during composition.
+
+        Parameters
+        ----------
+        split_index : int
+            Split index within `[k, l-1]`.
+        hole_left_index : int
+            5' endpoint of the inner hole (pre-drift).
+        hole_right_index : int
+            3' endpoint of the inner hole (pre-drift).
+        drift_distance : int
+            Drift distance (positive values shift toward 3').
+
+        Returns
+        -------
+        EddyRivasBackPointer
+            Factory backpointer with operation
+            `EddyRivasBacktrackOp.RE_PK_COMPOSE_VX_DRIFT`.
+        """
+        return cls(op=EddyRivasBacktrackOp.RE_PK_COMPOSE_VX_DRIFT, split=split_index,
+                   hole=(hole_left_index, hole_right_index), drift=drift_distance,
+                   args=(split_index, hole_left_index, hole_right_index, drift_distance))
 
     @classmethod
-    def vx_select_uncharged(cls) -> "EddyRivasBackPointer":
-        """Creates a backpointer for when the nested VX path is chosen."""
+    def select_uncharged_vx_backpointer(cls) -> "EddyRivasBackPointer":
+        """
+        Construct a backpointer for selecting the nested VX path.
+
+        Used when the best energy inside a closing pair is achieved without
+        introducing a pseudoknot.
+
+        Returns
+        -------
+        EddyRivasBackPointer
+            Factory backpointer with operation
+            `EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED`.
+        """
         return cls(op=EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED, args=())
 
     @classmethod
-    def wx_select_uncharged(cls) -> "EddyRivasBackPointer":
-        """Creates a backpointer for when the nested WX path is chosen."""
+    def select_uncharged_wx_backpointer(cls) -> "EddyRivasBackPointer":
+        """
+        Construct a backpointer for selecting the nested WX path.
+
+        Used when the best energy for a span `(i, j)` is achieved without
+        introducing a pseudoknot.
+
+        Returns
+        -------
+        EddyRivasBackPointer
+            Factory backpointer with operation
+            `EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED`.
+        """
         return cls(op=EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED, args=())
 
     @classmethod
-    def whx_shrink_left(cls, i: int, j: int, k1: int, l: int) -> "EddyRivasBackPointer":
-        """Creates a backpointer for adding an unpaired base to the left of a WHX hole."""
-        return cls(op=EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT,
-                   outer=(i, j), hole=(k1, l), args=(i, j, k1, l))
+    def create_whx_shrink_left_backpointer(
+        cls,
+        outer_start_index: int,
+        outer_end_index: int,
+        hole_start_index: int,
+        hole_end_index: int
+    ) -> "EddyRivasBackPointer":
+        """
+        Construct a backpointer for shrinking the WHX hole from the left.
+
+        Models the recursion `WHX(i, j : k1, l) -> WHX(i, j : k1+1, l)` by
+        adding a single-stranded nucleotide at position `k1`.
+
+        Parameters
+        ----------
+        outer_start_index : int
+            5' index of the outer span.
+        outer_end_index : int
+            3' index of the outer span.
+        hole_start_index : int
+            Current 5' endpoint of the hole being advanced.
+        hole_end_index : int
+            3' endpoint of the hole (unchanged in this step).
+
+        Returns
+        -------
+        EddyRivasBackPointer
+            Factory backpointer with operation
+            `EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT`.
+        """
+        return cls(op=EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT, outer=(outer_start_index, outer_end_index),
+                   hole=(hole_start_index, hole_end_index),
+                   args=(outer_start_index, outer_end_index, hole_start_index, hole_end_index))
 
     @classmethod
-    def whx_split_left_whx_wx(cls, r: int) -> "EddyRivasBackPointer":
-        """Creates a backpointer for a WHX bifurcation into WHX + WX."""
+    def create_whx_left_split_whx_plus_wx_backpointer(cls, split_index: int) -> "EddyRivasBackPointer":
+        """
+        Construct a backpointer for the WHX left split into `WHX + WX`.
+
+        Represents the bifurcation
+        `WHX(i, j : k, l) -> WHX(i, r : k, l) + WX(r+1, j)`.
+
+        Parameters
+        ----------
+        split_index : int
+            Split index in the outer span satisfying `i ≤ r < j`.
+
+        Returns
+        -------
+        EddyRivasBackPointer
+            Factory backpointer with operation
+            `EddyRivasBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX`.
+        """
         return cls(op=EddyRivasBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX,
-                   split=r, args=(r,))
+                   split=split_index, args=(split_index,))

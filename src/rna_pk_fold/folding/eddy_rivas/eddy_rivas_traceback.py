@@ -497,7 +497,7 @@ def traceback_with_pk(
     ordered = sorted(pairs, key=lambda pr: (pr.base_i, pr.base_j))
 
     # Convert the pairs and their layer assignments into a multilayer dot-bracket string.
-    dot = pairs_to_multilayer_dotbracket(seq_len, ordered, pair_layer)
+    dot_brac = pairs_to_multilayer_dotbracket(seq_len, ordered, pair_layer)
 
     # Perform a final sanity check on the layer assignments.
     audit_layer_assignments(pair_layer)
@@ -507,4 +507,4 @@ def traceback_with_pk(
     logger.info(f"Traceback completed in {elapsed:.3f}s")
     logger.info(f"Found {len(ordered)} base pairs")
 
-    return TraceResult(pairs=ordered, dot_bracket=dot)
+    return TraceResult(pairs=ordered, dot_bracket=dot_brac)

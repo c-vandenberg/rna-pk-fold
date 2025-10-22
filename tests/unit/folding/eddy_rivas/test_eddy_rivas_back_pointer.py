@@ -65,7 +65,7 @@ def test_backpointer_is_frozen_and_slotted():
 def test_compose_vx_builder_sets_expected_fields():
     """Tests the `compose_vx` builder for correct field assignment."""
     # This class method simplifies creating a common type of backpointer.
-    bp = EddyRivasBackPointer.compose_vx(r=7, k=10, l=14)
+    bp = EddyRivasBackPointer.create_vx_composition_backpointer(split_index=7, hole_left_index=10, hole_right_index=14)
 
     # Verify that the correct operation and arguments are set.
     assert bp.op is EddyRivasBacktrackOp.RE_PK_COMPOSE_VX
@@ -77,7 +77,7 @@ def test_compose_vx_builder_sets_expected_fields():
 
 def test_compose_vx_drift_builder_sets_drift_and_args():
     """Tests the `compose_vx_drift` builder, which includes a drift parameter."""
-    bp = EddyRivasBackPointer.compose_vx_drift(r=3, k=5, l=8, d=2)
+    bp = EddyRivasBackPointer.create_vx_composition_with_drift_backpointer(split_index=3, hole_left_index=5, hole_right_index=8, drift_distance=2)
 
     assert bp.op is EddyRivasBacktrackOp.RE_PK_COMPOSE_VX_DRIFT
     assert bp.split == 3 and bp.hole == (5, 8)
@@ -91,23 +91,23 @@ def test_select_uncharged_singletons_have_empty_args():
     """
     # These operations represent base cases or transitions that don't depend
     # on subproblems, so they shouldn't carry any split/hole arguments.
-    assert EddyRivasBackPointer.vx_select_uncharged().op is EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED
-    assert EddyRivasBackPointer.vx_select_uncharged().args == ()
-    assert EddyRivasBackPointer.wx_select_uncharged().op is EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED
-    assert EddyRivasBackPointer.wx_select_uncharged().args == ()
+    assert EddyRivasBackPointer.select_uncharged_vx_backpointer().op is EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED
+    assert EddyRivasBackPointer.select_uncharged_vx_backpointer().args == ()
+    assert EddyRivasBackPointer.select_uncharged_wx_backpointer().op is EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED
+    assert EddyRivasBackPointer.select_uncharged_wx_backpointer().args == ()
 
 
 def test_whx_shrink_and_split_builders():
     """Tests two common builders for the WHX recurrence."""
     # Test the 'shrink' operation builder.
-    bp_shrink = EddyRivasBackPointer.whx_shrink_left(i=1, j=9, k1=3, l=8)
+    bp_shrink = EddyRivasBackPointer.create_whx_shrink_left_backpointer(outer_start_index=1, outer_end_index=9, hole_start_index=3, hole_end_index=8)
     assert bp_shrink.op is EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT
     assert bp_shrink.outer == (1, 9)
     assert bp_shrink.hole == (3, 8)
     assert bp_shrink.args == (1, 9, 3, 8)
 
     # Test the 'split' operation builder.
-    bp_split = EddyRivasBackPointer.whx_split_left_whx_wx(r=6)
+    bp_split = EddyRivasBackPointer.create_whx_left_split_whx_plus_wx_backpointer(split_index=6)
     assert bp_split.op is EddyRivasBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX
     assert bp_split.split == 6
     assert bp_split.args == (6,)
