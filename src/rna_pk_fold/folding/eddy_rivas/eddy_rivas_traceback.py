@@ -10,7 +10,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRi
 from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import (merge_nested_region_pairs,
                                                                        place_pair_in_first_non_crossing_layer,
                                                                        audit_layer_assignments)
-from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
+from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import get_wx_backpointer, get_whx_backpointer, get_yhx_backpointer, get_zhx_backpointer, get_vhx_backpointer
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ def traceback_with_pk(
 
     logger.info(f"Starting traceback for sequence length N={seq_len}")
 
-    initial_bp = wx_bp(eddy_rivas_fold_state, 0, seq_len - 1)
+    initial_bp = get_wx_backpointer(eddy_rivas_fold_state, 0, seq_len - 1)
     print(f"[TB START] WX[0,{seq_len - 1}] BP: {initial_bp}", flush=True)
 
     # --- State Initialization ---
@@ -86,7 +86,7 @@ def traceback_with_pk(
     # --- Debugging Block ---
     # This block probes the initial backpointer for the full sequence to provide
     # immediate insight into the top-level structure (nested vs. pseudoknotted).
-    bp0 = wx_bp(eddy_rivas_fold_state, 0, seq_len - 1)
+    bp0 = get_wx_backpointer(eddy_rivas_fold_state, 0, seq_len - 1)
     if bp0:
         print(
             f"[WX WIN] op={bp0.op} split={bp0.split} "
@@ -117,8 +117,8 @@ def traceback_with_pk(
             k_r, l_r = (r + 1, l)
 
         # Check if backpointers exist for the specific subproblems that will be traced.
-        ybp = yhx_bp(eddy_rivas_fold_state, 0, r, k_l, l_l)
-        wbp = whx_bp(eddy_rivas_fold_state, r + 1, seq_len - 1, k_r, l_r)
+        ybp = get_yhx_backpointer(eddy_rivas_fold_state, 0, r, k_l, l_l)
+        wbp = get_whx_backpointer(eddy_rivas_fold_state, r + 1, seq_len - 1, k_r, l_r)
 
         print(f"[PROBE] YHX[0,{r}:{k_l},{l_l}] BP?",
               "yes" if ybp else "no",
@@ -139,7 +139,7 @@ def traceback_with_pk(
         # WX represents the most general problem for an interval [i, j].
         if tag == "WX":
             _, i, j, layer = frame
-            bp = wx_bp(eddy_rivas_fold_state, i, j)
+            bp = get_wx_backpointer(eddy_rivas_fold_state, i, j)
 
             if i == 0 and j == seq_len - 1:
                 print(f"[WX PROCESS] bp={bp}", flush=True)
@@ -236,7 +236,7 @@ def traceback_with_pk(
         if tag == "WHX":
             _, i, j, k, l, layer = frame
             logger.debug(f"\n=== WHX[{i},{j},{k},{l}] layer={layer} ===")
-            bp = whx_bp(eddy_rivas_fold_state, i, j, k, l)
+            bp = get_whx_backpointer(eddy_rivas_fold_state, i, j, k, l)
 
             # 2.1. If no backpointer, it implies the hole collapsed. Treat the outer span as nested.
             if not bp:
@@ -315,7 +315,7 @@ def traceback_with_pk(
 
             print(f"[YHX PROCESS] ({i},{j}:{k},{l}) layer={layer}", flush=True)
 
-            bp = yhx_bp(eddy_rivas_fold_state, i, j, k, l)
+            bp = get_yhx_backpointer(eddy_rivas_fold_state, i, j, k, l)
             if not bp:
                 print(f"[YHX MISS] ({i},{j}:{k},{l}) layer={layer} → no BP", flush=True)
                 continue
@@ -383,7 +383,7 @@ def traceback_with_pk(
         if tag == "ZHX":
             _, i, j, k, l, layer = frame
 
-            bp = zhx_bp(eddy_rivas_fold_state, i, j, k, l)
+            bp = get_zhx_backpointer(eddy_rivas_fold_state, i, j, k, l)
             if not bp:
                 continue
             op = bp.op
@@ -432,7 +432,7 @@ def traceback_with_pk(
         if tag == "VHX":
             _, i, j, k, l, layer = frame
 
-            bp = vhx_bp(eddy_rivas_fold_state, i, j, k, l)
+            bp = get_vhx_backpointer(eddy_rivas_fold_state, i, j, k, l)
             if not bp:
                 print(f"[VHX MISS] ({i},{j}:{k},{l}) layer={layer} → no BP", flush=True)
                 continue

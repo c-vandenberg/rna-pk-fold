@@ -3,7 +3,8 @@ from typing import Optional
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasBackPointer
 
-def wx_bp(state: EddyRivasFoldState, i: int, j: int) -> Optional[EddyRivasBackPointer]:
+
+def get_wx_backpointer(state: EddyRivasFoldState, i: int, j: int) -> Optional[EddyRivasBackPointer]:
     """
     Retrieves the backpointer from the WX matrix for the span `(i, j)`.
 
@@ -26,7 +27,8 @@ def wx_bp(state: EddyRivasFoldState, i: int, j: int) -> Optional[EddyRivasBackPo
     """
     return state.wx_back_ptr.get(i, j)
 
-def whx_bp(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
+
+def get_whx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
     """
     Retrieves the backpointer from the WHX gap matrix for the coordinates `(i, j, k, l)`.
 
@@ -48,7 +50,8 @@ def whx_bp(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optiona
     """
     return state.whx_back_ptr.get(i, j, k, l)
 
-def yhx_bp(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
+
+def get_yhx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
     """
     Retrieves the backpointer from the YHX gap matrix for the coordinates `(i, j, k, l)`.
 
@@ -70,7 +73,8 @@ def yhx_bp(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optiona
     """
     return state.yhx_back_ptr.get(i, j, k, l)
 
-def zhx_bp(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
+
+def get_zhx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
     """
     Retrieves the backpointer from the ZHX gap matrix for the coordinates `(i, j, k, l)`.
 
@@ -92,7 +96,8 @@ def zhx_bp(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optiona
     """
     return state.zhx_back_ptr.get(i, j, k, l)
 
-def vhx_bp(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
+
+def get_vhx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
     """
     Retrieves the backpointer from the VHX gap matrix for the coordinates `(i, j, k, l)`.
 

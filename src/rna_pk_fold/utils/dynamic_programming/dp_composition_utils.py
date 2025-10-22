@@ -15,19 +15,66 @@ from rna_pk_fold.utils.sequences.iter_utils import iter_inner_holes
 def set_span_cell_with_backpointer(
         matrix, backpointer_store, i_idx: int, j_idx: int, value: float, backpointer
 ) -> None:
-    """Set matrix[i_idx, j_idx] and (if present) its backpointer."""
+    """
+    Set a span cell and its backpointer if provided.
+
+    Parameters
+    ----------
+    matrix : Any
+        Matrix object exposing `set(i, j, value)`.
+    backpointer_store : Any
+        Backpointer matrix exposing `set(i, j, bp)`.
+    i_idx : int
+        5' index of the span.
+    j_idx : int
+        3' index of the span.
+    value : float
+        Energy value to write at `(i_idx, j_idx)`.
+    backpointer : Optional[EddyRivasBackPointer]
+        Backpointer to store at `(i_idx, j_idx)` if not `None`.
+
+    Returns
+    -------
+    None
+    """
     matrix.set(i_idx, j_idx, value)
     if backpointer is not None:
         backpointer_store.set(i_idx, j_idx, backpointer)
 
 
 def hole_width(k_idx: int, l_idx: int) -> int:
-    """Width (number of internal nucleotides) of hole [k_idx..l_idx]."""
+    """
+    Compute the interior width of a hole `[k_idx..l_idx]`.
+
+    Parameters
+    ----------
+    k_idx : int
+        5' index of the hole.
+    l_idx : int
+        3' index of the hole.
+
+    Returns
+    -------
+    int
+        Number of internal nucleotides, i.e., `l_idx - k_idx - 1`.
+    """
     return l_idx - k_idx - 1
 
 
 def hole_has_internal_bases(hole_span: Tuple[int, int]) -> bool:
-    """True if the hole has at least one internal nucleotide."""
+    """
+    Check whether a hole contains at least one internal nucleotide.
+
+    Parameters
+    ----------
+    hole_span : tuple of int
+        Pair `(k_idx, l_idx)` describing the hole.
+
+    Returns
+    -------
+    bool
+        `True` if `l_idx - k_idx > 1`.
+    """
     k_idx, l_idx = hole_span
     return (l_idx - k_idx) > 1
 
@@ -45,8 +92,32 @@ def build_wx_split_arrays(
     can_pair_mask,
 ):
     """
-    Build arrays over r in [k..l-1] for compose_wx_best_over_r_arrays.
-    Leaves invalid positions as +inf and flags as 0.
+    Build WHX/YHX per-split arrays for WX composition.
+
+    For each split point `r` in `[k_idx, l_idx-1]`, this prepares vectors
+    of energies used by the WX kernel, leaving invalid points as `+inf` and
+    charge flags as `0`.
+
+    Parameters
+    ----------
+    fold_state : Any
+        Eddy-Rivas fold state providing WHX/YHX matrices and backpointers.
+    config : Any
+        Folding configuration with geometry and feature flags.
+    i_idx, j_idx : int
+        Outer span indices.
+    k_idx, l_idx : int
+        Hole (inner) indices.
+    can_pair_mask : array-like of bool or None
+        Pairability mask; when provided, disallows unpairable pairs.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        `(whx_left_uncharged, whx_right_uncharged, whx_left_charged,
+        whx_right_charged, yhx_left_energy, yhx_right_energy,
+        yhx_left_is_charged, yhx_right_is_charged)`, each of length
+        `l_idx - k_idx`. Energies are `float64`; flags are `uint8`.
     """
     # --- Pre-computation Step for Numba Kernel ---
     # Create vectors to store energies for every possible split point 'r' between k and l.
@@ -138,15 +209,26 @@ def _wx_case_has_gapped_structure(
     yhx_right_energy,
 ) -> Tuple[bool, bool]:
     """
-    Determine which vectors contributed based on case_id.
+    Validate that the chosen kernel case uses true gapped structures.
 
-    This is a critical filter: ensure that both the left and right sub-fragments
-    have a defined gapped structure. This prevents selecting combinations where
-    one side has simply collapsed to a nested structure, which wouldn't form a true
-    pseudoknot.
+    Ensures both left and right fragments correspond to finite gapped subproblems
+    (rather than collapsed/nested-only states) for the winning split.
 
-    Which vectors contributed is determined based on case_id.
-    Return (left_has_structure, right_has_structure) for the chosen case_id.
+    Parameters
+    ----------
+    kernel_case_id : int
+        Case identifier returned by the WX composition kernel.
+    split_offset_star : int
+        Argmin index in the split arrays.
+    whx_left_uncharged, whx_right_uncharged, whx_left_charged, whx_right_charged : numpy.ndarray
+        WHX energy vectors per split (length `l_idx - k_idx`).
+    yhx_left_energy, yhx_right_energy : numpy.ndarray
+        YHX energy vectors per split (length `l_idx - k_idx`).
+
+    Returns
+    -------
+    tuple of bool
+        `(left_has_structure, right_has_structure)`.
     """
     if split_offset_star < 0:
         return False, False
@@ -190,8 +272,30 @@ def decode_wx_case_to_backpointer(
     split_offset_star: int,
 ) -> Tuple["EddyRivasBacktrackOp", Tuple[int, int], Tuple[int, int], bool]:
     """
-    Decode the 'case_id' from the kernel to determine the backtrack operation
-    and map kernel case to `(op, hole_left, hole_right, charged_flag)` tuple.
+    Map a WX kernel case to a backtrack op and metadata.
+
+    Parameters
+    ----------
+    kernel_case_id : int
+        Case identifier returned by the WX composition kernel.
+    i_idx, j_idx : int
+        Outer span indices.
+    k_idx, l_idx : int
+        Hole indices.
+    split_idx_star : int
+        Winning split index `r` in absolute coordinates.
+    yhx_left_is_charged, yhx_right_is_charged : numpy.ndarray
+        YHX charge flags (`uint8`) per split.
+    split_offset_star : int
+        Winning split index offset in `[0, l_idx-k_idx)`.
+
+    Returns
+    -------
+    tuple
+        `(op, hole_left, hole_right, charged)` where
+        `op` is an `EddyRivasBacktrackOp`,
+        `hole_left` and `hole_right` are `(k, l)` tuples describing
+        the two sub-holes, and `charged` indicates whether a PK charge applies.
     """
     hole_left = (k_idx, split_idx_star)
     hole_right = (split_idx_star + 1, l_idx)
@@ -242,8 +346,34 @@ def evaluate_wx_composition_for_hole(
     can_pair_mask,
 ):
     """
-    Evaluate WX composition for a single hole (k_idx, l_idx) within span (i_idx, j_idx).
-    Returns (candidate_energy, backpointer_or_None). If invalid, returns (inf, None).
+    Evaluate WX composition for a single hole inside an outer span.
+
+    Builds split arrays, runs the WX composition kernel, validates the chosen
+    case, and (if valid) returns the energy and a fully-annotated backpointer.
+
+    Parameters
+    ----------
+    fold_state : Any
+        Eddy-Rivas fold state with WHX/YHX matrices and backpointers.
+    config : Any
+        Folding configuration with geometry/penalty parameters.
+    seq : str
+        RNA sequence (not used directly here; present for API symmetry).
+    i_idx, j_idx : int
+        Outer span indices.
+    k_idx, l_idx : int
+        Hole indices.
+    pseudoknot_penalty : float
+        Penalty for initiating a pseudoknot (Gw).
+    can_pair_mask : array-like of bool or None
+        Pairability mask; when provided, disallows unpairable pairs.
+
+    Returns
+    -------
+    tuple
+        `(candidate_energy, backpointer_or_none)` where energy is `float`
+        and backpointer is an `EddyRivasBackPointer` or `None` when
+        the case is invalid.
     """
     # Build arrays across split point `r`
     (
@@ -335,10 +465,28 @@ def evaluate_wx_yhx_overlap_for_span(
     fold_state, config, i_idx: int, j_idx: int, wx_overlap_penalty: float
 ) -> Tuple[float, Optional["EddyRivasBackPointer"]]:
     """
-    Optional overlap path: A class of pseudoknots where two YHX fragments are
-    overlapping the same hole.
+    Evaluate the WX YHX-overlap path for a given outer span.
 
-    Returns the best (candidate_energy, backpointer) across all inner holes/splits for (i_idx, j_idx).
+    Considers motifs where two YHX fragments overlap the same hole and returns
+    the best energy/backpointer among all feasible inner holes and splits.
+
+    Parameters
+    ----------
+    fold_state : Any
+        Eddy-Rivas fold state with YHX matrix/backpointers.
+    config : Any
+        Folding configuration; must enable `enable_wx_overlap` to activate.
+    i_idx, j_idx : int
+        Outer span indices.
+    wx_overlap_penalty : float
+        Penalty term applied to YHX-overlap compositions.
+
+    Returns
+    -------
+    tuple
+        `(best_energy, best_backpointer)` where energy is `float` and
+        backpointer is an `EddyRivasBackPointer` or `None` when
+        no feasible overlap is found.
     """
     if (not config.enable_wx_overlap) or wx_overlap_penalty == 0.0:
         return math.inf, None
@@ -384,7 +532,33 @@ def build_vx_split_arrays_and_coax(
     can_pair_mask
 ):
     """
-    Build arrays over r in [k..l-1] for compose_vx_best_over_r.
+    Build ZHX/coaxial per-split arrays for VX composition.
+
+    For each split point `r` in `[k_idx, l_idx-1]`, prepares ZHX energies
+    for left/right × (uncharged/charged) and coaxial stacking terms used by
+    the VX kernel.
+
+    Parameters
+    ----------
+    fold_state : Any
+        Eddy-Rivas fold state with ZHX matrix.
+    config : Any
+        Folding configuration with geometry/feature flags and costs.
+    seq : str
+        RNA sequence (required for coaxial stacking evaluation).
+    i_idx, j_idx : int
+        Outer span indices (closing pair).
+    k_idx, l_idx : int
+        Hole indices.
+    can_pair_mask : array-like of bool or None
+        Pairability mask; when provided, disallows unpairable pairs.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        `(zhx_left_uncharged, zhx_right_uncharged, zhx_left_charged,
+        zhx_right_charged, coax_total, coax_bonus)`, each of length
+        `l_idx - k_idx` with dtype `float64`.
     """
     # --- Pre-computation Step for Numba Kernal ---
     # Create vectors to store energies for every possible split point 'r' between k and l.
@@ -450,8 +624,36 @@ def evaluate_vx_composition_for_hole(
     can_pair_mask,
 ):
     """
-    Evaluate VX composition for a single hole (k_idx, l_idx) within span (i_idx, j_idx).
-    Returns (candidate_energy, backpointer_or_None). If invalid, returns (inf, None).
+    Evaluate VX composition for a single hole inside an outer paired span.
+
+    Builds split arrays (ZHX, coax), runs the VX composition kernel, determines
+    charge status for the winning case, and returns the energy with a backpointer.
+
+    Parameters
+    ----------
+    fold_state : Any
+        Eddy-Rivas fold state with ZHX matrix.
+    config : Any
+        Folding configuration and costs.
+    seq : str
+        RNA sequence for coaxial stacking evaluation.
+    i_idx, j_idx : int
+        Outer span indices (closing pair).
+    k_idx, l_idx : int
+        Hole indices.
+    pseudoknot_penalty : float
+        Penalty for initiating a pseudoknot (Gw).
+    coaxial_scale : float
+        Scaling factor applied to coaxial stacking contributions.
+    can_pair_mask : array-like of bool or None
+        Pairability mask; when provided, disallows unpairable pairs.
+
+    Returns
+    -------
+    tuple
+        `(candidate_energy, backpointer_or_none)` where energy is `float`
+        and backpointer is an `EddyRivasBackPointer` or `None` when
+        the case is invalid.
     """
     # Build arrays across split point `r`
     (

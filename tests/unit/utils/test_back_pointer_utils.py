@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 # Adjust this import path to match your file containing wx_bp/whx_bp/...
 from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import (
-    wx_bp, whx_bp, yhx_bp, zhx_bp, vhx_bp
+    get_wx_backpointer, get_whx_backpointer, get_yhx_backpointer, get_zhx_backpointer, get_vhx_backpointer
 )
 
 
@@ -79,7 +79,7 @@ def test_wx_bp_returns_recorded_value_and_calls_get_with_correct_arity_and_order
     state.wx_back_ptr._ret = sentinel # Configure the recorder to return a specific object.
 
     # Call the helper function.
-    got = wx_bp(state, 3, 7)
+    got = get_wx_backpointer(state, 3, 7)
 
     # Assert that the returned value is the one we configured.
     assert got is sentinel
@@ -88,7 +88,7 @@ def test_wx_bp_returns_recorded_value_and_calls_get_with_correct_arity_and_order
 
     # --- Test "miss" path: no backpointer is found ---
     state.wx_back_ptr._ret = None # Configure the recorder to return None.
-    got_none = wx_bp(state, 1, 2)
+    got_none = get_wx_backpointer(state, 1, 2)
     assert got_none is None
     assert state.wx_back_ptr.last_args == (1, 2)
 
@@ -96,10 +96,10 @@ def test_wx_bp_returns_recorded_value_and_calls_get_with_correct_arity_and_order
 @pytest.mark.parametrize(
     "func, attr_name",
     [
-        (whx_bp, "whx_back_ptr"),
-        (yhx_bp, "yhx_back_ptr"),
-        (zhx_bp, "zhx_back_ptr"),
-        (vhx_bp, "vhx_back_ptr"),
+        (get_whx_backpointer, "whx_back_ptr"),
+        (get_yhx_backpointer, "yhx_back_ptr"),
+        (get_zhx_backpointer, "zhx_back_ptr"),
+        (get_vhx_backpointer, "vhx_back_ptr"),
     ],
 )
 def test_hole_backpointer_helpers_return_value_and_call_order(state, func, attr_name):
