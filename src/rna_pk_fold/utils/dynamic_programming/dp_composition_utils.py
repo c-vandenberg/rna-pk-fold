@@ -5,7 +5,8 @@ from typing import Optional, Tuple
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.energies.energy_pk_ops import short_hole_penalty, coax_pack
 from rna_pk_fold.folding.eddy_rivas.numba_kernels import compose_wx_best_over_r_arrays, compose_vx_best_over_r
-from rna_pk_fold.utils.dynamic_programming.matrix_utils import whx_collapse_with, zhx_collapse_with
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import (whx_collapse_with, zhx_collapse_with,
+                                                                get_yhx_energy_with_collapse)
 from rna_pk_fold.utils.sequences.iter_utils import iter_inner_holes
 
 
@@ -167,7 +168,7 @@ def build_wx_split_arrays(
         # Get energies from the YHX matrix (only if the pair is allowed)
         # Left YHX
         if can_pair_mask is not None and can_pair_mask[k_idx][split_idx]:
-            ly = fold_state.yhx_matrix.get(i_idx, split_idx, k_idx, split_idx)
+            ly = get_yhx_energy_with_collapse(fold_state.yhx_matrix, i_idx, split_idx, k_idx, split_idx)
             if math.isfinite(ly):
                 yhx_left_energy[split_offset] = ly
                 bp_ly = fold_state.yhx_back_ptr.get(i_idx, split_idx, k_idx, split_idx)
@@ -176,7 +177,7 @@ def build_wx_split_arrays(
 
         # Right YHX
         if can_pair_mask is not None and can_pair_mask[split_idx + 1][l_idx]:
-            ry = fold_state.yhx_matrix.get(split_idx + 1, j_idx, split_idx + 1, l_idx)
+            ry = get_yhx_energy_with_collapse(fold_state.yhx_matrix, split_idx + 1, j_idx, split_idx + 1, l_idx)
             if math.isfinite(ry):
                 yhx_right_energy[split_offset] = ry
                 bp_ry = fold_state.yhx_back_ptr.get(split_idx + 1, j_idx, split_idx + 1, l_idx)

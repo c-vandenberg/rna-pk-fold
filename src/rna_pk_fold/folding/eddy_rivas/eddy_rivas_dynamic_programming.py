@@ -13,7 +13,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldSt
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_holes_pairable, iter_holes
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import (clear_matrix_lookup_caches, get_whx_energy_with_collapse,
-                                                                get_zhx_energy_with_collapse)
+                                                                get_zhx_energy_with_collapse, get_yhx_energy_with_collapse)
 from rna_pk_fold.rules.constraints import build_can_pair_mask
 from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
     should_skip_dp_cell, BestCandidateTracker, update_tracker_for_vhx_inner_dangles, scan_is2_outer_min_bridge,
@@ -1069,10 +1069,18 @@ class EddyRivasFoldingEngine:
                     print(f"  Winner: hole=({k_win},{l_win}), split={r_win}", flush=True)
 
                     # Check what energy values contributed to the winning structure.
-                    whx_l = eddy_rivas_fold_state.whx_matrix.get(i, r_win, k_win, r_win)
-                    whx_r = eddy_rivas_fold_state.whx_matrix.get(r_win + 1, j, r_win + 1, l_win)
-                    yhx_l = eddy_rivas_fold_state.yhx_matrix.get(i, r_win, k_win, r_win)
-                    yhx_r = eddy_rivas_fold_state.yhx_matrix.get(r_win + 1, j, r_win + 1, l_win)
+                    whx_l = get_whx_energy_with_collapse(
+                        eddy_rivas_fold_state.whx_matrix,
+                        eddy_rivas_fold_state.wxu_matrix,
+                        i, r_win, k_win, r_win
+                    )
+                    whx_r = get_whx_energy_with_collapse(
+                        eddy_rivas_fold_state.whx_matrix,
+                        eddy_rivas_fold_state.wxu_matrix,
+                        r_win + 1, j, r_win + 1, l_win
+                    )
+                    yhx_l = get_yhx_energy_with_collapse(eddy_rivas_fold_state.yhx_matrix, i, r_win, k_win, r_win)
+                    yhx_r = get_yhx_energy_with_collapse(eddy_rivas_fold_state.yhx_matrix, r_win + 1, j, r_win + 1, l_win)
 
                     print(f"  WHX_L={whx_l:.2f}, WHX_R={whx_r:.2f}", flush=True)
                     print(f"  YHX_L={yhx_l:.2f}, YHX_R={yhx_r:.2f}", flush=True)
@@ -1134,7 +1142,7 @@ class EddyRivasFoldingEngine:
             # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
             for (k, l) in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxc_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
                     continue
 
                 candidate_energy, candidate_backpointer = evaluate_vx_composition_for_hole(
