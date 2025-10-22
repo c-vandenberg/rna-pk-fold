@@ -256,12 +256,8 @@ def whx_collapse_with(
     if not (i <= j) or not (i <= k < l <= j):
         return math.inf
 
-    # Determine if a collapse condition is met.
+    # Determine if a collapse condition is met (i.e. if hole is zero-width).
     collapse = (k + 1 == l)
-    if (can_pair_mask is not None) and not collapse:
-        # Also treat an unpairable hole as a collapse to the outer WX structure.
-        if not can_pair_mask[k][l]:
-            collapse = True
 
     # If a collapse condition is met, get the energy from the appropriate 2D WX matrix.
     if collapse:
@@ -317,11 +313,8 @@ def zhx_collapse_with(
     if not (i <= j) or not (i <= k < l <= j):
         return math.inf
 
-    # Determine if a collapse condition is met.
+    # Determine if a collapse condition is met (i.e. if hole is zero-width).
     collapse = (k + 1 == l)
-    if (can_pair_mask is not None) and not collapse:
-        if not can_pair_mask[k][l]:
-            collapse = True
 
     # If a collapse condition is met, get the energy from the appropriate 2D VX matrix.
     if collapse:

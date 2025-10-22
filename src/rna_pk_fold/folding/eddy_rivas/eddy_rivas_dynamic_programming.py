@@ -11,7 +11,7 @@ from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
-from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_holes_pairable
+from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_holes_pairable, iter_holes
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import (clear_matrix_lookup_caches, get_whx_energy_with_collapse,
                                                                 get_zhx_energy_with_collapse)
 from rna_pk_fold.rules.constraints import build_can_pair_mask
@@ -491,10 +491,10 @@ class EddyRivasFoldingEngine:
         """
         spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
         for i, j in tqdm(spans, desc="WHX", leave=False):
-            for k, l in iter_holes_pairable(i, j, can_pair_mask):
+            for k, l in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold, Watson-Crick Base Pairing) ----------
                 if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get,
-                                       can_pair_mask=can_pair_mask, require_kl_pairable=True):
+                                       can_pair_mask=can_pair_mask, require_kl_pairable=False):
                     continue
 
                 # ---------- Targeted Debug Probes ----------
@@ -596,7 +596,8 @@ class EddyRivasFoldingEngine:
         for i, j in tqdm(spans, desc="VHX", leave=False):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get,
+                                       require_kl_pairable=True):
                     continue
 
                 # ---------- Initialize Best Candidate Tracker ----------
@@ -736,7 +737,7 @@ class EddyRivasFoldingEngine:
         """
         spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
         for i, j in tqdm(spans, desc="ZHX", leave=False):
-            for k, l in iter_holes_pairable(i, j, can_pair_mask):
+            for k, l in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
                 if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
                     continue
@@ -876,7 +877,8 @@ class EddyRivasFoldingEngine:
         for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get,
+                                       require_kl_pairable=True):
                     continue
 
                 # ---------- Initialize Best Candidate Tracker ----------
@@ -1022,7 +1024,7 @@ class EddyRivasFoldingEngine:
             best_backpointer: Optional[EddyRivasBackPointer] = None
 
             # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
-            for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
+            for (k, l) in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
                 if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
                     continue
@@ -1130,7 +1132,7 @@ class EddyRivasFoldingEngine:
             best_backpointer: Optional[EddyRivasBackPointer] = None
 
             # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
-            for (k, l) in iter_holes_pairable(i, j, can_pair_mask):
+            for (k, l) in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
                 if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxc_matrix.get):
                     continue
