@@ -92,10 +92,29 @@ def merge_nested_region_pairs(
 
 
 # --- Layer-Safe Placement for Multilayer Dot-Bracket ---
-def _pairs_cross(a_pair: tuple[int,int], b_pair: tuple[int,int]) -> bool:
-    """A private helper to determine if two base pairs cross."""
-    # A crossing (pseudoknot) occurs if the indices are interleaved: i < k < j < l.
-    return (a_pair[0] < b_pair[0] < a_pair[1] < b_pair[1]) or (b_pair[0] < a_pair[0] < b_pair[1] < a_pair[1])
+def _do_pairs_cross(pair_a: tuple[int,int], pair_b: tuple[int,int]) -> bool:
+    """
+    Determine whether two base pairs geometrically cross (form a pseudoknot).
+
+    A crossing occurs when the index intervals are interleaved:
+    `a_i < b_i < a_j < b_j` or `b_i < a_i < b_j < a_j`.
+
+    Parameters
+    ----------
+    pair_a : tuple[int, int]
+        First base pair as `(i, j)` with `i < j`.
+    pair_b : tuple[int, int]
+        Second base pair as `(k, l)` with `k < l`.
+
+    Returns
+    -------
+    bool
+        `True` if the two pairs cross (are interleaved), `False` otherwise.
+    """
+    ai, aj = pair_a
+    bi, bj = pair_b
+
+    return (ai < bi < aj < bj) or (bi < ai < bj < aj)
 
 
 def place_pair_in_first_non_crossing_layer(
@@ -137,7 +156,7 @@ def place_pair_in_first_non_crossing_layer(
         conflict_found = False
         # Check the new pair against all existing pairs on this layer.
         for (existing_i, existing_j), layer_idx in pair_to_layer.items():
-            if layer_idx == current_layer and _pairs_cross(
+            if layer_idx == current_layer and _do_pairs_cross(
                     (i_index, j_index), (existing_i, existing_j)
             ):
                 # If a crossing is found, mark a conflict and stop checking this layer.
@@ -179,7 +198,7 @@ def audit_layer_assignments(pair_to_layer: dict[tuple[int, int], int]) -> None:
     for layer_idx, layer_pairs in sorted(pairs_grouped_by_layer.items()):
         # Count the number of crossings between all combinations of pairs within this layer.
         within_layer_crossings = sum(
-            _pairs_cross(layer_pairs[a], layer_pairs[b])
+            _do_pairs_cross(layer_pairs[a], layer_pairs[b])
             for a in range(len(layer_pairs))
             for b in range(a + 1, len(layer_pairs))
         )

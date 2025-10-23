@@ -26,8 +26,8 @@ from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (evaluate
                                                                         evaluate_wx_yhx_overlap_for_span,
                                                                         set_span_cell_with_backpointer,
                                                                         evaluate_vx_composition_for_hole)
-from rna_pk_fold.utils.dynamic_programming.dp_split_utils import (zhx_wx_split_min_vhx, compute_zhx_split_min_over_zhx_wx,
-                                                                  yhx_wx_split_min, VhxSplitMode, ZhxSplitMode,
+from rna_pk_fold.utils.dynamic_programming.dp_split_utils import (compute_vhx_best_split_over_zhx_wx, compute_zhx_best_split_over_zhx_wx,
+                                                                  compute_yhx_best_split_over_yhx_wx, VhxSplitMode, ZhxSplitMode,
                                                                   YhxSplitMode)
 from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import (use_nested_energy_if_composed_infinite,
                                                                     publish_min_energy_with_default_backpointer)
@@ -628,7 +628,7 @@ class EddyRivasFoldingEngine:
                     )
 
                 # -------- Cases 5: Split on the 5' (Left Side) - r in [i..k-1]  →  ZHX(i,j:r,l) + WX(r+1,k) --------
-                cand_left, t_left = zhx_wx_split_min_vhx(
+                cand_left, t_left = compute_vhx_best_split_over_zhx_wx(
                     VhxSplitMode.LEFT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_left >= 0:
@@ -642,7 +642,7 @@ class EddyRivasFoldingEngine:
                     )
 
                 # -------- Case 6: Split on the 3' (Right) Side - s2 in [l+1..j]  →  ZHX(i,j:k,s2) + WX(l, s2-1) --------
-                cand_right, t_right = zhx_wx_split_min_vhx(
+                cand_right, t_right = compute_vhx_best_split_over_zhx_wx(
                     VhxSplitMode.RIGHT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_right >= 0:
@@ -774,7 +774,7 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 4: Split into ZHX + WX. ----------
                 # 4.1. Split on the 5' (Left) Side: ZHX(i,j:r,l) + WX(r+1,k)
-                cand_left, t_left = compute_zhx_split_min_over_zhx_wx(
+                cand_left, t_left = compute_zhx_best_split_over_zhx_wx(
                     ZhxSplitMode.LEFT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_left >= 0:
@@ -788,7 +788,7 @@ class EddyRivasFoldingEngine:
                     )
 
                 # 4.2. Split on the 3' (Right) Side: ZHX(i,j:k,s2) + WX(l, s2-1)
-                cand_right, t_right = compute_zhx_split_min_over_zhx_wx(
+                cand_right, t_right = compute_zhx_best_split_over_zhx_wx(
                     ZhxSplitMode.RIGHT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_right >= 0:
@@ -922,7 +922,7 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 4: Split of the Outer Span Into YHX + WX. ----------
                 # 4.1. Left Split: YHX(i, r) + WX(r+1, j)
-                cand_left, t_left = yhx_wx_split_min(
+                cand_left, t_left = compute_yhx_best_split_over_yhx_wx(
                     YhxSplitMode.LEFT_YHX_WX, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_left >= 0:
@@ -936,7 +936,7 @@ class EddyRivasFoldingEngine:
                     )
 
                 # 4.2. Right Split: WX(i, s) + YHX(s+1, j)
-                cand_right, t_right = yhx_wx_split_min(
+                cand_right, t_right = compute_yhx_best_split_over_yhx_wx(
                     YhxSplitMode.RIGHT_WX_YHX, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_right >= 0:

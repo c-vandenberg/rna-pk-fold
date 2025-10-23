@@ -330,18 +330,57 @@ def zhx_collapse_with(
     return result
 
 
-def get_inner_matrix_energy(state, inner_matrix: str, r: int, s2: int, k: int, l: int) -> float:
+def get_gap_energy_for_named_matrix(
+    fold_state,
+    matrix_name: str,
+    outer_i: int,
+    outer_j: int,
+    hole_k: int,
+    hole_l: int
+) -> float:
     """
-    Generic getter for inner-gap matrices by name.
-    """
-    if inner_matrix == "yhx":
-        return state.yhx_matrix.get_energy(r, s2, k, l)
-    if inner_matrix == "zhx":
-        return state.zhx_matrix.get_energy(r, s2, k, l)
-    if inner_matrix == "vhx":
-        return state.vhx_matrix.get_energy(r, s2, k, l)
-    if inner_matrix == "whx":
-        return state.whx_matrix.get_energy(r, s2, k, l)
+    Retrieve a gap-matrix energy by matrix name and coordinates.
 
-    raise ValueError(f"Unknown inner_matrix: {inner_matrix}")
+    This utility abstracts over the four Eddy–Rivas gap matrices and returns the
+    stored energy for the 4D cell `(outer_i, outer_j, hole_k, hole_l)` in the
+    requested matrix.
+
+    Parameters
+    ----------
+    fold_state : Any
+        Folding state exposing `yhx_matrix`, `zhx_matrix`, `vhx_matrix`, and
+        `whx_matrix`, each with a `get_energy(i, j, k, l)` method.
+    matrix_name : str
+        Name of the inner-gap matrix to query. One of: `yhx`, `zhx`, `vhx`, `whx`.
+    outer_i : int
+        5' index of the outer span (i).
+    outer_j : int
+        3' index of the outer span (j).
+    hole_k : int
+        5' index of the inner hole (k).
+    hole_l : int
+        3' index of the inner hole (l).
+
+    Returns
+    -------
+    float
+        The energy stored at the specified coordinates for the chosen matrix.
+        Implementations typically return `math.inf` when a cell is invalid or
+        was never set.
+
+    Raises
+    ------
+    ValueError
+        If `matrix_name` is not one of `yhx`, `zhx`, `vhx`, or `whx`.
+    """
+    if matrix_name == "yhx":
+        return fold_state.yhx_matrix.get_energy(outer_i, outer_j, hole_k, hole_l)
+    if matrix_name == "zhx":
+        return fold_state.zhx_matrix.get_energy(outer_i, outer_j, hole_k, hole_l)
+    if matrix_name == "vhx":
+        return fold_state.vhx_matrix.get_energy(outer_i, outer_j, hole_k, hole_l)
+    if matrix_name == "whx":
+        return fold_state.whx_matrix.get_energy(outer_i, outer_j, hole_k, hole_l)
+
+    raise ValueError(f"Unknown inner_matrix: {matrix_name}")
 

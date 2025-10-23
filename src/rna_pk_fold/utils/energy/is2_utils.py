@@ -1,7 +1,7 @@
 import math
 from typing import Tuple, Any, Optional, Iterable
 
-from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_inner_matrix_energy
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_gap_energy_for_named_matrix
 
 
 # ---------------------------------------------------------------------
@@ -165,7 +165,7 @@ def scan_is2_outer_bridge_candidates(
             if r_index > s_index:
                 continue
 
-            inner_energy = get_inner_matrix_energy(
+            inner_energy = get_gap_energy_for_named_matrix(
                 fold_state, inner_matrix_name, r_index, s_index, k_index, l_index
             )
             if not math.isfinite(inner_energy):

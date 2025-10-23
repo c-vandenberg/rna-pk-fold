@@ -10,45 +10,109 @@ from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_wxi_or_wx, ge
 
 
 # ---------------------------------------------------------------------
-# Split modes
+# Split Modes
 # ---------------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
 class WhxSplitMode:
-    LEFT_WHX_WX = 0      # WHX(i,r:k,l)  + WX(r+1,j)
-    RIGHT_WX_WHX = 1     # WX(i,s)       + WHX(s+1,j:k,l)
-    OVERLAP = 2          # WHX(i,r:k,l)  + WHX(r+1,j:k,l)
+    """
+    Split-mode identifiers for WHX bifurcations.
+
+    Constants
+    ---------
+    LEFT_WHX_WX : int
+        Evaluate `WHX(i, r : k, l) + WX(r+1, j)` over `r ∈ [i, j-1]`.
+    RIGHT_WX_WHX : int
+        Evaluate `WX(i, s) + WHX(s+1, j : k, l)` over `s ∈ [i, j-1]`.
+    OVERLAP : int
+        Evaluate `WHX(i, r : k, l) + WHX(r+1, j : k, l)` (overlapping hole) over `r`.
+    """
+    LEFT_WHX_WX = 0
+    RIGHT_WX_WHX = 1
+    OVERLAP = 2
 
 
 @dataclass(frozen=True, slots=True)
 class VhxSplitMode:
-    LEFT_ZHX_WX  = 1   # ZHX(i,j:r,l) + WX(r+1,k)
-    RIGHT_ZHX_WX = 2   # ZHX(i,j:k,s2) + WX(l, s2-1)
+    """
+    Split-mode identifiers for ZHX+WX scans used inside VHX recurrences.
+
+    Constants
+    ---------
+    LEFT_ZHX_WX : int
+        Evaluate `ZHX(i, j : r, l) + WX(r+1, k)` over `r ∈ [i, k-1]`.
+    RIGHT_ZHX_WX : int
+        Evaluate `ZHX(i, j : k, s2) + WX(l, s2-1)` over `s2 ∈ [l+1, j]`.
+    """
+    LEFT_ZHX_WX  = 1
+    RIGHT_ZHX_WX = 2
 
 
 @dataclass(frozen=True, slots=True)
 class ZhxSplitMode:
-    LEFT_ZHX_WX  = 1   # ZHX(i,j:r,l) + WX(r+1,k)
-    RIGHT_ZHX_WX = 2   # ZHX(i,j:k,s2) + WX(l, s2-1)
+    """
+    Split-mode identifiers for ZHX+WX scans used inside ZHX recurrences.
+
+    Constants
+    ---------
+    LEFT_ZHX_WX : int
+        Evaluate `ZHX(i, j : r, l) + WX(r+1, k)` over `r ∈ [i, k-1]`.
+    RIGHT_ZHX_WX : int
+        Evaluate `ZHX(i, j : k, s2) + WX(l, s2-1)` over `s2 ∈ [l+1, j]`.
+    """
+    LEFT_ZHX_WX  = 1
+    RIGHT_ZHX_WX = 2
 
 
 @dataclass(frozen=True, slots=True)
 class YhxSplitMode:
-    LEFT_YHX_WX  = 1   # YHX(i, r: k, l) + WX(r+1, j)
-    RIGHT_WX_YHX = 2   # WX(i, s2) + YHX(s2+1, j: k, l)
+    """
+    Split-mode identifiers for YHX+WX scans used inside YHX recurrences.
+
+    Constants
+    ---------
+    LEFT_YHX_WX : int
+        Evaluate `YHX(i, r : k, l) + WX(r+1, j)` over `r ∈ [i, j-1]`.
+    RIGHT_WX_YHX : int
+        Evaluate `WX(i, s2) + YHX(s2+1, j : k, l)` over `s2 ∈ [i, j-1]`.
+    """
+    LEFT_YHX_WX  = 1
+    RIGHT_WX_YHX = 2
 
 
 # ---------------------------------------------------------------------
-# WHX: Build Left/Right Cost Vectors for Splits Across `t` in `[0, j-i)`
+# WHX: Build Left/Right Cost Vectors and Compute Best Split
 # ---------------------------------------------------------------------
-def build_whx_split_vectors(
+def build_whx_split_cost_vectors(
     mode: int,
     state: EddyRivasFoldState,
     i: int, j: int, k: int, l: int,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Build left/right vectors for split scans across t in [0, j-i).
+    Build left/right energy vectors for scanning WHX split points.
+
+    For each split offset `t ∈ [0, j-i)`, this prepares the energy on the
+    left side and the right side according to the requested split `mode`
+    (e.g., `WHX + WX`, `WX + WHX`, or overlapping `WHX + WHX`).
+
+    Parameters
+    ----------
+    mode : int
+        One of `WhxSplitMode.LEFT_WHX_WX`, `WhxSplitMode.RIGHT_WX_WHX`, or
+        `WhxSplitMode.OVERLAP`.
+    state : EddyRivasFoldState
+        Fold state providing access to WHX and WX energies.
+    i, j : int
+        Outer span indices.
+    k, l : int
+        Inner hole indices.
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray]
+        `(left_costs, right_costs)`; each array has length `j - i` and `dtype=float64`.
+        Non-finite sub-problems remain `+inf`.
     """
-    span_len = _span_length(i, j)
+    span_len = _compute_span_length(i, j)
     left_costs = np.full(span_len, np.inf, dtype=np.float64)
     right_costs = np.full(span_len, np.inf, dtype=np.float64)
 
@@ -72,20 +136,40 @@ def build_whx_split_vectors(
     return left_costs, right_costs
 
 
-def compute_whx_split_min(
+def compute_whx_best_split_energy(
     mode: int,
     state: EddyRivasFoldState,
     i: int, j: int, k: int, l: int,
     overlap_penalty: float = 0.0,
 ) -> Tuple[float, int]:
     """
-    Return (min_energy, argmin_t) using best_sum/best_sum_with_penalty
-    for the requested WHX split mode.
+    Compute `(min_energy, argmin_t)` for WHX split mode over `t ∈ [0, j-i)`.
+
+    Uses `min_sum_over_index` or `min_sum_with_penalty_over_index` depending on
+    whether the `OVERLAP` mode requires an extra penalty term.
+
+    Parameters
+    ----------
+    mode : int
+        One of `WhxSplitMode.LEFT_WHX_WX`, `WhxSplitMode.RIGHT_WX_WHX`, or
+        `WhxSplitMode.OVERLAP`.
+    state : EddyRivasFoldState
+        Fold state providing access to WHX and WX energies.
+    i, j, k, l : int
+        Coordinates of the sub-problem.
+    overlap_penalty : float, default=0.0
+        Additional penalty applied only in `WhxSplitMode.OVERLAP`.
+
+    Returns
+    -------
+    Tuple[float, int]
+        `(best_energy, t_star)` where `t_star` is the split offset; `-1` if no
+        finite candidate exists.
     """
-    if _span_length(i, j) == 0:
+    if _compute_span_length(i, j) == 0:
         return math.inf, -1
 
-    left_costs, right_costs = build_whx_split_vectors(mode, state, i, j, k, l)
+    left_costs, right_costs = build_whx_split_cost_vectors(mode, state, i, j, k, l)
 
     if mode == WhxSplitMode.OVERLAP and overlap_penalty != 0.0:
         return min_sum_with_penalty_over_index(left_costs, right_costs, float(overlap_penalty))
@@ -93,17 +177,30 @@ def compute_whx_split_min(
     return min_sum_over_index(left_costs, right_costs)
 
 # ---------------------------------------------------------------------
-# VHX: ZHX+WX split Scans Used Inside VHX Recurrences
+# VHX: ZHX+WX Split Scans Used Inside VHX Recurrences
 # ---------------------------------------------------------------------
-def zhx_wx_split_min_vhx(
+def compute_vhx_best_split_over_zhx_wx(
     mode: VhxSplitMode,
     state,
     i: int, j: int, k: int, l: int,
 ) -> Tuple[float, int]:
     """
-    Compute min over split for ZHX+WX in VHX recurrences.
-    Returns (best_energy, t_star) where t_star is the argmin index over the split dimension,
-    or (-1) if no finite candidate exists.
+    Compute `(best_energy, t_star)` for ZHX+WX splits in VHX recurrences.
+
+    Parameters
+    ----------
+    mode : VhxSplitMode
+        Either `VhxSplitMode.LEFT_ZHX_WX` or `VhxSplitMode.RIGHT_ZHX_WX`.
+    state : Any
+        Fold state providing `zhx_matrix`, `vxu_matrix`, and WX access.
+    i, j, k, l : int
+        Coordinates of the sub-problem.
+
+    Returns
+    -------
+    Tuple[float, int]
+        `(best_energy, t_star)` where `t_star` is the argmin index over the
+        split dimension, or `(-1)` if no finite candidate exists.
     """
     if mode == VhxSplitMode.LEFT_ZHX_WX:
         left_range_len = max(0, k - i)
@@ -121,7 +218,7 @@ def zhx_wx_split_min_vhx(
                 right_costs[t] = rv
         return min_sum_over_index(left_costs, right_costs)
 
-        # mode == VhxSplitMode.RIGHT_ZHX_WX
+    # Mode == VhxSplitMode.RIGHT_ZHX_WX
     right_range_len = max(0, j - l)  # = j - l
     if right_range_len <= 0:
         return math.inf, -1
@@ -142,15 +239,30 @@ def zhx_wx_split_min_vhx(
 # ---------------------------------------------------------------------
 # ZHX: ZHX+WX Split Scans Used Inside ZHX Recurrences (No Collapse on ZHX)
 # ---------------------------------------------------------------------
-def compute_zhx_split_min_over_zhx_wx(
+def compute_zhx_best_split_over_zhx_wx(
     mode: ZhxSplitMode,
     state,
     i: int, j: int, k: int, l: int,
 ) -> Tuple[float, int]:
     """
-    Compute min over split for ZHX+WX recurrences in ZHX (no collapse;
-    uses ZHX.get directly). Returns (best_energy, t_star) where t_star is
-    the argmin over the split index, or (-1) if no finite candidate exists.
+    Compute `(best_energy, t_star)` for ZHX+WX splits in ZHX recurrences.
+
+    Uses direct `ZHX.get_energy` (no collapse shortcut) for the ZHX term.
+
+    Parameters
+    ----------
+    mode : ZhxSplitMode
+        Either `ZhxSplitMode.LEFT_ZHX_WX` or `ZhxSplitMode.RIGHT_ZHX_WX`.
+    state : Any
+        Fold state providing `zhx_matrix` and WX access.
+    i, j, k, l : int
+        Coordinates of the sub-problem.
+
+    Returns
+    -------
+    Tuple[float, int]
+        `(best_energy, t_star)` where `t_star` is the argmin over the split
+        index, or `(-1)` if no finite candidate exists.
     """
     if mode == ZhxSplitMode.LEFT_ZHX_WX:
         left_range_len = max(0, k - i)
@@ -168,7 +280,7 @@ def compute_zhx_split_min_over_zhx_wx(
                 right_costs[t] = rv
         return min_sum_over_index(left_costs, right_costs)
 
-        # mode == ZhxSplitMode.RIGHT_ZHX_WX
+    # mode == ZhxSplitMode.RIGHT_ZHX_WX
     right_range_len = max(0, j - l)
     if right_range_len <= 0:
         return math.inf, -1
@@ -189,14 +301,27 @@ def compute_zhx_split_min_over_zhx_wx(
 # ---------------------------------------------------------------------
 # YHX: YHX+WX Split Scans Used Inside YHX Recurrences
 # ---------------------------------------------------------------------
-def yhx_wx_split_min(
+def compute_yhx_best_split_over_yhx_wx(
     mode: YhxSplitMode,
     state,
     i: int, j: int, k: int, l: int,
 ) -> Tuple[float, int]:
     """
-    Compute min over splits for YHX+WX recurrences in YHX (plain matrix gets).
-    Returns (best_energy, t_star) where t_star is the argmin index, or -1 if none.
+    Compute `(best_energy, t_star)` for YHX+WX splits in YHX recurrences.
+
+    Parameters
+    ----------
+    mode : YhxSplitMode
+        Either `YhxSplitMode.LEFT_YHX_WX` or `YhxSplitMode.RIGHT_WX_YHX`.
+    state : Any
+        Fold state providing `yhx_matrix` and WX access.
+    i, j, k, l : int
+        Coordinates of the sub-problem.
+
+    Returns
+    -------
+    Tuple[float, int]
+        `(best_energy, t_star)` where `t_star` is the argmin index, or `(-1)` if none.
     """
     span_len = max(0, j - i)
     if span_len <= 0:
@@ -231,15 +356,29 @@ def yhx_wx_split_min(
 
 
 # ---------------------------------------------------------------------
-# Generic helpers for split vectors and selection
+# Generic Helpers for Split Vectors and Selection
 # ---------------------------------------------------------------------
-def build_split_cost_vectors(
+def build_generic_split_cost_vectors(
     length: int,
     left_fetch: Callable[[int], float],
     right_fetch: Callable[[int], float],
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Build generic left/right cost arrays of given length using fetchers.
+    Build generic left/right cost vectors with fetch callbacks.
+
+    Parameters
+    ----------
+    length : int
+        Number of split positions `t` to consider.
+    left_fetch : Callable[[int], float]
+        Callback returning left energy at index `t`.
+    right_fetch : Callable[[int], float]
+        Callback returning right energy at index `t`.
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray]
+        `(left_costs, right_costs)` arrays of length `length`, `dtype=float64`.
     """
     left_costs = np.full(length, np.inf, dtype=np.float64)
     right_costs = np.full(length, np.inf, dtype=np.float64)
@@ -254,13 +393,26 @@ def build_split_cost_vectors(
     return left_costs, right_costs
 
 
-def compute_best_split_from_vectors(
+def compute_best_split_from_cost_vectors(
     left_costs: np.ndarray,
     right_costs: np.ndarray,
     penalty: float = 0.0,
 ) -> Tuple[float, int]:
     """
-    Return (min_energy, argmin_t) given pre-built cost vectors and an optional penalty.
+    Compute `(min_energy, argmin_t)` from pre-built cost vectors.
+
+    Parameters
+    ----------
+    left_costs, right_costs : np.ndarray
+        Left/right cost arrays over the same split axis.
+    penalty : float, default=0.0
+        Constant term added to each candidate.
+
+    Returns
+    -------
+    Tuple[float, int]
+        `(best_energy, t_star)` using either `min_sum_over_index` or
+        `min_sum_with_penalty_over_index` depending on `penalty`.
     """
     if penalty == 0.0:
         return min_sum_over_index(left_costs, right_costs)
@@ -269,7 +421,23 @@ def compute_best_split_from_vectors(
 
 
 # ---------------------------------------------------------------------
-# Internal: Span Length Helper
+# Internal: Span-Length Helper
 # ---------------------------------------------------------------------
-def _span_length(i: int, j: int) -> int:
+def _compute_span_length(i: int, j: int) -> int:
+    """
+    Return the number of split positions for an outer span `(i, j)`.
+
+    This is `max(0, j - i)` and corresponds to the number of choices for a
+    split index `r` in `[i, j-1]` (or offset `t` in `[0, j-i)`).
+
+    Parameters
+    ----------
+    i, j : int
+        Outer span indices.
+
+    Returns
+    -------
+    int
+        The non-negative span length.
+    """
     return max(0, j - i)
