@@ -239,15 +239,20 @@ def traceback_with_pseudoknots(
         # WHX is a gapped structure with undetermined pairing at all ends.
         if tag == "WHX":
             _, outer_start, outer_end, k_idx, l_idx, layer_idx = trace_frame
+
+            if k_idx + 1 == l_idx:
+                print(f"[WHX COLLAPSE] ({outer_start},{outer_end}:{k_idx},{l_idx}) → nested", flush=True)
+                merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
+                                          trace_nested_interval, base_pairs, pair_to_layer)
+                continue
+
             logger.debug(f"\n=== WHX[{outer_start},{outer_end},{k_idx},{l_idx}] layer={layer_idx} ===")
             backpointer = get_whx_backpointer(eddy_rivas_fold_state, outer_start, outer_end, k_idx, l_idx)
 
             # 2.1. If no backpointer, it implies the hole collapsed. Treat the outer span as nested.
             if not backpointer:
-                print(
-                    f"[WHX MISS] merging nested [{outer_start},{outer_end}] hole=({k_idx},{l_idx}) layer={layer_idx}",
-                    flush=True
-                )
+                print(f"[WHX MISS] merging nested [{outer_start},{outer_end}] hole=({k_idx},{l_idx}) layer={layer_idx}",
+                      flush=True)
                 merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
                                           trace_nested_interval, base_pairs, pair_to_layer)
                 continue
@@ -260,10 +265,23 @@ def traceback_with_pseudoknots(
 
             # 2.2. Add an unpaired base at the 5' end of the hole. Push the smaller subproblem.
             if op is EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT:
+                if (k_idx + 1) + 1 == l_idx:
+                    # Shrinking left leads to collapse: WHX(i,j:k+1,l) where (k+1)+1==l
+                    print(f"[WHX TRANSITIVE COLLAPSE] ({outer_start},{outer_end}:{k_idx},{l_idx}) shrink→collapse",
+                          flush=True)
+                    merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
+                                              trace_nested_interval, base_pairs, pair_to_layer)
+                    continue
                 trace_stack.append(("WHX", outer_start, outer_end, k_idx + 1, l_idx, layer_idx))
 
             # 2.3. Add an unpaired base at the 3' end of the hole.
             elif op is EddyRivasBacktrackOp.RE_WHX_SHRINK_RIGHT:
+                if k_idx + 1 == (l_idx - 1):
+                    print(f"[WHX TRANSITIVE COLLAPSE] ({outer_start},{outer_end}:{k_idx},{l_idx}) shrink→collapse",
+                          flush=True)
+                    merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
+                                              trace_nested_interval, base_pairs, pair_to_layer)
+                    continue
                 trace_stack.append(("WHX", outer_start, outer_end, k_idx, l_idx - 1, layer_idx))
 
             # 2.4. Add an unpaired base at the 5' end of the outer span.

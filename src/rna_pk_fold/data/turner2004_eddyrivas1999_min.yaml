@@ -636,16 +636,16 @@ special_hairpins: {}
 # ------------------------------------------------------
 pseudoknot:
   # Per-step/tilde scalars (paper: \tilde Q = 0.2, \tilde P = 0.1)
-  q_ss: 0.0                 # Q~ - unpaired bases (general)
-  P_tilde_out: 0.0          # P~ - unpaired on outer span
-  P_tilde_hole: 0.0         # P~ - unpaired on hole
-  Q_tilde_out: 0.0          # Q~ - unpaired outer (alternative)
-  Q_tilde_hole: 0.0         # Q~ - unpaired hole (alternative)
+  q_ss: 0.2                 # Q~ - unpaired bases (general)
+  P_tilde_out: 0.1          # P~ - unpaired on outer span
+  P_tilde_hole: 0.1         # P~ - unpaired on hole
+  Q_tilde_out: 0.2          # Q~ - unpaired outer (alternative)
+  Q_tilde_hole: 0.3         # Q~ - unpaired hole (alternative)
 
   # Multiloop penalties for gap structures
-  M_tilde_yhx: 0.0         # M~ - YHX multiloop
-  M_tilde_vhx: 0.0        # M~ - VHX multiloop
-  M_tilde_whx: 0.0         # M~ - WHX multiloop
+  M_tilde_yhx: 3.4         # M~ - YHX multiloop
+  M_tilde_vhx: 3.4        # M~ - VHX multiloop
+  M_tilde_whx: 3.4         # M~ - WHX multiloop
 
   # Dangle fallbacks
   L_tilde: 0.2              # Fallback dangle = Q~
@@ -679,9 +679,9 @@ pseudoknot:
 
   # Overlap/charging penalties (paper provides G_wh, G_w, G_wI)
   Gwh: 0.0                  # overlapping pseudoknots (paper)
-  Gwi: 0.0                 # “generating a pseudoknot in a multiloop” (paper’s G_wI)
+  Gwi: 1.0                 # “generating a pseudoknot in a multiloop” (paper’s G_wI)
   Gwh_wx: 0.0               # software-specific; not in paper
   Gwh_whx: 0.0              # software-specific; not in paper
 
   # Pseudoknot introduction penalty (paper’s G_w)
-  pk_penalty_gw: -10.0
+  pk_penalty_gw: 1.5
