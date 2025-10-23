@@ -235,10 +235,10 @@ class EddyRivasFoldingEngine:
         self._seed_from_nested(nested_state, eddy_rivas_fold_state)
 
         # Densify working matrices that will be heavily written.
-        eddy_rivas_fold_state.wxu_matrix.enable_dense()
-        eddy_rivas_fold_state.wxc_matrix.enable_dense()
-        eddy_rivas_fold_state.vxu_matrix.enable_dense()
-        eddy_rivas_fold_state.vxc_matrix.enable_dense()
+        eddy_rivas_fold_state.wxu_matrix.enable_dense_storage()
+        eddy_rivas_fold_state.wxc_matrix.enable_dense_storage()
+        eddy_rivas_fold_state.vxu_matrix.enable_dense_storage()
+        eddy_rivas_fold_state.vxc_matrix.enable_dense_storage()
 
         can_pair_mask = build_can_pair_mask(seq)
 
@@ -256,11 +256,11 @@ class EddyRivasFoldingEngine:
         # Targeted debug checks (guarded)
         debug_print(
             self.config,
-            f"[REF CHECK] WHX[0,33:23,33] = {eddy_rivas_fold_state.whx_matrix.get(0, 33, 23, 33):.2f}"
+            f"[REF CHECK] WHX[0,33:23,33] = {eddy_rivas_fold_state.whx_matrix.get_energy(0, 33, 23, 33):.2f}"
         )
         debug_print(
             self.config,
-            f"[REF CHECK] WHX[34,69:63,68] = {eddy_rivas_fold_state.whx_matrix.get(34, 69, 63, 68):.2f}"
+            f"[REF CHECK] WHX[34,69:63,68] = {eddy_rivas_fold_state.whx_matrix.get_energy(34, 69, 63, 68):.2f}"
         )
 
         # VHX
@@ -297,9 +297,9 @@ class EddyRivasFoldingEngine:
         # Optional inspection (guarded)
         debug_print(
             self.config,
-            f"YHX[37,42:37,40] = {eddy_rivas_fold_state.yhx_matrix.get(37, 42, 37, 40):.2f}"
+            f"YHX[37,42:37,40] = {eddy_rivas_fold_state.yhx_matrix.get_energy(37, 42, 37, 40):.2f}"
         )
-        debug_print(self.config, f"YHX BP: {eddy_rivas_fold_state.yhx_back_ptr.get(37, 42, 37, 40)}")
+        debug_print(self.config, f"YHX BP: {eddy_rivas_fold_state.yhx_back_ptr.get_backpointer(37, 42, 37, 40)}")
 
         # Gap stats (using helper)
         whx_count = count_finite_cells(eddy_rivas_fold_state.whx_matrix)
@@ -331,7 +331,7 @@ class EddyRivasFoldingEngine:
 
         # --- Final Logging ---
         self.timings['total'] = time.perf_counter() - total_start
-        final_energy = eddy_rivas_fold_state.wx_matrix.get(0, seq_len - 1)
+        final_energy = eddy_rivas_fold_state.wx_matrix.get_energy(0, seq_len - 1)
 
         logger.info("=" * 60)
         logger.info(f"Eddy-Rivas DP completed in {self.timings['total']:.2f}s")
@@ -423,24 +423,24 @@ class EddyRivasFoldingEngine:
         seq_len = eddy_rivas_fold_state.seq_len
         for i, j in iter_spans(seq_len):
             # Nested (Zucker) Energies
-            base_wx_energy = nested_fold_state.w_matrix.get(i, j)
-            base_vx_energy = nested_fold_state.v_matrix.get(i, j)
+            base_wx_energy = nested_fold_state.w_matrix.get_energy(i, j)
+            base_vx_energy = nested_fold_state.v_matrix.get_energy(i, j)
 
             # Uncomposed (Baseline) Energies
-            eddy_rivas_fold_state.wxu_matrix.set(i, j, base_wx_energy)
-            eddy_rivas_fold_state.vxu_matrix.set(i, j, base_vx_energy)
+            eddy_rivas_fold_state.wxu_matrix.set_energy(i, j, base_wx_energy)
+            eddy_rivas_fold_state.vxu_matrix.set_energy(i, j, base_vx_energy)
 
             # Composed energies start as +inf for non-trivial spans
             if i != j:
-                eddy_rivas_fold_state.wxc_matrix.set(i, j, math.inf)
-                eddy_rivas_fold_state.vxc_matrix.set(i, j, math.inf)
+                eddy_rivas_fold_state.wxc_matrix.set_energy(i, j, math.inf)
+                eddy_rivas_fold_state.vxc_matrix.set_energy(i, j, math.inf)
 
             # Final matrices start with the nested baseline
-            eddy_rivas_fold_state.wx_matrix.set(i, j, base_wx_energy)
-            eddy_rivas_fold_state.vx_matrix.set(i, j, base_vx_energy)
+            eddy_rivas_fold_state.wx_matrix.set_energy(i, j, base_wx_energy)
+            eddy_rivas_fold_state.vx_matrix.set_energy(i, j, base_vx_energy)
 
             if getattr(eddy_rivas_fold_state, "wxi_matrix", None) is not None:
-                eddy_rivas_fold_state.wxi_matrix.set(i, j, base_wx_energy)
+                eddy_rivas_fold_state.wxi_matrix.set_energy(i, j, base_wx_energy)
 
     # --------- WHX ---------
     def _fill_whx_gap_matrix(
@@ -493,7 +493,7 @@ class EddyRivasFoldingEngine:
         for i, j in tqdm(spans, desc="WHX", leave=False):
             for k, l in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold, Watson-Crick Base Pairing) ----------
-                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get,
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy,
                                        can_pair_mask=can_pair_mask, require_kl_pairable=False):
                     continue
 
@@ -528,8 +528,8 @@ class EddyRivasFoldingEngine:
 
                 # -------- Publish Cell --------
                 debug_print(debug_cell, f"  FINAL: best={tracker.best_energy:.2f} bp={tracker.backpointer}")
-                eddy_rivas_fold_state.whx_matrix.set(i, j, k, l, tracker.best_energy)
-                eddy_rivas_fold_state.whx_back_ptr.set(i, j, k, l, tracker.backpointer)
+                eddy_rivas_fold_state.whx_matrix.set_energy(i, j, k, l, tracker.best_energy)
+                eddy_rivas_fold_state.whx_back_ptr.set_backpointer(i, j, k, l, tracker.backpointer)
 
                 if i == 0 and j >= 33 and 20 <= k <= 30 <= l <= 35:
                     status = "SUCCESS" if math.isfinite(tracker.best_energy) else "FAIL"
@@ -596,16 +596,16 @@ class EddyRivasFoldingEngine:
         for i, j in tqdm(spans, desc="VHX", leave=False):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get,
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy,
                                        require_kl_pairable=True):
                     continue
 
                 # ---------- Initialize Best Candidate Tracker ----------
-                tracker = BestCandidateTracker(best_energy=eddy_rivas_fold_state.vhx_matrix.get(i, j, k, l))
+                tracker = BestCandidateTracker(best_energy=eddy_rivas_fold_state.vhx_matrix.get_energy(i, j, k, l))
 
                 # -------- Cases 1, 2 & 3: Inner Pair (k,l) Dangles. --------
                 update_tracker_for_vhx_inner_dangles(
-                    tracker, eddy_rivas_fold_state.vhx_matrix.get,
+                    tracker, eddy_rivas_fold_state.vhx_matrix.get_energy,
                     i, j, k, l,
                     tilde_p_hole, tilde_l_hole, tilde_r_hole,
                     EddyRivasBacktrackOp.RE_VHX_DANGLE_L,
@@ -686,8 +686,8 @@ class EddyRivasFoldingEngine:
                 )
 
                 # -------- Publish Cell --------
-                eddy_rivas_fold_state.vhx_matrix.set(i, j, k, l, tracker.best_energy)
-                eddy_rivas_fold_state.vhx_back_ptr.set(i, j, k, l, tracker.backpointer)
+                eddy_rivas_fold_state.vhx_matrix.set_energy(i, j, k, l, tracker.best_energy)
+                eddy_rivas_fold_state.vhx_back_ptr.set_backpointer(i, j, k, l, tracker.backpointer)
 
     # --------- ZHX ---------
     def _fill_zhx_gap_matrix(
@@ -739,14 +739,14 @@ class EddyRivasFoldingEngine:
         for i, j in tqdm(spans, desc="ZHX", leave=False):
             for k, l in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy):
                     continue
 
                 # ---------- Initialize Best Candidate Tracker ----------
                 tracker = BestCandidateTracker()
 
                 # ---------- Case 1: From VHX, Form a pair at (k,l) ----------
-                vhx_energy = eddy_rivas_fold_state.vhx_matrix.get(i, j, k, l)
+                vhx_energy = eddy_rivas_fold_state.vhx_matrix.get_energy(i, j, k, l)
                 if math.isfinite(vhx_energy):
                     tracker.update_if_better(
                         tilde_p_hole + vhx_energy + internal_pk_penalty,
@@ -755,7 +755,7 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 2: Dangles around the newly formed (k,l) pair from VHX. ----------
                 update_tracker_for_hole_dangles_from_vhx(
-                    tracker, eddy_rivas_fold_state.vhx_matrix.get,
+                    tracker, eddy_rivas_fold_state.vhx_matrix.get_energy,
                     seq, self.config.costs,
                     i, j, k, l,
                     tilde_p_hole, internal_pk_penalty,
@@ -766,7 +766,7 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 3: Add an Unpaired (Single Stranded) Base to the 5' or 3' side of the hole. Tie-Break to Right ----------
                 update_tracker_for_hole_ss_right_tiebreak(
-                    tracker, eddy_rivas_fold_state.zhx_matrix.get,
+                    tracker, eddy_rivas_fold_state.zhx_matrix.get_energy,
                     i, j, k, l, tilde_q_hole,
                     EddyRivasBacktrackOp.RE_ZHX_SS_LEFT,
                     EddyRivasBacktrackOp.RE_ZHX_SS_RIGHT,
@@ -818,8 +818,8 @@ class EddyRivasFoldingEngine:
                         )
 
                 # -------- Publish Cells --------
-                eddy_rivas_fold_state.zhx_matrix.set(i, j, k, l, tracker.best_energy)
-                eddy_rivas_fold_state.zhx_back_ptr.set(i, j, k, l, tracker.backpointer)
+                eddy_rivas_fold_state.zhx_matrix.set_energy(i, j, k, l, tracker.best_energy)
+                eddy_rivas_fold_state.zhx_back_ptr.set_backpointer(i, j, k, l, tracker.backpointer)
 
     # --------- YHX ---------
     def _fill_yhx_gap_matrix(
@@ -877,7 +877,7 @@ class EddyRivasFoldingEngine:
         for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
             for k, l in iter_holes_pairable(i, j, can_pair_mask):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get,
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy,
                                        require_kl_pairable=True):
                     continue
 
@@ -886,7 +886,7 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 1: Dangles on the Outer Pair (i,j) From VHX. ----------
                 update_tracker_for_outer_dangles_from_vhx(
-                    tracker, eddy_rivas_fold_state.vhx_matrix.get,
+                    tracker, eddy_rivas_fold_state.vhx_matrix.get_energy,
                     seq, self.config.costs,
                     i, j, k, l,
                     tilde_p_out, internal_pk_penalty,
@@ -897,12 +897,12 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 2: Add an Unpaired Base to the Outer Span (Trimming). Tie-Break to Right ----------
                 update_tracker_for_outer_ss_right_tiebreak(
-                    tracker, eddy_rivas_fold_state.yhx_matrix.get,
+                    tracker, eddy_rivas_fold_state.yhx_matrix.get_energy,
                     i, j, k, l, tilde_q_out,
                     EddyRivasBacktrackOp.RE_YHX_SS_LEFT,
                     EddyRivasBacktrackOp.RE_YHX_SS_RIGHT,
                 )
-                both_trim_val = eddy_rivas_fold_state.yhx_matrix.get(i + 1, j - 1, k, l)
+                both_trim_val = eddy_rivas_fold_state.yhx_matrix.get_energy(i + 1, j - 1, k, l)
                 update_tracker_for_outer_ss_both(
                     tracker, both_trim_val, tilde_q_out, i, j, k, l,
                     EddyRivasBacktrackOp.RE_YHX_SS_BOTH
@@ -910,7 +910,7 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 3: Multiloop Wrap of WHX. ----------
                 update_tracker_for_yhx_wrap_whx(
-                    tracker, eddy_rivas_fold_state.whx_matrix.get,
+                    tracker, eddy_rivas_fold_state.whx_matrix.get_energy,
                     seq, self.config.costs,
                     i, j, k, l,
                     tilde_p_out, tilde_m_yhx, tilde_m_whx, internal_pk_penalty,
@@ -966,8 +966,8 @@ class EddyRivasFoldingEngine:
                         )
 
                 # ---------- Publish Cells ----------
-                eddy_rivas_fold_state.yhx_matrix.set(i, j, k, l, tracker.best_energy)
-                eddy_rivas_fold_state.yhx_back_ptr.set(i, j, k, l, tracker.backpointer)
+                eddy_rivas_fold_state.yhx_matrix.set_energy(i, j, k, l, tracker.best_energy)
+                eddy_rivas_fold_state.yhx_back_ptr.set_backpointer(i, j, k, l, tracker.backpointer)
 
     # --------- WX Composition & Publish ---------
     def _compose_wx_from_gapped_fragments(
@@ -1020,13 +1020,13 @@ class EddyRivasFoldingEngine:
         for i, j in tqdm(spans, desc="WX Compose", leave=False):
 
             # Initialize with the best composed energy found so far for this span.
-            best_composed_energy = eddy_rivas_fold_state.wxc_matrix.get(i, j)
+            best_composed_energy = eddy_rivas_fold_state.wxc_matrix.get_energy(i, j)
             best_backpointer: Optional[EddyRivasBackPointer] = None
 
             # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
             for (k, l) in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy):
                     continue
 
                 cand_energy, cand_bp = evaluate_wx_composition_for_hole(
@@ -1037,7 +1037,7 @@ class EddyRivasFoldingEngine:
 
 
             if i == 0 and j == eddy_rivas_fold_state.seq_len - 1:
-                wxu_val = eddy_rivas_fold_state.wxu_matrix.get(i, j)
+                wxu_val = eddy_rivas_fold_state.wxu_matrix.get_energy(i, j)
                 print(
                     f"[COMPOSE END] WXU={wxu_val:.2f}, best_c={best_composed_energy:.2f}, best_bp={best_backpointer}", flush=True
                 )
@@ -1086,8 +1086,8 @@ class EddyRivasFoldingEngine:
                     print(f"  YHX_L={yhx_l:.2f}, YHX_R={yhx_r:.2f}", flush=True)
 
                     # Check the backpointers of the contributing subproblems.
-                    whx_bp_l = eddy_rivas_fold_state.whx_back_ptr.get(i, r_win, k_win, r_win)
-                    whx_bp_r = eddy_rivas_fold_state.whx_back_ptr.get(r_win + 1, j, r_win + 1, l_win)
+                    whx_bp_l = eddy_rivas_fold_state.whx_back_ptr.get_backpointer(i, r_win, k_win, r_win)
+                    whx_bp_r = eddy_rivas_fold_state.whx_back_ptr.get_backpointer(r_win + 1, j, r_win + 1, l_win)
                     print(f"  WHX_L backptr: {whx_bp_l}", flush=True)
                     print(f"  WHX_R backptr: {whx_bp_r}", flush=True)
 
@@ -1136,13 +1136,13 @@ class EddyRivasFoldingEngine:
         for i, j in tqdm(spans, desc="VX Compose", leave=False):
 
             # Initialize with the best composed energy found so far for this span.
-            best_composed_energy = eddy_rivas_fold_state.vxc_matrix.get(i, j)
+            best_composed_energy = eddy_rivas_fold_state.vxc_matrix.get_energy(i, j)
             best_backpointer: Optional[EddyRivasBackPointer] = None
 
             # Iterate over all possible inner holes (k, l) that could form a pseudoknot.
             for (k, l) in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get):
+                if should_skip_dp_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy):
                     continue
 
                 candidate_energy, candidate_backpointer = evaluate_vx_composition_for_hole(
@@ -1190,7 +1190,7 @@ class EddyRivasFoldingEngine:
         for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
             # Retrieve the optimal energy for the nested-only structure for this span.
             # This 'uncharged' energy comes from the initial Zuker-style fold.
-            wxu_nested_energy = eddy_rivas_fold_state.wxu_matrix.get(i, j)
+            wxu_nested_energy = eddy_rivas_fold_state.wxu_matrix.get_energy(i, j)
 
             # Retrieve the optimal energy for any pseudoknotted structure for this span.
             # This 'charged' energy was calculated in the _compose_wx step. If `enable_fallback`
@@ -1218,7 +1218,7 @@ class EddyRivasFoldingEngine:
 
             # Optional debug
             if i == 0 and j == 27:
-                existing_bp = eddy_rivas_fold_state.wx_back_ptr.get(i, j)
+                existing_bp = eddy_rivas_fold_state.wx_back_ptr.get_backpointer(i, j)
                 print(f"[PUBLISH ELSE] Keeping WXC, existing BP: {existing_bp}", flush=True)
 
     @staticmethod
@@ -1250,11 +1250,11 @@ class EddyRivasFoldingEngine:
         for i, j in iter_spans(re.seq_len):
             # Retrieve the optimal energy for a nested structure enclosed by the pair (i, j).
             # This 'uncomposed' energy is the baseline from the initial Zuker-style fold.
-            vxu_nested_energy = re.vxu_matrix.get(i, j)
+            vxu_nested_energy = re.vxu_matrix.get_energy(i, j)
 
             # Retrieve the optimal energy for a pseudoknotted structure enclosed by the pair (i, j).
             # This 'composed' energy was calculated in the _compose_vx step.
-            vxc_charged_energy = re.vxc_matrix.get(i, j)
+            vxc_charged_energy = re.vxc_matrix.get_energy(i, j)
 
             # --- Final Selection ---
             publish_min_energy_with_default_backpointer(

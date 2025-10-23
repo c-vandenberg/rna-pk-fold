@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.energies.energy_pk_ops import short_hole_penalty, coax_pack
-from rna_pk_fold.folding.eddy_rivas.numba_kernels import compose_wx_best_over_r_arrays, compose_vx_best_over_r
+from rna_pk_fold.folding.eddy_rivas.numba_kernels import compose_wx_min_energy_over_splits, compose_vx_min_energy_over_splits
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import (whx_collapse_with, zhx_collapse_with,
                                                                 get_yhx_energy_with_collapse)
 from rna_pk_fold.utils.sequences.iter_utils import iter_inner_holes
@@ -38,9 +38,9 @@ def set_span_cell_with_backpointer(
     -------
     None
     """
-    matrix.set(i_idx, j_idx, value)
+    matrix.set_energy(i_idx, j_idx, value)
     if backpointer is not None:
-        backpointer_store.set(i_idx, j_idx, backpointer)
+        backpointer_store.set_backpointer(i_idx, j_idx, backpointer)
 
 
 def hole_width(k_idx: int, l_idx: int) -> int:
@@ -171,7 +171,7 @@ def build_wx_split_arrays(
             ly = get_yhx_energy_with_collapse(fold_state.yhx_matrix, i_idx, split_idx, k_idx, split_idx)
             if math.isfinite(ly):
                 yhx_left_energy[split_offset] = ly
-                bp_ly = fold_state.yhx_back_ptr.get(i_idx, split_idx, k_idx, split_idx)
+                bp_ly = fold_state.yhx_back_ptr.get_backpointer(i_idx, split_idx, k_idx, split_idx)
                 if bp_ly is not None and getattr(bp_ly, "charged", False):
                     yhx_left_is_charged[split_offset] = 1
 
@@ -180,7 +180,7 @@ def build_wx_split_arrays(
             ry = get_yhx_energy_with_collapse(fold_state.yhx_matrix, split_idx + 1, j_idx, split_idx + 1, l_idx)
             if math.isfinite(ry):
                 yhx_right_energy[split_offset] = ry
-                bp_ry = fold_state.yhx_back_ptr.get(split_idx + 1, j_idx, split_idx + 1, l_idx)
+                bp_ry = fold_state.yhx_back_ptr.get_backpointer(split_idx + 1, j_idx, split_idx + 1, l_idx)
                 if bp_ry is not None and getattr(bp_ry, "charged", False):
                     yhx_right_is_charged[split_offset] = 1
 
@@ -394,7 +394,7 @@ def evaluate_wx_composition_for_hole(
     # --- Kernel Execution ---
     # Pass the energy vectors to the optimized Numba kernel to find the best split point 'r'
     # and the best combination of subproblems (WHX+WHX, YHX+YHX, etc.).
-    candidate_energy, split_offset_star, kernel_case_id = compose_wx_best_over_r_arrays(
+    candidate_energy, split_offset_star, kernel_case_id = compose_wx_min_energy_over_splits(
         whx_left_uncharged,
         whx_right_uncharged,
         whx_left_charged,
@@ -499,8 +499,8 @@ def evaluate_wx_yhx_overlap_for_span(
     for (k_inner_idx, l_inner_idx) in iter_inner_holes(i_idx, j_idx, min_hole_width=config.min_hole_width):
         loop_cap_penalty = short_hole_penalty(config.costs, k_inner_idx, l_inner_idx)
         for split_idx in range(i_idx, j_idx):
-            left_y_energy = fold_state.yhx_matrix.get(i_idx, split_idx, k_inner_idx, l_inner_idx)
-            right_y_energy = fold_state.yhx_matrix.get(split_idx + 1, j_idx, k_inner_idx, l_inner_idx)
+            left_y_energy = fold_state.yhx_matrix.get_energy(i_idx, split_idx, k_inner_idx, l_inner_idx)
+            right_y_energy = fold_state.yhx_matrix.get_energy(split_idx + 1, j_idx, k_inner_idx, l_inner_idx)
 
             # If both sub-problems have finite energy, calculate the total energy.
             if math.isfinite(left_y_energy) and math.isfinite(right_y_energy):
@@ -671,7 +671,7 @@ def evaluate_vx_composition_for_hole(
     # --- Kernel Execution ---
     # Pass the energy vectors to the optimized Numba kernel. It efficiently finds the
     # best split point 'r' (returned as t_star) and the minimum energy 'cand'.
-    candidate_energy, split_offset_star, kernel_case_id = compose_vx_best_over_r(
+    candidate_energy, split_offset_star, kernel_case_id = compose_vx_min_energy_over_splits(
         zhx_left_uncharged,
         zhx_right_uncharged,
         zhx_left_charged,

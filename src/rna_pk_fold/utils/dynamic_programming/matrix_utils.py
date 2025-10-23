@@ -1,8 +1,8 @@
 import math
 from typing import Dict, Tuple, Optional, TypeAlias
 
-from rna_pk_fold.structures.gap_matrix import SparseGapMatrix
-from rna_pk_fold.structures.tri_matrix import EddyRivasTriMatrix
+from rna_pk_fold.structures.gap_matrix import SparseGapEnergyMatrix
+from rna_pk_fold.structures.tri_matrix import EddyRivasTriangularEnergyMatrix
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 
 # --- Type Aliases for Cache Keys ---
@@ -34,8 +34,8 @@ def clear_matrix_lookup_caches():
 
 
 def get_whx_energy_with_collapse(
-    whx_matrix: SparseGapMatrix,
-    wx_matrix: EddyRivasTriMatrix,
+    whx_matrix: SparseGapEnergyMatrix,
+    wx_matrix: EddyRivasTriangularEnergyMatrix,
     i: int, j: int, k: int, l: int,
 ) -> float:
     """
@@ -47,9 +47,9 @@ def get_whx_energy_with_collapse(
 
     Parameters
     ----------
-    whx_matrix : SparseGapMatrix
+    whx_matrix : SparseGapEnergyMatrix
         The sparse WHX energy matrix.
-    wx_matrix : EddyRivasTriMatrix
+    wx_matrix : EddyRivasTriangularEnergyMatrix
         The triangular WX energy matrix to use for the collapse case.
     i, j : int
         The indices of the outer span.
@@ -68,15 +68,15 @@ def get_whx_energy_with_collapse(
     # Check for the collapse condition: a zero-width hole.
     if k + 1 == l:
         # If the hole collapses, return the value from the corresponding 2D WX matrix.
-        return wx_matrix.get(i, j)
+        return wx_matrix.get_energy(i, j)
 
     # Otherwise, perform a standard lookup in the 4D WHX matrix.
-    return whx_matrix.get(i, j, k, l)
+    return whx_matrix.get_energy(i, j, k, l)
 
 
 def get_zhx_energy_with_collapse(
-    zhx_matrix: SparseGapMatrix, 
-    vx_matrix: EddyRivasTriMatrix,
+    zhx_matrix: SparseGapEnergyMatrix,
+    vx_matrix: EddyRivasTriangularEnergyMatrix,
     i: int, j: int, k: int, l: int
 ) -> float:
     """
@@ -88,9 +88,9 @@ def get_zhx_energy_with_collapse(
 
     Parameters
     ----------
-    zhx_matrix : SparseGapMatrix
+    zhx_matrix : SparseGapEnergyMatrix
         The sparse ZHX energy matrix.
-    vx_matrix : EddyRivasTriMatrix
+    vx_matrix : EddyRivasTriangularEnergyMatrix
         The triangular VX energy matrix to use for the collapse case.
     i, j : int
         The indices of the outer span.
@@ -109,14 +109,14 @@ def get_zhx_energy_with_collapse(
     # Check for the collapse condition: a zero-width hole.
     if k + 1 == l:
         # If the hole collapses, return the value from the corresponding 2D VX matrix.
-        return vx_matrix.get(i, j)
+        return vx_matrix.get_energy(i, j)
 
     # Otherwise, perform a standard lookup in the 4D ZHX matrix.
-    return zhx_matrix.get(i, j, k, l)
+    return zhx_matrix.get_energy(i, j, k, l)
 
 
 def get_yhx_energy_with_collapse(
-    yhx_matrix: SparseGapMatrix,
+    yhx_matrix: SparseGapEnergyMatrix,
     i: int, j: int, k: int, l: int,
     *, invalid_value: float = math.inf
 ) -> float:
@@ -129,7 +129,7 @@ def get_yhx_energy_with_collapse(
 
     Parameters
     ----------
-    yhx_matrix : SparseGapMatrix
+    yhx_matrix : SparseGapEnergyMatrix
         The sparse YHX energy matrix.
     i, j, k, l : int
         The matrix coordinates.
@@ -150,11 +150,11 @@ def get_yhx_energy_with_collapse(
         return invalid_value
 
     # Otherwise, perform a standard lookup.
-    return yhx_matrix.get(i, j, k, l)
+    return yhx_matrix.get_energy(i, j, k, l)
 
 
 def get_vhx_energy_with_collapse(
-    vhx_matrix: SparseGapMatrix,
+    vhx_matrix: SparseGapEnergyMatrix,
     i: int, j: int, k: int, l: int,
     *, invalid_value: float = math.inf
 ) -> float:
@@ -167,7 +167,7 @@ def get_vhx_energy_with_collapse(
 
     Parameters
     ----------
-    vhx_matrix : SparseGapMatrix
+    vhx_matrix : SparseGapEnergyMatrix
         The sparse VHX energy matrix.
     i, j, k, l : int
         The matrix coordinates.
@@ -187,7 +187,7 @@ def get_vhx_energy_with_collapse(
     if k + 1 == l:
         return invalid_value
 
-    return vhx_matrix.get(i, j, k, l)
+    return vhx_matrix.get_energy(i, j, k, l)
 
 
 def get_wxi_or_wx(fold_state: EddyRivasFoldState, i: int, j: int) -> float:
@@ -211,7 +211,7 @@ def get_wxi_or_wx(fold_state: EddyRivasFoldState, i: int, j: int) -> float:
     wxi_matrix = getattr(fold_state, "wxi_matrix", None)
 
     # If it exists, get the value from it; otherwise, get from the standard wx_matrix.
-    return wxi_matrix.get(i, j) if wxi_matrix is not None else fold_state.wx_matrix.get(i, j)
+    return wxi_matrix.get_energy(i, j) if wxi_matrix is not None else fold_state.wx_matrix.get_energy(i, j)
 
 
 def whx_collapse_with(
@@ -261,13 +261,13 @@ def whx_collapse_with(
 
     # If a collapse condition is met, get the energy from the appropriate 2D WX matrix.
     if collapse:
-        result = fold_state.wxu_matrix.get(i, j)
+        result = fold_state.wxu_matrix.get_energy(i, j)
         if math.isfinite(result):
             _whx_lookup_cache[cache_key] = result
             return result
 
     # If not a collapse, perform a standard lookup in the sparse 4D WHX matrix and cache the result.
-    result = fold_state.whx_matrix.get(i, j, k, l)
+    result = fold_state.whx_matrix.get_energy(i, j, k, l)
     _whx_lookup_cache[cache_key] = result
     return result
 
@@ -318,13 +318,13 @@ def zhx_collapse_with(
 
     # If a collapse condition is met, get the energy from the appropriate 2D VX matrix.
     if collapse:
-        result = fold_state.vxu_matrix.get(i, j)
+        result = fold_state.vxu_matrix.get_energy(i, j)
         if math.isfinite(result):
             _zhx_lookup_cache[cache_key] = result
             return result
 
     # If not a collapse, perform a standard lookup in the sparse 4D ZHX matrix and cache the result.
-    result = fold_state.zhx_matrix.get(i, j, k, l)
+    result = fold_state.zhx_matrix.get_energy(i, j, k, l)
     _zhx_lookup_cache[cache_key] = result
 
     return result
@@ -335,13 +335,13 @@ def get_inner_matrix_energy(state, inner_matrix: str, r: int, s2: int, k: int, l
     Generic getter for inner-gap matrices by name.
     """
     if inner_matrix == "yhx":
-        return state.yhx_matrix.get(r, s2, k, l)
+        return state.yhx_matrix.get_energy(r, s2, k, l)
     if inner_matrix == "zhx":
-        return state.zhx_matrix.get(r, s2, k, l)
+        return state.zhx_matrix.get_energy(r, s2, k, l)
     if inner_matrix == "vhx":
-        return state.vhx_matrix.get(r, s2, k, l)
+        return state.vhx_matrix.get_energy(r, s2, k, l)
     if inner_matrix == "whx":
-        return state.whx_matrix.get(r, s2, k, l)
+        return state.whx_matrix.get_energy(r, s2, k, l)
 
     raise ValueError(f"Unknown inner_matrix: {inner_matrix}")
 

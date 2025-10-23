@@ -16,7 +16,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import (
     EddyRivasBackPointer,
     EddyRivasBacktrackOp,
 )
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pk
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pseudoknots
 
 
 # ----------------- Helpers -----------------
@@ -51,7 +51,7 @@ def test_empty_sequence_returns_empty_result():
     Tests the base case of an empty sequence, which should yield an empty result.
     """
     re_state = init_eddy_rivas_fold_state(0)  # n=0 triggers an early return.
-    res = traceback_with_pk(
+    res = traceback_with_pseudoknots(
         seq="",
         nested_state=object(),  # The nested state is not used in this path.
         eddy_rivas_fold_state=re_state,
@@ -73,7 +73,7 @@ def test_wx_fallback_to_nested_merges_pairs():
     # An empty state has no backpointers, so get(0,1) will return None.
     re_state = init_eddy_rivas_fold_state(len(seq))
 
-    res = traceback_with_pk(
+    res = traceback_with_pseudoknots(
         seq=seq,
         nested_state=object(),
         eddy_rivas_fold_state=re_state,
@@ -103,26 +103,26 @@ def test_wx_compose_whx_two_collapses_yield_two_disjoint_pairs_across_layers():
     re_state = init_eddy_rivas_fold_state(n)
 
     # 1. Set the WX backpointer to split into two WHX subproblems.
-    re_state.wx_back_ptr.set(
+    re_state.wx_back_ptr.set_backpointer(
         0, 5,
         EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_PK_COMPOSE_WX,
                              split=2, hole=(1, 4))
     )
 
     # 2. Set the left WHX subproblem to collapse to a nested pair (0, 1).
-    re_state.whx_back_ptr.set(
+    re_state.whx_back_ptr.set_backpointer(
         0, 2, 1, 4,
         EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
                              outer=(0, 1))
     )
     # 3. Set the right WHX subproblem to collapse to a nested pair (4, 5).
-    re_state.whx_back_ptr.set(
+    re_state.whx_back_ptr.set_backpointer(
         2, 5, 3, 3,
         EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
                              outer=(4, 5))
     )
 
-    res = traceback_with_pk(
+    res = traceback_with_pseudoknots(
         seq=seq,
         nested_state=object(),
         eddy_rivas_fold_state=re_state,
@@ -152,7 +152,7 @@ def test_wx_compose_yhx_overlap_adds_inner_pair_once():
 
     k, l = 1, 4
     # Set the backpointer for the overlap composition.
-    re_state.wx_back_ptr.set(
+    re_state.wx_back_ptr.set_backpointer(
         0, 5,
         EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_OVERLAP,
                              split=2, hole=(k, l))
@@ -160,7 +160,7 @@ def test_wx_compose_yhx_overlap_adds_inner_pair_once():
     # No further backpointers are needed, as the YHX handler adds (k,l)
     # before consulting any subproblem backpointers.
 
-    res = traceback_with_pk(
+    res = traceback_with_pseudoknots(
         seq=seq,
         nested_state=object(),
         eddy_rivas_fold_state=re_state,
@@ -194,7 +194,7 @@ def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
     # 1. WX -> YHX. This pushes two YHX frames. We'll trace the left one.
     # The right one, YHX(k+1..j, l-1..r+1) = YHX(2..5, 3..3), will also be traced,
     # adding its own inner pair (3,3).
-    re_state.wx_back_ptr.set(
+    re_state.wx_back_ptr.set_backpointer(
         i, j,
         EddyRivasBackPointer(
             op=EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX,
@@ -203,7 +203,7 @@ def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
     )
 
     # 2. YHX -> WHX. The YHX handler adds inner pair (k,l) and pushes a WHX frame.
-    re_state.yhx_back_ptr.set(
+    re_state.yhx_back_ptr.set_backpointer(
         i, r, k, l,
         EddyRivasBackPointer(
             op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX,
@@ -212,7 +212,7 @@ def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
     )
 
     # 3. WHX -> Collapse. The WHX handler delegates the `outer` to the nested tracer.
-    re_state.whx_back_ptr.set(
+    re_state.whx_back_ptr.set_backpointer(
         i, r, k, l,
         EddyRivasBackPointer(
             op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
@@ -220,7 +220,7 @@ def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
         )
     )
 
-    res = traceback_with_pk(
+    res = traceback_with_pseudoknots(
         seq=seq,
         nested_state=object(),
         eddy_rivas_fold_state=re_state,

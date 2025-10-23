@@ -6,9 +6,36 @@
   <component name="ChangeListManager">
     <list default="true" id="412c1b24-9f3a-48e6-b1d0-5a7a528ee298" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_back_pointer.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_back_pointer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/energies/data/parsers.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/energies/data/parsers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_dynamic_programming.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_fold_state.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_fold_state.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_traceback.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/eddy_rivas_traceback.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_back_pointer.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_back_pointer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/numba_kernels.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/eddy_rivas/numba_kernels.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/zucker/zucker_dynamic_programming.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/zucker/zucker_dynamic_programming.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/zucker/zucker_fold_state.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/zucker/zucker_fold_state.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/folding/zucker/zucker_traceback.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/folding/zucker/zucker_traceback.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/scripts/algorithm_performance.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/scripts/algorithm_performance.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/scripts/predict_rna.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/structures/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/structures/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/structures/gap_matrix.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/structures/gap_matrix.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/structures/tri_matrix.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/structures/tri_matrix.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/back_pointer_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/back_pointer_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_composition_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_composition_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_gap_matrix_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_gap_matrix_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_publish_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_publish_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_split_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/dp_split_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/matrix_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/rna_pk_fold/utils/dynamic_programming/matrix_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/integration/test_zucker_compare_vienna_rna.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/integration/test_zucker_compare_vienna_rna.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/integration/test_zucker_eddy_rivas_compare_ipknot.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/integration/test_zucker_eddy_rivas_compare_ipknot.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_fold_state.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_fold_state.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_recurrences.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_recurrences.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_traceback.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_traceback.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_rivas_eddy_table3.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_rivas_eddy_table3.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/folding/zucker/test_trace.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/zucker/test_trace.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/folding/zucker/test_zucker_fold_state.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/zucker/test_zucker_fold_state.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/folding/zucker/test_zucker_recurrences.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/zucker/test_zucker_recurrences.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/structures/test_gap_matrix.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/structures/test_gap_matrix.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/structures/test_tri_matrix.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/structures/test_tri_matrix.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

@@ -299,7 +299,7 @@ def test_nested_vs_vienna_shape_and_energy(seq: str, nested_engine: ZuckerFoldin
     state = make_fold_state(len(seq))
     nested_engine.fill_all_matrices(seq, state)
     our_dot_bracket = traceback_nested(seq, state).dot_bracket
-    our_mfe = state.w_matrix.get(0, len(seq) - 1)
+    our_mfe = state.w_matrix.get_energy(0, len(seq) - 1)
     assert math.isfinite(our_mfe), "Predicted MFE should be a finite number."
     assert len(our_dot_bracket) == len(seq), "Dot-bracket length must match sequence length."
 

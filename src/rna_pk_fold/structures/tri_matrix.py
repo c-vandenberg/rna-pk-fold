@@ -6,21 +6,27 @@ from typing import Generic, TypeVar, List, Tuple, Iterator, Dict, Any, Optional
 
 Pair = Tuple[int, int]
 Hole = Tuple[int, int]
-Outer = Tuple[int, int]
+OuterSpan = Tuple[int, int]
 
 INF = np.inf
 
 T = TypeVar("T")
 
 
-class ZuckerTriMatrix(Generic[T]):
+class ZuckerTriangularMatrix(Generic[T]):
     """
-    A memory-efficient, upper-triangular matrix for Zuker-style DP tables.
+    Upper-triangular matrix optimized for Zuker-style DP tables.
 
-    This class provides a 2D matrix-like interface but only allocates storage
-    for the upper triangle (where `i <= j`), saving nearly half the memory
-    compared to a full square matrix. It maps 2D `(i, j)` coordinates to a
-    compact 1D list-of-lists representation.
+    This structure stores only cells with `i <= j`, reducing memory by ~50% vs.
+    a dense `N x N` array. It exposes a simple 2D matrix interface backed by a
+    compact list-of-lists where row `i` has length `N - i`.
+
+    Parameters
+    ----------
+    seq_len : int
+        Sequence length `N` defining the matrix dimensions.
+    fill : T
+        Initial value used to populate all upper-triangle cells.
     """
     __slots__ = ("_seq_len", "_rows")
 
@@ -28,31 +34,73 @@ class ZuckerTriMatrix(Generic[T]):
         self._seq_len = seq_len
         self._rows: List[List[T]] = [[fill for _ in range(seq_len - i)] for i in range(seq_len)]
 
+    # ---------------------------------------------------------------------
+    # Properties
+    # ---------------------------------------------------------------------
     @property
     def size(self) -> int:
-        """Returns the sequence length N that defines the matrix dimensions."""
+        """
+        Returns the sequence length N that defines the matrix dimensions.
+
+        Returns
+        -------
+        int :
+            Sequence length `N` (matrix is `N x N`, upper triangle used).
+        """
         return self._seq_len
 
     @property
     def shape(self) -> Tuple[int, int]:
-        """Returns the matrix shape as a tuple `(N, N)`."""
+        """
+        Returns the matrix shape as a tuple `(N, N)`.
+
+        Returns
+        -------
+        Tuple[int, int] :
+            Matrix shape `(N, N)`.
+        """
         return self._seq_len, self._seq_len
 
-    def _offset(self, base_i: int, base_j: int) -> int:
-        """Calculates the column offset within a row and validates indices."""
-        if base_i < 0 or base_j < 0 or base_i >= self._seq_len or base_j >= self._seq_len or base_j < base_i:
-            raise IndexError(f"TriMatrix invalid index: (i={base_i}, j={base_j}) for N={self._seq_len}")
-        return base_j - base_i
-
-    def get(self, base_i: int, base_j: int) -> T:
+    # ---------------------------------------------------------------------
+    # Internal indexing helper
+    # ---------------------------------------------------------------------
+    def _offset(self, i_idx: int, j_idx: int) -> int:
         """
-        Retrieves the value at cell `(i, j)`.
+        Compute column offset inside row `i_idx` for upper-triangle storage.
 
         Parameters
         ----------
-        base_i : int
+        i_idx : int
+            Row index (0-based).
+        j_idx : int
+            Column index (0-based), must satisfy `i_idx <= j_idx < N`.
+
+        Returns
+        -------
+        int
+            Offset within row `i_idx` corresponding to column `j_idx`.
+
+        Raises
+        ------
+        IndexError
+            If indices are out of bounds or violate `i_idx <= j_idx`.
+        """
+        if i_idx < 0 or j_idx < 0 or i_idx >= self._seq_len or j_idx >= self._seq_len or j_idx < i_idx:
+            raise IndexError(f"TriMatrix invalid index: (i={i_idx}, j={j_idx}) for N={self._seq_len}")
+        return j_idx - i_idx
+
+    # ---------------------------------------------------------------------
+    # Core API
+    # ---------------------------------------------------------------------
+    def get_energy(self, i_idx: int, j_idx: int) -> T:
+        """
+        Retrieve the energy at cell `(i, j)`.
+
+        Parameters
+        ----------
+        i_idx : int
             The row index (0-based).
-        base_j : int
+        j_idx : int
             The column index (0-based).
 
         Returns
@@ -60,41 +108,53 @@ class ZuckerTriMatrix(Generic[T]):
         T
             The value stored at the specified cell.
         """
-        return self._rows[base_i][self._offset(base_i, base_j)]
+        return self._rows[i_idx][self._offset(i_idx, j_idx)]
 
-    def set(self, base_i: int, base_j: int, value: T) -> None:
+    def set_energy(self, i_idx: int, j_idx: int, energy: T) -> None:
         """
-        Sets the `value` at cell `(i, j)`.
+        Store an energy at cell `(i, j)`.
 
         Parameters
         ----------
-        base_i : int
+        i_idx : int
             The row index (0-based).
-        base_j : int
+        j_idx : int
             The column index (0-based).
-        value : T
-            The value to store in the cell.
+        energy : T
+            The energy value to store in the cell.
         """
-        self._rows[base_i][self._offset(base_i, base_j)] = value
+        self._rows[i_idx][self._offset(i_idx, j_idx)] = energy
 
-    def safe_range(self) -> range:
+    # ---------------------------------------------------------------------
+    # Iteration helpers
+    # ---------------------------------------------------------------------
+    def valid_index_range(self) -> range:
         """
-        Range helper for i. For each i, valid j are i..N-1.
-        Useful for nested loops: for i in tri.safe_range(): for j in range(i, N): ...
+        Range over valid row indices `i` for the upper triangle.
+
+        Returns
+        -------
+        range
+            Range `0..N-1`. For each `i` in this range, valid columns are `j = i..N-1`.
+
+        Notes
+        -----
+        Often used in nested loops:
+
+        >>> for i in tri.valid_index_range():
+        ...     for j in range(i, tri.size):
+        ...         ...
         """
         return range(self._seq_len)
 
-    def iter_upper_indices(self) -> Iterator[Tuple[int, int]]:
+    def iter_upper_triangle_indices(self) -> Iterator[Tuple[int, int]]:
         """
-        Yields all valid `(i, j)` index tuples in the upper triangle.
-
-        This iterator proceeds in row-major order, yielding `(i, j)` for all
-        `j >= i`.
+        Iterate all `(i, j)` index pairs with `i <= j`.
 
         Yields
         ------
         Iterator[Tuple[int, int]]
-            An iterator over the `(i, j)` index tuples.
+            `(i, j)` pairs in row-major order.
         """
         n = self._seq_len
         for i in range(n):
@@ -103,90 +163,100 @@ class ZuckerTriMatrix(Generic[T]):
 
 
 @dataclass(slots=True)
-class EddyRivasTriMatrix:
+class EddyRivasTriangularEnergyMatrix:
     """
-    A sparse, dictionary-based triangular matrix for Eddy-Rivas DP tables.
+    Sparse triangular energy matrix for `(i, j)` spans with optional dense mirror.
 
-    This class provides an `(i, j)`-indexed matrix that defaults to infinity.
-    It can be optionally converted to a dense NumPy array for performance-critical
-    access patterns after being populated.
+    Stores energies for Eddy–Rivas DP tables (e.g., `WX`, `VX`) in a sparse
+    dictionary keyed by `(i, j)` and can switch to a dense NumPy array for
+    faster access once populated.
 
     Attributes
     ----------
-    n : int
-        The length of the sequence (N).
+    seq_len : int
+        Sequence length `N`.
     data : Dict[OuterSpan, float]
-        The primary sparse storage, mapping `(i, j)` tuples to float energy values.
+        Sparse mapping from `(i, j)` to energy.
     _dense : Optional[np.ndarray]
-        A dense NumPy array mirror of the matrix, created on demand.
+        Dense `N x N` mirror (upper triangle used) created on demand.
     _is_dense_enabled : bool
-        A flag indicating whether the dense mirror has been created.
+        Whether the dense mirror is active.
     """
-    n: int
-    data: Dict[Outer, float] = field(default_factory=dict)
+    seq_len: int
+    data: Dict[OuterSpan, float] = field(default_factory=dict)
 
     _dense: Optional[np.ndarray] = field(default=None, repr=False)
     _is_dense_enabled: bool = field(default=False, repr=False)
 
-    def enable_dense(self) -> None:
+    def enable_dense_storage(self) -> None:
         """
         Converts the internal storage from a sparse dictionary to a dense NumPy array.
 
-        This method allocates a full NxN NumPy array, initializes it with infinity,
-        and copies all existing values from the sparse dictionary into it.
-        Subsequent `get` and `set` calls will use the faster NumPy array.
+        Allocates an `N x N` array initialized to `inf` and copies all values
+        from the sparse dictionary into the dense upper triangle. Subsequent
+        reads/writes synchronize with the dense array.
         """
         if self._is_dense_enabled:
             return
 
-        self._dense = np.full((self.n, self.n), np.inf, dtype=np.float64)
+        self._dense = np.full((self.seq_len, self.seq_len), np.inf, dtype=np.float64)
         for (i, j), v in self.data.items():
-            if 0 <= i <= j < self.n:
+            if 0 <= i <= j < self.seq_len:
                 self._dense[i, j] = v
         self._is_dense_enabled = True
 
-    def as_dense(self) -> np.ndarray:
+    def get_dense_view(self) -> np.ndarray:
+        """
+        Return a dense NumPy view of the matrix, creating it if necessary.
+
+        Returns
+        -------
+        np.ndarray
+            The `N x N` dense mirror (upper triangle relevant).
+        """
         if not self._is_dense_enabled:
-            self.enable_dense()
-        # mypy: _dense is not None here
+            self.enable_dense_storage()
         return self._dense  # type: ignore[return-value]
 
-    def get(self, i: int, j: int) -> float:
+    def get_energy(self, i: int, j: int) -> float:
         """
-        Retrieves the energy value for the given coordinates `(i, j)`.
+        Retrieve the energy at `(i, j)` with triangular/ bounds handling.
+
+        Returns `0.0` for the empty segment convenience case `(i == j + 1)`,
+        `inf` for out-of-bounds or unset cells, otherwise the stored energy.
 
         Parameters
         ----------
-        i, j : int
-            The indices of the cell.
+        i : int
+            5' index of the span.
+        j : int
+            3' index of the span.
 
         Returns
         -------
         float
-            The stored energy value. Defaults to `np.inf` for unassigned cells
-            or invalid indices. Returns 0.0 for empty segments `(i = j + 1)`.
+            Energy value, `0.0` for empty segment, or `inf` if unset/invalid.
         """
         if i > j:
             return 0.0 if i == j + 1 else INF  # empty segment convenience
-        if i < 0 or j >= self.n:
+        if i < 0 or j >= self.seq_len:
             return INF
         if self._is_dense_enabled:
             return float(self._dense[i, j])  # type: ignore[index]
         return self.data.get((i, j), INF)
 
-    def set(self, i: int, j: int, value: float) -> None:
+    def set_energy(self, i: int, j: int, value: float) -> None:
         """
-        Sets the energy `value` for the given coordinates `(i, j)`.
-
-        The value is written to both the sparse dictionary and the dense array
-        (if it has been enabled) to keep them synchronized.
+        Store an energy at `(i, j)` and keep sparse/dense views in sync.
 
         Parameters
         ----------
-        i, j : int
-            The indices of the cell.
+        i : int
+            5' index of the span.
+        j : int
+            3' index of the span.
         value : float
-            The energy value to store.
+            Energy value to write.
         """
         self.data[(i, j)] = value
         if self._is_dense_enabled:
@@ -194,52 +264,54 @@ class EddyRivasTriMatrix:
 
 
 @dataclass(slots=True)
-class EddyRivasTriBackPointer:
+class EddyRivasTriangularBackpointerMatrix:
     """
-    A sparse, dictionary-based triangular matrix for WX/VX backpointers.
+    Sparse triangular backpointer matrix for `(i, j)` spans.
 
-    This class provides storage for backpointer objects corresponding to the
-    `EddyRivasTriMatrix`. It uses a dictionary for sparse storage, as many
-    cells may not have a backpointer.
+    Mirrors `TriangularEnergyMatrix` but stores backpointer objects instead of
+    energies. Remains sparse since many cells have no backpointer.
 
     Attributes
     ----------
-    n : int
-        The length of the sequence (N).
+    seq_len : int
+        Sequence length.
     data : Dict[OuterSpan, Any]
-        The sparse dictionary mapping `(i, j)` tuples to backpointer objects.
+        Sparse mapping from `(i, j)` to a backpointer object.
     """
-    n: int
-    data: Dict[Outer, Any] = field(default_factory=dict)  # store RivasEddyBackPointer
+    seq_len: int
+    data: Dict[OuterSpan, Any] = field(default_factory=dict)  # store RivasEddyBackPointer
 
-    def get(self, i: int, j: int):
+    def get_backpointer(self, i: int, j: int):
         """
-        Retrieves the backpointer object for the given coordinates `(i, j)`.
+        Retrieves the backpointer at coordinates `(i, j)`.
 
         Parameters
         ----------
-        i, j : int
-            The indices of the cell.
+        i : int
+            5' index of the span.
+        j : int
+            3' index of the span.
 
         Returns
         -------
         Any | None
-            The stored backpointer object, or `None` if the indices are invalid
-            or no backpointer has been set.
+            Stored backpointer object, or `None` if unset or indices invalid.
         """
-        if i > j or i < 0 or j >= self.n:
+        if i > j or i < 0 or j >= self.seq_len:
             return None
         return self.data.get((i, j))
 
-    def set(self, i: int, j: int, value) -> None:
+    def set_backpointer(self, i: int, j: int, value) -> None:
         """
-        Sets the `value` (a backpointer object) for the given coordinates `(i, j)`.
+        Store a backpointer at `(i, j)`.
 
         Parameters
         ----------
-        i, j : int
-            The indices of the cell.
+        i : int
+            5' index of the span.
+        j : int
+            3' index of the span.
         value : Any
-            The backpointer object to store.
+            Backpointer object to store.
         """
         self.data[(i, j)] = value

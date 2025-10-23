@@ -79,30 +79,30 @@ def test_seed_from_nested_copies_nested_into_uncharged_and_wx_vx():
     n = 3
     # 1. Create and populate a mock "nested" fold state.
     nested = make_fold_state(n)
-    nested.w_matrix.set(0, 2, 7.0)
-    nested.v_matrix.set(0, 2, 9.5)
+    nested.w_matrix.set_energy(0, 2, 7.0)
+    nested.v_matrix.set_energy(0, 2, 9.5)
 
     # 2. Create a fresh Rivas-Eddy (RE) state.
     re_state = init_eddy_rivas_fold_state(n)
     # Sanity check: ensure initial values are as expected before seeding.
-    assert math.isinf(re_state.wxc_matrix.get(0, 2))
-    assert re_state.wxc_matrix.get(1, 1) == 0.0
+    assert math.isinf(re_state.wxc_matrix.get_energy(0, 2))
+    assert re_state.wxc_matrix.get_energy(1, 1) == 0.0
 
     # 3. Run the seeding process.
     EddyRivasFoldingEngine._seed_from_nested(nested, re_state)
 
     # 4. Verify the results.
     # The "uncharged" matrices should mirror the nested fold.
-    assert re_state.wxu_matrix.get(0, 2) == 7.0
-    assert re_state.vxu_matrix.get(0, 2) == 9.5
+    assert re_state.wxu_matrix.get_energy(0, 2) == 7.0
+    assert re_state.vxu_matrix.get_energy(0, 2) == 9.5
     # The "charged" matrices should remain at their default (+inf for off-diagonal).
-    assert math.isinf(re_state.wxc_matrix.get(0, 2))
-    assert math.isinf(re_state.vxc_matrix.get(0, 2))
+    assert math.isinf(re_state.wxc_matrix.get_energy(0, 2))
+    assert math.isinf(re_state.vxc_matrix.get_energy(0, 2))
     # The main WX/VX matrices should be populated with the best score (from uncharged).
-    assert re_state.wx_matrix.get(0, 2) == 7.0
-    assert re_state.vx_matrix.get(0, 2) == 9.5
+    assert re_state.wx_matrix.get_energy(0, 2) == 7.0
+    assert re_state.vx_matrix.get_energy(0, 2) == 9.5
     # The WXI matrix should also mirror the initial W matrix.
-    assert re_state.wxi_matrix.get(0, 2) == 7.0
+    assert re_state.wxi_matrix.get_energy(0, 2) == 7.0
 
 
 # -------------------- publish WX/VX selection --------------------
@@ -123,16 +123,16 @@ def test_publish_wx_prefers_unscaled_uncharged_and_sets_backpointer():
     eng = EddyRivasFoldingEngine(cfg)
 
     # Set up the test case: make the "uncharged" score better than "charged".
-    re_state.wxu_matrix.set(0, 1, 3.0)
-    re_state.wxc_matrix.set(0, 1, 5.0)
+    re_state.wxu_matrix.set_energy(0, 1, 3.0)
+    re_state.wxc_matrix.set_energy(0, 1, 5.0)
 
     # Run the publish step.
     eng._publish_wx_min_energy(re_state)
 
     # The final WX score should be the better one (from uncharged).
-    assert re_state.wx_matrix.get(0, 1) == 3.0
+    assert re_state.wx_matrix.get_energy(0, 1) == 3.0
     # A backpointer should be set indicating this choice.
-    bp = re_state.wx_back_ptr.get(0, 1)
+    bp = re_state.wx_back_ptr.get_backpointer(0, 1)
     assert bp is not None and bp.op is EddyRivasBacktrackOp.RE_WX_SELECT_UNCHARGED
 
 
@@ -151,16 +151,16 @@ def test_publish_vx_prefers_unscaled_uncharged_and_sets_backpointer():
     eng = EddyRivasFoldingEngine(cfg)
 
     # Set up the test case: make the "uncharged" score better.
-    re_state.vxu_matrix.set(0, 1, 1.25)
-    re_state.vxc_matrix.set(0, 1, 7.0)
+    re_state.vxu_matrix.set_energy(0, 1, 1.25)
+    re_state.vxc_matrix.set_energy(0, 1, 7.0)
 
     # Run the publish step.
     eng._publish_vx_min_energy(re_state)
 
     # The final VX score should be the better one.
-    assert re_state.vx_matrix.get(0, 1) == 1.25
+    assert re_state.vx_matrix.get_energy(0, 1) == 1.25
     # A backpointer should be set indicating the choice.
-    bp = re_state.vx_back_ptr.get(0, 1)
+    bp = re_state.vx_back_ptr.get_backpointer(0, 1)
     assert bp is not None and bp.op is EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED
 
 

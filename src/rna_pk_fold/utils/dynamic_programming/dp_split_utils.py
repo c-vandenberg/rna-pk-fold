@@ -5,7 +5,7 @@ from typing import Callable, Tuple
 import numpy as np
 
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
-from rna_pk_fold.folding.eddy_rivas.numba_kernels import best_sum, best_sum_with_penalty
+from rna_pk_fold.folding.eddy_rivas.numba_kernels import min_sum_over_index, min_sum_with_penalty_over_index
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_wxi_or_wx, get_zhx_energy_with_collapse
 
 
@@ -55,14 +55,14 @@ def build_whx_split_vectors(
     for t in range(span_len):
         split_idx = i + t
         if mode == WhxSplitMode.LEFT_WHX_WX:
-            left_val = state.whx_matrix.get(i, split_idx, k, l)
+            left_val = state.whx_matrix.get_energy(i, split_idx, k, l)
             right_val = get_wxi_or_wx(state, split_idx + 1, j)
         elif mode == WhxSplitMode.RIGHT_WX_WHX:
             left_val = get_wxi_or_wx(state, i, split_idx)
-            right_val = state.whx_matrix.get(split_idx + 1, j, k, l)
+            right_val = state.whx_matrix.get_energy(split_idx + 1, j, k, l)
         else:  # WhxSplitMode.OVERLAP
-            left_val = state.whx_matrix.get(i, split_idx, k, l)
-            right_val = state.whx_matrix.get(split_idx + 1, j, k, l)
+            left_val = state.whx_matrix.get_energy(i, split_idx, k, l)
+            right_val = state.whx_matrix.get_energy(split_idx + 1, j, k, l)
 
         if math.isfinite(left_val):
             left_costs[t] = left_val
@@ -88,9 +88,9 @@ def compute_whx_split_min(
     left_costs, right_costs = build_whx_split_vectors(mode, state, i, j, k, l)
 
     if mode == WhxSplitMode.OVERLAP and overlap_penalty != 0.0:
-        return best_sum_with_penalty(left_costs, right_costs, float(overlap_penalty))
+        return min_sum_with_penalty_over_index(left_costs, right_costs, float(overlap_penalty))
 
-    return best_sum(left_costs, right_costs)
+    return min_sum_over_index(left_costs, right_costs)
 
 # ---------------------------------------------------------------------
 # VHX: ZHX+WX split Scans Used Inside VHX Recurrences
@@ -119,7 +119,7 @@ def zhx_wx_split_min_vhx(
                 left_costs[t] = lv
             if math.isfinite(rv):
                 right_costs[t] = rv
-        return best_sum(left_costs, right_costs)
+        return min_sum_over_index(left_costs, right_costs)
 
         # mode == VhxSplitMode.RIGHT_ZHX_WX
     right_range_len = max(0, j - l)  # = j - l
@@ -136,7 +136,7 @@ def zhx_wx_split_min_vhx(
         if math.isfinite(rv):
             right_costs[t] = rv
 
-    return best_sum(left_costs, right_costs)
+    return min_sum_over_index(left_costs, right_costs)
 
 
 # ---------------------------------------------------------------------
@@ -160,13 +160,13 @@ def compute_zhx_split_min_over_zhx_wx(
         right_costs = np.full(left_range_len, np.inf, dtype=np.float64)
         for t in range(left_range_len):
             r = i + t
-            lv = state.zhx_matrix.get(i, j, r, l)
+            lv = state.zhx_matrix.get_energy(i, j, r, l)
             rv = get_wxi_or_wx(state, r + 1, k)
             if math.isfinite(lv):
                 left_costs[t] = lv
             if math.isfinite(rv):
                 right_costs[t] = rv
-        return best_sum(left_costs, right_costs)
+        return min_sum_over_index(left_costs, right_costs)
 
         # mode == ZhxSplitMode.RIGHT_ZHX_WX
     right_range_len = max(0, j - l)
@@ -176,14 +176,14 @@ def compute_zhx_split_min_over_zhx_wx(
     right_costs = np.full(right_range_len, np.inf, dtype=np.float64)
     for t in range(right_range_len):
         s2 = (l + 1) + t
-        lv = state.zhx_matrix.get(i, j, k, s2)
+        lv = state.zhx_matrix.get_energy(i, j, k, s2)
         rv = get_wxi_or_wx(state, l, s2 - 1)
         if math.isfinite(lv):
             left_costs[t] = lv
         if math.isfinite(rv):
             right_costs[t] = rv
 
-    return best_sum(left_costs, right_costs)
+    return min_sum_over_index(left_costs, right_costs)
 
 
 # ---------------------------------------------------------------------
@@ -207,13 +207,13 @@ def yhx_wx_split_min(
         right_costs = np.full(span_len, np.inf, dtype=np.float64)
         for t in range(span_len):
             r = i + t
-            lv = state.yhx_matrix.get(i, r, k, l)
+            lv = state.yhx_matrix.get_energy(i, r, k, l)
             rv = get_wxi_or_wx(state, r + 1, j)
             if math.isfinite(lv):
                 left_costs[t] = lv
             if math.isfinite(rv):
                 right_costs[t] = rv
-        return best_sum(left_costs, right_costs)
+        return min_sum_over_index(left_costs, right_costs)
 
     # YhxSplitMode.RIGHT_WX_YHX
     left_costs = np.full(span_len, np.inf, dtype=np.float64)
@@ -221,13 +221,13 @@ def yhx_wx_split_min(
     for t in range(span_len):
         s2 = i + t
         lv = get_wxi_or_wx(state, i, s2)
-        rv = state.yhx_matrix.get(s2 + 1, j, k, l)
+        rv = state.yhx_matrix.get_energy(s2 + 1, j, k, l)
         if math.isfinite(lv):
             left_costs[t] = lv
         if math.isfinite(rv):
             right_costs[t] = rv
 
-    return best_sum(left_costs, right_costs)
+    return min_sum_over_index(left_costs, right_costs)
 
 
 # ---------------------------------------------------------------------
@@ -263,9 +263,9 @@ def compute_best_split_from_vectors(
     Return (min_energy, argmin_t) given pre-built cost vectors and an optional penalty.
     """
     if penalty == 0.0:
-        return best_sum(left_costs, right_costs)
+        return min_sum_over_index(left_costs, right_costs)
 
-    return best_sum_with_penalty(left_costs, right_costs, float(penalty))
+    return min_sum_with_penalty_over_index(left_costs, right_costs, float(penalty))
 
 
 # ---------------------------------------------------------------------

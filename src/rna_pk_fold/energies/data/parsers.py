@@ -11,8 +11,7 @@ from rna_pk_fold.energies.energy_types import (
 from rna_pk_fold.energies.data.thermo_math import resolve_dh_ds
 
 
-# ---------- Top-level config helpers ----------
-
+# ---------- Top-level Config Helpers ----------
 def get_temperature_kelvin(data: Mapping[str, Any]) -> float:
     """
     Get the thermodynamic temperature in Kelvin.
@@ -92,7 +91,6 @@ def validate_rna_complements(complements: BasePairMap) -> None:
 
 
 # ---------- Generic Cell Helpers ----------
-
 def _cell(matrix: Any, idx_i: int, idx_j: int) -> float | None:
     """
     Safely fetch a numeric cell from a 2D matrix-like object.
@@ -272,7 +270,6 @@ def parse_loop_table(
 
 
 # ---------- Stacks (nearest-neighbor) ----------
-
 def parse_stacks_matrix(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
     """
     Parse the nearest-neighbor stacking matrix into flat ``"XY/ZW"`` keys.
@@ -322,7 +319,6 @@ def parse_stacks_matrix(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
 
 
 # ---------- Dangles ----------
-
 def _parse_dangle_matrix(
     dangle_matrix: Mapping[str, Any] | None,
     temp_k: float,
@@ -409,7 +405,6 @@ def parse_dangles(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
 
 
 # ---------- Mismatches (two schemas → flat "XY/ZW") ----------
-
 def parse_mismatch(data: Mapping[str, Any], section: str, temp_k: float) -> PairEnergies:
     """
     Parse internal/terminal mismatch tables into flat ``"XY/ZW"`` keys.
@@ -508,7 +503,6 @@ def parse_mismatch(data: Mapping[str, Any], section: str, temp_k: float) -> Pair
 
 
 # ---------- Special hairpins (optional) ----------
-
 def parse_special_hairpins(data: Mapping[str, Any], temp_k: float) -> PairEnergies:
     """
     Parse sequence-specific hairpin overrides (optional).
@@ -553,7 +547,6 @@ def parse_special_hairpins(data: Mapping[str, Any], temp_k: float) -> PairEnergi
 
 
 # ---------- Pseudoknots ----------
-
 def get_float(node: Mapping[str, Any], key: str, default: float) -> float:
     """
     Get a float value from a mapping with a default.

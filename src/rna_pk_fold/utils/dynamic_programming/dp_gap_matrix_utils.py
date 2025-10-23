@@ -111,11 +111,11 @@ def scan_is2_outer_min_bridge(
 ) -> Tuple[float, Optional[Tuple[int, int]], object]:
     # Accessors (no nested defs)
     if inner_matrix == "vhx":
-        inner_get = lambda r, s2: state.vhx_matrix.get(r, s2, k_idx, l_idx)
+        inner_get = lambda r, s2: state.vhx_matrix.get_energy(r, s2, k_idx, l_idx)
     elif inner_matrix == "zhx":
         inner_get = lambda r, s2: get_zhx_energy_with_collapse(state.zhx_matrix, state.vxu_matrix, r, s2, k_idx, l_idx)
     elif inner_matrix == "yhx":
-        inner_get = lambda r, s2: state.yhx_matrix.get(r, s2, k_idx, l_idx)
+        inner_get = lambda r, s2: state.yhx_matrix.get_energy(r, s2, k_idx, l_idx)
     elif inner_matrix == "whx":
         inner_get = lambda r, s2: get_whx_energy_with_collapse(state.whx_matrix, state.wxu_matrix, r, s2, k_idx, l_idx)
     else:
@@ -473,7 +473,7 @@ def update_tracker_for_whx_outer_trims(
     q_single_strand: float,
 ) -> None:
     # 1. Add an Unpaired Base at The 5' End of The Outer Span (Trim Left: (i+1,j))
-    energy = state.whx_matrix.get(i_idx + 1, j_idx, k_idx, l_idx)
+    energy = state.whx_matrix.get_energy(i_idx + 1, j_idx, k_idx, l_idx)
     if math.isfinite(energy):
         tracker.update_if_better(
             energy + q_single_strand,
@@ -481,7 +481,7 @@ def update_tracker_for_whx_outer_trims(
         )
 
     # 2. Add An Unpaired Base at The 3' End of The Outer Span (Trim Right: (i,j-1))
-    energy = state.whx_matrix.get(i_idx, j_idx - 1, k_idx, l_idx)
+    energy = state.whx_matrix.get_energy(i_idx, j_idx - 1, k_idx, l_idx)
     if math.isfinite(energy):
         tracker.update_if_better(
             energy + q_single_strand,
@@ -514,7 +514,7 @@ def update_tracker_for_whx_single_strand_both(
     l_idx: int,
     q_single_strand: float,
 ) -> None:
-    energy = state.whx_matrix.get(i_idx + 1, j_idx - 1, k_idx, l_idx)
+    energy = state.whx_matrix.get_energy(i_idx + 1, j_idx - 1, k_idx, l_idx)
     if math.isfinite(energy):
         tracker.update_if_better(
             energy + 2.0 * q_single_strand,
@@ -537,7 +537,7 @@ def update_tracker_for_whx_splits(
     # 1. Split Left into WHX(i,r:k,l) + WX(r+1,j)
     cand, t_star = compute_best_split_sum(
         span_len,
-        left_fetch=lambda t: state.whx_matrix.get(i_idx, i_idx + t, k_idx, l_idx),
+        left_fetch=lambda t: state.whx_matrix.get_energy(i_idx, i_idx + t, k_idx, l_idx),
         right_fetch=lambda t: get_wxi_or_wx(state, i_idx + t + 1, j_idx),
     )
     if t_star >= 0:
@@ -555,7 +555,7 @@ def update_tracker_for_whx_splits(
     cand, t_star = compute_best_split_sum(
         span_len,
         left_fetch=lambda t: get_wxi_or_wx(state, i_idx, i_idx + t),
-        right_fetch=lambda t: state.whx_matrix.get(i_idx + t + 1, j_idx, k_idx, l_idx),
+        right_fetch=lambda t: state.whx_matrix.get_energy(i_idx + t + 1, j_idx, k_idx, l_idx),
     )
     if t_star >= 0:
         tracker.update_if_better(
@@ -584,8 +584,8 @@ def update_tracker_for_whx_overlap_split(
 
     cand, t_star = compute_best_split_sum(
         span_len,
-        left_fetch=lambda t: state.whx_matrix.get(i_idx, i_idx + t, k_idx, l_idx),
-        right_fetch=lambda t: state.whx_matrix.get(i_idx + t + 1, j_idx, k_idx, l_idx),
+        left_fetch=lambda t: state.whx_matrix.get_energy(i_idx, i_idx + t, k_idx, l_idx),
+        right_fetch=lambda t: state.whx_matrix.get_energy(i_idx + t + 1, j_idx, k_idx, l_idx),
         penalty=float(overlap_penalty),
     )
     if t_star >= 0:

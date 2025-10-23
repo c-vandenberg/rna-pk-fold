@@ -5,129 +5,170 @@ import math
 
 Pair = Tuple[int, int]
 Hole = Tuple[int, int]
-Outer = Tuple[int, int]
+OuterSpan = Tuple[int, int]
 
 INF = math.inf
 
 
 @dataclass(slots=True)
-class SparseGapMatrix:
+class SparseGapEnergyMatrix:
     """
-    A memory-efficient, sparse representation of a 4D gap matrix.
+    Sparse 4D energy matrix for gapped sub-problems `(i, j : k, l)`.
 
-    This data structure is used for the `whx`, `vhx`, `zhx`, and `yhx` matrices
-    in the Eddy-Rivas algorithm. Since most combinations of `(i, j, k, l)` are
-    invalid or have infinite energy, a dense 4D array would be prohibitively
-    large. This class uses a nested dictionary `Dict[(i,j), Dict[(k,l), float]]`
-    to store only the finite, calculated energy values.
+    This structure stores finite energies for gap matrices used by the
+    Rivas–Eddy algorithm (`whx`, `vhx`, `zhx`, `yhx`) in a memory-efficient
+    way. Only computed (finite) entries are kept in a nested dictionary
+    keyed by outer span and inner hole: `Dict[(i, j), Dict[(k, l), float]]`.
 
     Attributes
     ----------
-    n : int
-        The length of the RNA sequence.
-    data : Dict[OuterSpan, Dict[InnerHole, float]]
-        The underlying nested dictionary storing the sparse matrix data.
+    seq_len : int
+        Sequence length.
+    data : Dict[OuterSpan, Dict[Hole, float]]
+        Nested mapping from outer span `(i, j)` to inner hole `(k, l)` to energy.
     """
-    n: int
-    data: Dict[Outer, Dict[Hole, float]] = field(default_factory=dict)
+    seq_len: int
+    data: Dict[OuterSpan, Dict[Hole, float]] = field(default_factory=dict)
 
-    def get(self, i: int, j: int, k: int, l: int) -> float:
+    def get_energy(self, outer_i: int, outer_j: int, hole_k: int, hole_l: int) -> float:
+        """
+        Retrieve the energy at coordinates `(outer_i, outer_j : hole_k, hole_l)`.
+
+        Performs basic geometry checks for a valid triangular/gapped configuration
+        and returns `inf` for out-of-bounds or missing entries.
+
+        Parameters
+        ----------
+        outer_i : int
+            5' index of the outer span.
+        outer_j : int
+            3' index of the outer span.
+        hole_k : int
+            5' index of the inner hole.
+        hole_l : int
+            3' index of the inner hole.
+
+        Returns
+        -------
+        float
+            Stored energy if present; `inf` otherwise.
+        """
         # --- 1. Bounds Checking ---
         # Enforce valid triangular and nested geometry for the indices.
-        if i < 0 or j >= self.n or k < i or l > j or i > j or k > l:
+        if (
+            outer_i < 0
+            or outer_j >= self.seq_len
+            or hole_k < outer_i
+            or hole_l > outer_j
+            or outer_i > outer_j
+            or hole_k > hole_l
+        ):
             return INF
 
         # --- 2. Data Retrieval ---
         # Look up the outer span dictionary.
-        row = self.data.get((i, j))
+        row = self.data.get((outer_i, outer_j))
         if row is None:
             return INF
 
         # Look up the inner hole value, defaulting to infinity if not found.
-        return row.get((k, l), INF)
+        return row.get((hole_k, hole_l), INF)
 
-    def set(self, i: int, j: int, k: int, l: int, value: float) -> None:
+    def set_energy(self, outer_i: int, outer_j: int, hole_k: int, hole_l: int, energy: float) -> None:
         """
-       Sets the energy `value` for the given 4D coordinates `(i, j, k, l)`.
-
-       Parameters
-       ----------
-       i, j : int
-           The indices of the outer span.
-       k, l : int
-           The indices of the inner hole.
-       value : float
-           The energy value to store.
-       """
-        row = self.data.setdefault((i, j), {})
-        row[(k, l)] = value
-
-    def row(self, i: int, j: int) -> Dict[Hole, float]:
-        """
-        Retrieves the entire dictionary of inner holes for a given outer span `(i, j)`.
+        Store an energy value at `(outer_i, outer_j : hole_k, hole_l)`.
 
         Parameters
         ----------
-        i, j : int
-            The indices of the outer span.
+        outer_i : int
+            5' index of the outer span.
+        outer_j : int
+            3' index of the outer span.
+        hole_k : int
+            5' index of the inner hole.
+        hole_l : int
+            3' index of the inner hole.
+        energy : float
+            Energy value to record.
+        """
+        row = self.data.setdefault((outer_i, outer_j), {})
+        row[(hole_k, hole_l)] = energy
+
+    def get_outer_span_map(self, outer_i: int, outer_j: int) -> Dict[Hole, float]:
+        """
+        Return (and create if missing) the mapping of holes for an outer span `(i, j)`.
+
+        Parameters
+        ----------
+        outer_i : int
+            5' index of the outer span.
+        outer_j : int
+            3' index of the outer span.
 
         Returns
         -------
-        Dict[InnerHole, float]
-            A dictionary mapping all stored `(k, l)` holes to their energy
-            values for the given outer span `(i, j)`.
+        Dict[Hole, float]
+            Dictionary mapping each stored hole `(k, l)` to its energy
         """
-        return self.data.setdefault((i, j), {})
+        return self.data.setdefault((outer_i, outer_j), {})
 
 
 @dataclass(slots=True)
-class SparseGapBackptr:
+class SparseGapBackpointerMatrix:
     """
-    A sparse storage for backpointers corresponding to a 4D gap matrix.
+    Sparse 4D backpointer matrix for gapped subproblems `(i, j : k, l)`.
 
-    This class mirrors the structure of `SparseGapMatrix` but is designed to
-    store backpointer objects instead of float energy values.
+    Mirrors `SparseGapEnergyMatrix` but stores backpointer objects instead of
+    energies, using the same nested dictionary shape:
+    `Dict[(i, j), Dict[(k, l), object]]`.
 
     Attributes
     ----------
-    n : int
-        The length of the RNA sequence.
-    data : Dict[OuterSpan, Dict[InnerHole, object]]
-        The underlying nested dictionary storing the sparse backpointer data.
+    seq_len : int
+        Sequence length.
+    data : Dict[OuterSpan, Dict[Hole, object]]
+        Nested mapping from outer span `(i, j)` to inner hole `(k, l)` to backpointer.
     """
-    n: int
-    data: Dict[Outer, Dict[Hole, object]] = field(default_factory=dict)
+    seq_len: int
+    data: Dict[OuterSpan, Dict[Hole, object]] = field(default_factory=dict)
 
-    def get(self, i: int, j: int, k: int, l: int):
+    def get_backpointer(self, outer_i: int, outer_j: int, hole_k: int, hole_l: int):
         """
-       Retrieves the backpointer object for the given 4D coordinates.
-
-       Parameters
-       ----------
-       i, j : int
-           The indices of the outer span.
-       k, l : int
-           The indices of the inner hole.
-
-       Returns
-       -------
-       object | None
-           The stored backpointer object, or `None` if no backpointer has
-           been set for these coordinates.
-       """
-        return self.data.get((i, j), {}).get((k, l))
-
-    def set(self, i: int, j: int, k: int, l: int, back_pointer) -> None:
-        """
-        Sets the `back_pointer` object for the given 4D coordinates.
+        Retrieve the backpointer at `(outer_i, outer_j : hole_k, hole_l)`.
 
         Parameters
         ----------
-        i, j : int
-            The indices of the outer span.
-        k, l : int
-            The indices of the inner hole.
-        back_pointer : object
-            The backpointer object to store.
+        outer_i : int
+            5' index of the outer span.
+        outer_j : int
+            3' index of the outer span.
+        hole_k : int
+            5' index of the inner hole.
+        hole_l : int
+            3' index of the inner hole.
+
+        Returns
+        -------
+        object | None
+            Backpointer object if present; `None` otherwise.
         """
-        self.data.setdefault((i, j), {})[(k, l)] = back_pointer
+        return self.data.get((outer_i, outer_j), {}).get((hole_k, hole_l))
+
+    def set_backpointer(self, outer_i: int, outer_j: int, hole_k: int, hole_l: int, backpointer) -> None:
+        """
+        Store a backpointer at `(outer_i, outer_j : hole_k, hole_l)`.
+
+        Parameters
+        ----------
+        outer_i : int
+            5' index of the outer span.
+        outer_j : int
+            3' index of the outer span.
+        hole_k : int
+            5' index of the inner hole.
+        hole_l : int
+            3' index of the inner hole.
+        backpointer : object
+            Backpointer object to record.
+        """
+        self.data.setdefault((outer_i, outer_j), {})[(hole_k, hole_l)] = backpointer

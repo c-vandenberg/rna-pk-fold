@@ -3,8 +3,8 @@ from dataclasses import dataclass
 import math
 from typing import Dict, Tuple
 
-from rna_pk_fold.structures.tri_matrix import EddyRivasTriMatrix, EddyRivasTriBackPointer
-from rna_pk_fold.structures.gap_matrix import SparseGapMatrix, SparseGapBackptr
+from rna_pk_fold.structures.tri_matrix import EddyRivasTriangularEnergyMatrix, EddyRivasTriangularBackpointerMatrix
+from rna_pk_fold.structures.gap_matrix import SparseGapEnergyMatrix, SparseGapBackpointerMatrix
 
 wx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
 vx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
@@ -23,70 +23,70 @@ class EddyRivasFoldState:
     ----------
     seq_len : int
         The length of the RNA sequence (N).
-    wx_matrix : EddyRivasTriMatrix
+    wx_matrix : EddyRivasTriangularEnergyMatrix
         Final optimal energy for subsequence [i, j].
-    vx_matrix : EddyRivasTriMatrix
+    vx_matrix : EddyRivasTriangularEnergyMatrix
         Final optimal energy for subsequence [i, j], given i and j form a pair.
-    wxi_matrix : EddyRivasTriMatrix
+    wxi_matrix : EddyRivasTriangularEnergyMatrix
         Optimal energy for [i, j] in the context of a multiloop.
-    wxu_matrix : EddyRivasTriMatrix
+    wxu_matrix : EddyRivasTriangularEnergyMatrix
         "Uncharged" energy for [i, j] from nested-only structures.
-    wxc_matrix : EddyRivasTriMatrix
+    wxc_matrix : EddyRivasTriangularEnergyMatrix
         "Charged" energy for [i, j] from pseudoknotted structures.
-    vxu_matrix : EddyRivasTriMatrix
+    vxu_matrix : EddyRivasTriangularEnergyMatrix
         "Uncharged" energy for paired [i, j] from nested-only structures.
-    vxc_matrix : EddyRivasTriMatrix
+    vxc_matrix : EddyRivasTriangularEnergyMatrix
         "Charged" energy for paired [i, j] from pseudoknotted structures.
-    wx_back_ptr : EddyRivasTriBackPointer
+    wx_back_ptr : EddyRivasTriangularBackpointerMatrix
         Backpointers for the final wx_matrix.
-    vx_back_ptr : EddyRivasTriBackPointer
+    vx_back_ptr : EddyRivasTriangularBackpointerMatrix
         Backpointers for the final vx_matrix.
-    whx_matrix : SparseGapMatrix
+    whx_matrix : SparseGapEnergyMatrix
         Energy for a gapped structure on [i..k] and [l..j], with i,j,k,l undetermined.
-    vhx_matrix : SparseGapMatrix
+    vhx_matrix : SparseGapEnergyMatrix
         Energy for a gapped structure where (i,j) and (k,l) are both paired.
-    yhx_matrix : SparseGapMatrix
+    yhx_matrix : SparseGapEnergyMatrix
         Energy for a gapped structure where (k,l) is paired, (i,j) is undetermined.
-    zhx_matrix : SparseGapMatrix
+    zhx_matrix : SparseGapEnergyMatrix
         Energy for a gapped structure where (i,j) is paired, (k,l) is undetermined.
-    whx_back_ptr : SparseGapBackptr
+    whx_back_ptr : SparseGapBackpointerMatrix
         Backpointers for the whx_matrix.
-    vhx_back_ptr : SparseGapBackptr
+    vhx_back_ptr : SparseGapBackpointerMatrix
         Backpointers for the vhx_matrix.
-    yhx_back_ptr : SparseGapBackptr
+    yhx_back_ptr : SparseGapBackpointerMatrix
         Backpointers for the yhx_matrix.
-    zhx_back_ptr : SparseGapBackptr
+    zhx_back_ptr : SparseGapBackpointerMatrix
         Backpointers for the zhx_matrix.
     """
     seq_len: int
 
     # --- Non-gap Matrices (Energies, 2D) ---
-    wx_matrix: EddyRivasTriMatrix
-    vx_matrix: EddyRivasTriMatrix
-    wxi_matrix: EddyRivasTriMatrix
-    wxu_matrix: EddyRivasTriMatrix  # uncharged (baseline, nested-only)
-    wxc_matrix: EddyRivasTriMatrix  # charged   (has paid Gw at least once)
-    vxu_matrix: EddyRivasTriMatrix
-    vxc_matrix: EddyRivasTriMatrix
+    wx_matrix: EddyRivasTriangularEnergyMatrix
+    vx_matrix: EddyRivasTriangularEnergyMatrix
+    wxi_matrix: EddyRivasTriangularEnergyMatrix
+    wxu_matrix: EddyRivasTriangularEnergyMatrix  # uncharged (baseline, nested-only)
+    wxc_matrix: EddyRivasTriangularEnergyMatrix  # charged   (has paid Gw at least once)
+    vxu_matrix: EddyRivasTriangularEnergyMatrix
+    vxc_matrix: EddyRivasTriangularEnergyMatrix
 
     # --- Non-gap Matrices (Back-pointers, 2D) ---
-    wx_back_ptr: EddyRivasTriBackPointer
-    vx_back_ptr: EddyRivasTriBackPointer
+    wx_back_ptr: EddyRivasTriangularBackpointerMatrix
+    vx_back_ptr: EddyRivasTriangularBackpointerMatrix
 
     # --- Gap Matrices (Energies, 4D) ---
-    whx_matrix: SparseGapMatrix
-    vhx_matrix: SparseGapMatrix
-    yhx_matrix: SparseGapMatrix
-    zhx_matrix: SparseGapMatrix
+    whx_matrix: SparseGapEnergyMatrix
+    vhx_matrix: SparseGapEnergyMatrix
+    yhx_matrix: SparseGapEnergyMatrix
+    zhx_matrix: SparseGapEnergyMatrix
 
     # --- Gap Matrices (Back-pointers, 4D) ---
-    whx_back_ptr: SparseGapBackptr
-    vhx_back_ptr: SparseGapBackptr
-    yhx_back_ptr: SparseGapBackptr
-    zhx_back_ptr: SparseGapBackptr
+    whx_back_ptr: SparseGapBackpointerMatrix
+    vhx_back_ptr: SparseGapBackpointerMatrix
+    yhx_back_ptr: SparseGapBackpointerMatrix
+    zhx_back_ptr: SparseGapBackpointerMatrix
 
 
-def init_eddy_rivas_fold_state(n: int) -> EddyRivasFoldState:
+def init_eddy_rivas_fold_state(seq_len: int) -> EddyRivasFoldState:
     """
     Initializes and returns a new EddyRivasFoldState object.
 
@@ -96,7 +96,7 @@ def init_eddy_rivas_fold_state(n: int) -> EddyRivasFoldState:
 
     Parameters
     ----------
-    n : int
+    seq_len : int
         The length of the RNA sequence.
 
     Returns
@@ -105,52 +105,52 @@ def init_eddy_rivas_fold_state(n: int) -> EddyRivasFoldState:
         A fully initialized state object ready for the DP algorithm.
     """
     fold_state = EddyRivasFoldState(
-        seq_len=n,
+        seq_len=seq_len,
 
         # --- Matrix Instantiation ---
         # Instantiate 2D triangular matrices for non-gapped structures.
-        wx_matrix=EddyRivasTriMatrix(n),
-        vx_matrix=EddyRivasTriMatrix(n),
-        wxi_matrix=EddyRivasTriMatrix(n),
-        wxu_matrix=EddyRivasTriMatrix(n),  # Stores nested-only energies for WX
-        wxc_matrix=EddyRivasTriMatrix(n),  # Stores pseudoknotted energies for WX
-        vxu_matrix=EddyRivasTriMatrix(n),  # Stores nested-only energies for VX
-        vxc_matrix=EddyRivasTriMatrix(n),  # Stores pseudoknotted energies for VX
+        wx_matrix=EddyRivasTriangularEnergyMatrix(seq_len),
+        vx_matrix=EddyRivasTriangularEnergyMatrix(seq_len),
+        wxi_matrix=EddyRivasTriangularEnergyMatrix(seq_len),
+        wxu_matrix=EddyRivasTriangularEnergyMatrix(seq_len),  # Stores nested-only energies for WX
+        wxc_matrix=EddyRivasTriangularEnergyMatrix(seq_len),  # Stores pseudoknotted energies for WX
+        vxu_matrix=EddyRivasTriangularEnergyMatrix(seq_len),  # Stores nested-only energies for VX
+        vxc_matrix=EddyRivasTriangularEnergyMatrix(seq_len),  # Stores pseudoknotted energies for VX
 
         # Instantiate 2D triangular backpointer matrices.
-        wx_back_ptr=EddyRivasTriBackPointer(n),
-        vx_back_ptr=EddyRivasTriBackPointer(n),
+        wx_back_ptr=EddyRivasTriangularBackpointerMatrix(seq_len),
+        vx_back_ptr=EddyRivasTriangularBackpointerMatrix(seq_len),
 
         # Instantiate 4D sparse matrices for gapped structures.
-        whx_matrix=SparseGapMatrix(n),
-        vhx_matrix=SparseGapMatrix(n),
-        yhx_matrix=SparseGapMatrix(n),
-        zhx_matrix=SparseGapMatrix(n),
+        whx_matrix=SparseGapEnergyMatrix(seq_len),
+        vhx_matrix=SparseGapEnergyMatrix(seq_len),
+        yhx_matrix=SparseGapEnergyMatrix(seq_len),
+        zhx_matrix=SparseGapEnergyMatrix(seq_len),
 
         # Instantiate 4D sparse backpointer matrices.
-        whx_back_ptr=SparseGapBackptr(n),
-        vhx_back_ptr=SparseGapBackptr(n),
-        yhx_back_ptr=SparseGapBackptr(n),
-        zhx_back_ptr=SparseGapBackptr(n),
+        whx_back_ptr=SparseGapBackpointerMatrix(seq_len),
+        vhx_back_ptr=SparseGapBackpointerMatrix(seq_len),
+        yhx_back_ptr=SparseGapBackpointerMatrix(seq_len),
+        zhx_back_ptr=SparseGapBackpointerMatrix(seq_len),
 
     )
 
     # ---------- Matrix Initialization (Base Conditions) ----------
     # Set the initial energies for all subsequences of length 1 (i.e., a single base).
     # These values correspond to the base cases of the DP recursions.
-    for i in range(n):
+    for i in range(seq_len):
         # WX(i, i) = 0.0: The energy of a single, unpaired nucleotide is zero.
-        fold_state.wx_matrix.set(i, i, 0.0)
-        fold_state.vx_matrix.set(i, i, math.inf)
-        fold_state.wxi_matrix.set(i, i, 0.0)
+        fold_state.wx_matrix.set_energy(i, i, 0.0)
+        fold_state.vx_matrix.set_energy(i, i, math.inf)
+        fold_state.wxi_matrix.set_energy(i, i, 0.0)
 
         # WXC(i, i) is also set to 0.0; a single base has no structure and thus no pseudoknot penalty.
-        fold_state.wxu_matrix.set(i, i, 0.0)
+        fold_state.wxu_matrix.set_energy(i, i, 0.0)
 
         # VX(i, i) = +inf: A single nucleotide cannot form a base pair with itself.
-        fold_state.wxc_matrix.set(i, i, 0.0)
-        fold_state.vxu_matrix.set(i, i, math.inf)
-        fold_state.vxc_matrix.set(i, i, math.inf)
+        fold_state.wxc_matrix.set_energy(i, i, 0.0)
+        fold_state.vxu_matrix.set_energy(i, i, math.inf)
+        fold_state.vxc_matrix.set_energy(i, i, math.inf)
 
     # Note: Gap matrices (WHX, VHX, etc.) are sparse and do not require explicit initialization.
     # Their `get()` method is designed to return +infinity for any (i,j,k,l) entry that

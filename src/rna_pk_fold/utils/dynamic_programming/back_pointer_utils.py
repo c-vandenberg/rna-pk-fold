@@ -25,7 +25,7 @@ def get_wx_backpointer(state: EddyRivasFoldState, i: int, j: int) -> Optional[Ed
     Optional[EddyRivasBackPointer]
         The backpointer object stored at `WX[i, j]`, or `None` if it does not exist.
     """
-    return state.wx_back_ptr.get(i, j)
+    return state.wx_back_ptr.get_backpointer(i, j)
 
 
 def get_whx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
@@ -48,7 +48,7 @@ def get_whx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: in
     Optional[EddyRivasBackPointer]
         The backpointer object stored at `WHX[i, j, k, l]`, or `None` if it does not exist.
     """
-    return state.whx_back_ptr.get(i, j, k, l)
+    return state.whx_back_ptr.get_backpointer(i, j, k, l)
 
 
 def get_yhx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
@@ -71,7 +71,7 @@ def get_yhx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: in
     Optional[EddyRivasBackPointer]
         The backpointer object stored at `YHX[i, j, k, l]`, or `None` if it does not exist.
     """
-    return state.yhx_back_ptr.get(i, j, k, l)
+    return state.yhx_back_ptr.get_backpointer(i, j, k, l)
 
 
 def get_zhx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
@@ -94,7 +94,7 @@ def get_zhx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: in
     Optional[EddyRivasBackPointer]
         The backpointer object stored at `ZHX[i, j, k, l]`, or `None` if it does not exist.
     """
-    return state.zhx_back_ptr.get(i, j, k, l)
+    return state.zhx_back_ptr.get_backpointer(i, j, k, l)
 
 
 def get_vhx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: int) -> Optional[EddyRivasBackPointer]:
@@ -117,4 +117,4 @@ def get_vhx_backpointer(state: EddyRivasFoldState, i: int, j: int, k: int, l: in
     Optional[EddyRivasBackPointer]
         The backpointer object stored at `VHX[i, j, k, l]`, or `None` if it does not exist.
     """
-    return state.vhx_back_ptr.get(i, j, k, l)
+    return state.vhx_back_ptr.get_backpointer(i, j, k, l)

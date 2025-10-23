@@ -116,7 +116,7 @@ def _traceback_core(seq: str, state: ZuckerFoldState) -> TraceResult:
         # A 'W' frame represents the general problem for an interval [i, j].
         if which == 'W':
             # Retrieve the backpointer for this cell.
-            bp: ZuckerBackPointer = w_bp.get(i, j)
+            bp: ZuckerBackPointer = w_bp.get_energy(i, j)
             op = bp.operation
 
             # Rule: Base 'i' was left unpaired. Recurse on the smaller interval W[i+1, j].
@@ -143,7 +143,7 @@ def _traceback_core(seq: str, state: ZuckerFoldState) -> TraceResult:
 
         # A 'V' frame represents a subproblem enclosed by a pair (i, j).
         elif which == 'V':
-            bp: ZuckerBackPointer = v_bp.get(i, j)
+            bp: ZuckerBackPointer = v_bp.get_energy(i, j)
             op = bp.operation
 
             # Rule: (i,j) closed a hairpin. This is a terminal rule, so we just record the pair.
@@ -181,7 +181,7 @@ def _traceback_core(seq: str, state: ZuckerFoldState) -> TraceResult:
         # --- 'WM' Matrix Traceback ---
         # A 'WM' frame represents a subproblem inside a multiloop.
         elif which == 'WM':
-            bp: ZuckerBackPointer = wm_bp.get(i, j)
+            bp: ZuckerBackPointer = wm_bp.get_energy(i, j)
             op = bp.operation
 
             # Rule: Base 'i' was unpaired. Recurse on the smaller WM subproblem.
@@ -196,7 +196,7 @@ def _traceback_core(seq: str, state: ZuckerFoldState) -> TraceResult:
             elif op is ZuckerBacktrackOp.MULTI_ATTACH and bp.inner is not None:
                 p, q = bp.inner
                 # Ensure the branch is a valid helix before adding it.
-                if math.isfinite(state.v_matrix.get(p, q)):
+                if math.isfinite(state.v_matrix.get_energy(p, q)):
                     pairs.add(Pair(p, q))
                     # Recurse on the helix interior (V) and the rest of the multiloop (WM).
                     stack.append(('V', p, q))
@@ -246,7 +246,7 @@ def _traceback_core_with_seed(
             continue
 
         if which == 'W':
-            bp: ZuckerBackPointer = w_bp.get(i, j)
+            bp: ZuckerBackPointer = w_bp.get_energy(i, j)
             op = bp.operation
 
             if op is ZuckerBacktrackOp.UNPAIRED_LEFT:
@@ -266,7 +266,7 @@ def _traceback_core_with_seed(
                     stack.append(('W', k + 1, j))
 
         elif which == 'V':
-            bp: ZuckerBackPointer = v_bp.get(i, j)
+            bp: ZuckerBackPointer = v_bp.get_energy(i, j)
             op = bp.operation
 
             if op is ZuckerBacktrackOp.HAIRPIN:
@@ -291,7 +291,7 @@ def _traceback_core_with_seed(
                 pairs.add(Pair(i, j))
 
         elif which == 'WM':
-            bp: ZuckerBackPointer = wm_bp.get(i, j)
+            bp: ZuckerBackPointer = wm_bp.get_energy(i, j)
             op = bp.operation
 
             if op is ZuckerBacktrackOp.UNPAIRED_LEFT:
@@ -302,7 +302,7 @@ def _traceback_core_with_seed(
 
             elif op is ZuckerBacktrackOp.MULTI_ATTACH and bp.inner is not None:
                 p, q = bp.inner
-                if math.isfinite(state.v_matrix.get(p, q)):
+                if math.isfinite(state.v_matrix.get_energy(p, q)):
                     pairs.add(Pair(p, q))
                     stack.append(('V', p, q))
                     if q + 1 <= j:

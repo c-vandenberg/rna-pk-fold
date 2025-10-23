@@ -118,9 +118,9 @@ def test_fill_matrix_v_sets_inf_when_cannot_pair(fake_energy_model_factory):
     eng.fill_all_matrices(seq, state)
 
     # V[0,3] should remain at its default value of +infinity.
-    assert math.isinf(state.v_matrix.get(0, 3))
+    assert math.isinf(state.v_matrix.get_energy(0, 3))
     # The backpointer should remain in its default NONE state.
-    assert state.v_back_ptr.get(0, 3).operation is ZuckerBacktrackOp.NONE
+    assert state.v_back_ptr.get_energy(0, 3).operation is ZuckerBacktrackOp.NONE
 
 
 def test_fill_matrix_v_picks_hairpin_when_finite(fake_energy_model_factory):
@@ -143,8 +143,8 @@ def test_fill_matrix_v_picks_hairpin_when_finite(fake_energy_model_factory):
     eng = ZuckerFoldingEngine(energy_model=energy_model, config=ZuckerFoldingConfig())
     eng.fill_all_matrices(seq, state)
 
-    assert math.isclose(state.v_matrix.get(0, 4), 1.23, rel_tol=1e-12)
-    assert state.v_back_ptr.get(0, 4).operation is ZuckerBacktrackOp.HAIRPIN
+    assert math.isclose(state.v_matrix.get_energy(0, 4), 1.23, rel_tol=1e-12)
+    assert state.v_back_ptr.get_energy(0, 4).operation is ZuckerBacktrackOp.HAIRPIN
 
 
 def test_fill_matrix_v_prefers_internal_over_hairpin_when_better(fake_energy_model_factory):
@@ -171,11 +171,11 @@ def test_fill_matrix_v_prefers_internal_over_hairpin_when_better(fake_energy_mod
     eng.fill_all_matrices(seq, state)
 
     # Check that V[2,3] was filled correctly.
-    assert math.isclose(state.v_matrix.get(2, 3), 0.5, rel_tol=1e-12)
+    assert math.isclose(state.v_matrix.get_energy(2, 3), 0.5, rel_tol=1e-12)
     # Check that V[0,5] chose the better internal loop path.
-    assert math.isclose(state.v_matrix.get(0, 5), 2.0 + 0.5, rel_tol=1e-12)
+    assert math.isclose(state.v_matrix.get_energy(0, 5), 2.0 + 0.5, rel_tol=1e-12)
     # Verify the backpointer for V[0,5].
-    bp = state.v_back_ptr.get(0, 5)
+    bp = state.v_back_ptr.get_energy(0, 5)
     assert bp.operation is ZuckerBacktrackOp.INTERNAL
     assert bp.inner == (2, 3)
 
@@ -204,11 +204,11 @@ def test_fill_matrix_v_prefers_stack_over_internal_and_hairpin_when_best(fake_en
     eng.fill_all_matrices(seq, state)
 
     # Verify energies and backpointer.
-    v_inner = state.v_matrix.get(1, 2)
-    v_outer = state.v_matrix.get(0, 3)
+    v_inner = state.v_matrix.get_energy(1, 2)
+    v_outer = state.v_matrix.get_energy(0, 3)
     assert math.isclose(v_inner, -0.2, rel_tol=1e-12)
     assert math.isclose(v_outer, -0.7, rel_tol=1e-12)
-    bp = state.v_back_ptr.get(0, 3)
+    bp = state.v_back_ptr.get_energy(0, 3)
     assert bp.operation is ZuckerBacktrackOp.STACK
     assert bp.inner == (1, 2)
 
@@ -238,8 +238,8 @@ def test_v_tiebreak_prefers_stack_over_internal_on_tie(fake_energy_model_factory
     eng.fill_all_matrices(seq, state)
 
     # The final energy is 2.0, and the backpointer must be STACK due to the tie-break rule.
-    assert math.isclose(state.v_matrix.get(0, 3), 2.0, rel_tol=1e-12)
-    assert state.v_back_ptr.get(0, 3).operation is ZuckerBacktrackOp.STACK
+    assert math.isclose(state.v_matrix.get_energy(0, 3), 2.0, rel_tol=1e-12)
+    assert state.v_back_ptr.get_energy(0, 3).operation is ZuckerBacktrackOp.STACK
 
 
 def test_wm_unpaired_accumulates_c(fake_energy_model_factory):
@@ -265,8 +265,8 @@ def test_wm_unpaired_accumulates_c(fake_energy_model_factory):
     # For WM[0,3] (length 4), there are 3 unpaired extensions from WM[0,0].
     # The multiloop unpaired penalty `c` is 10.0 from the fixture.
     # Total energy = 3 * c = 30.0.
-    wm_val = state.wm_matrix.get(0, 3)
-    wm_bp  = state.wm_back_ptr.get(0, 3)
+    wm_val = state.wm_matrix.get_energy(0, 3)
+    wm_bp  = state.wm_back_ptr.get_energy(0, 3)
     assert math.isclose(wm_val, 30.0, rel_tol=1e-12)
     assert wm_bp.operation is ZuckerBacktrackOp.UNPAIRED_LEFT # Tie-break preference.
 
@@ -289,8 +289,8 @@ def test_wm_attach_helix_uses_branch_cost_and_v(fake_energy_model_factory):
     eng = ZuckerFoldingEngine(energy_model=energy_model, config=ZuckerFoldingConfig())
     eng.fill_all_matrices(seq, state)
 
-    wm_val = state.wm_matrix.get(0, 3)
-    wm_bp  = state.wm_back_ptr.get(0, 3)
+    wm_val = state.wm_matrix.get_energy(0, 3)
+    wm_bp  = state.wm_back_ptr.get_energy(0, 3)
 
     # Compare two paths for WM[0,3]:
     # 1. All unpaired: 3 * c = 30.0
@@ -337,8 +337,8 @@ def test_wm_attach_helix_adds_multiloop_end_bonus_when_available(fake_energy_mod
     eng = ZuckerFoldingEngine(energy_model=energy_model, config=ZuckerFoldingConfig())
     eng.fill_all_matrices(seq, state)
 
-    wm_val = state.wm_matrix.get(0, 3)
-    wm_bp  = state.wm_back_ptr.get(0, 3)
+    wm_val = state.wm_matrix.get_energy(0, 3)
+    wm_bp  = state.wm_back_ptr.get_energy(0, 3)
     # Calculation for WM[0,3] attaching helix (0,2):
     # b + V[0,2] + WM[3,3] + end_bonus = 10.0 + 2.0 + 0.0 + (-0.5) = 11.5
     assert math.isclose(wm_val, 11.5, rel_tol=1e-12)
@@ -368,8 +368,8 @@ def test_v_closing_multiloop_uses_wm_inside(fake_energy_model_factory):
     # For V[0,4], the inner segment is [1,3].
     # WM[1,3] will be filled based on 2 unpaired extensions: 2 * c = 2 * 10.0 = 20.0.
     # V[0,4] = a + WM[1,3] = 50.0 + 20.0 = 70.0.
-    assert math.isclose(state.v_matrix.get(0, 4), 70.0, rel_tol=1e-12)
-    assert state.v_back_ptr.get(0, 4).operation is ZuckerBacktrackOp.MULTI_ATTACH
+    assert math.isclose(state.v_matrix.get_energy(0, 4), 70.0, rel_tol=1e-12)
+    assert state.v_back_ptr.get_energy(0, 4).operation is ZuckerBacktrackOp.MULTI_ATTACH
 
 
 def test_w_base_case_and_unpaired_propagation(fake_energy_model_factory):
@@ -390,8 +390,8 @@ def test_w_base_case_and_unpaired_propagation(fake_energy_model_factory):
     eng.fill_all_matrices(seq, state)
 
     # The best energy for any structure on "AAAA" is 0.0 (no structure).
-    assert math.isclose(state.w_matrix.get(0, 3), 0.0, rel_tol=1e-12)
-    assert state.w_back_ptr.get(0, 3).operation is ZuckerBacktrackOp.BIFURCATION # Tie-break
+    assert math.isclose(state.w_matrix.get_energy(0, 3), 0.0, rel_tol=1e-12)
+    assert state.w_back_ptr.get_energy(0, 3).operation is ZuckerBacktrackOp.BIFURCATION # Tie-break
 
 
 def test_w_uses_v_when_pair_energy_is_better(fake_energy_model_factory):
@@ -412,8 +412,8 @@ def test_w_uses_v_when_pair_energy_is_better(fake_energy_model_factory):
     eng.fill_all_matrices(seq, state)
 
     # W[0,1] should take the value from V[0,1], as -1.5 is better than 0.0 (unpaired).
-    assert math.isclose(state.w_matrix.get(0, 1), -1.5, rel_tol=1e-12)
-    assert state.w_back_ptr.get(0, 1).operation is ZuckerBacktrackOp.PAIR
+    assert math.isclose(state.w_matrix.get_energy(0, 1), -1.5, rel_tol=1e-12)
+    assert state.w_back_ptr.get_energy(0, 1).operation is ZuckerBacktrackOp.PAIR
 
 
 def test_w_tiebreak_prefers_pair_over_unpaired_when_equal(fake_energy_model_factory):
@@ -436,8 +436,8 @@ def test_w_tiebreak_prefers_pair_over_unpaired_when_equal(fake_energy_model_fact
     eng.fill_all_matrices(seq, state)
 
     # The energy is 0.0, but the backpointer must be PAIR due to the tie-break rule.
-    assert math.isclose(state.w_matrix.get(0, 1), 0.0, rel_tol=1e-12)
-    assert state.w_back_ptr.get(0, 1).operation is ZuckerBacktrackOp.PAIR
+    assert math.isclose(state.w_matrix.get_energy(0, 1), 0.0, rel_tol=1e-12)
+    assert state.w_back_ptr.get_energy(0, 1).operation is ZuckerBacktrackOp.PAIR
 
 
 def test_w_bifurcation_beats_unpaired_and_v(fake_energy_model_factory):
@@ -458,9 +458,9 @@ def test_w_bifurcation_beats_unpaired_and_v(fake_energy_model_factory):
     eng.fill_all_matrices(seq, state)
 
     # The best score for W[0,3] is the sum of W[0,1] and W[2,3], which is -2.0 + -2.0 = -4.0.
-    assert math.isclose(state.w_matrix.get(0, 3), -4.0, rel_tol=1e-12)
+    assert math.isclose(state.w_matrix.get_energy(0, 3), -4.0, rel_tol=1e-12)
     # The backpointer should record the bifurcation and the split point k.
-    bp = state.w_back_ptr.get(0, 3)
+    bp = state.w_back_ptr.get_energy(0, 3)
     assert bp.operation is ZuckerBacktrackOp.BIFURCATION
     assert bp.split_k == 1
 

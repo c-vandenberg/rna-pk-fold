@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
-from rna_pk_fold.structures import ZuckerTriMatrix
+from rna_pk_fold.structures import ZuckerTriangularMatrix
 from rna_pk_fold.folding.zucker.zucker_back_pointer import ZuckerBackPointer
 
 wx_back_ptr: Dict[Tuple[int, int], Tuple[str, Tuple[int, int, int]]]
@@ -21,7 +21,7 @@ class ZuckerFoldState:
 
     Attributes
     ----------
-    w_matrix : ZuckerTriMatrix[float]
+    w_matrix : ZuckerTriangularMatrix[float]
         The main energy matrix. W[i, j] stores the minimum free energy for the
         subsequence from `i` to `j`, considering all possible nested structures
         (unpaired, paired, bifurcated).
@@ -40,12 +40,12 @@ class ZuckerFoldState:
     wm_back_ptr : ZuckerTriMatrix[ZuckerBackPointer]
         Backpointers for the `wm_matrix`.
     """
-    w_matrix: ZuckerTriMatrix[float]
-    v_matrix: ZuckerTriMatrix[float]
-    wm_matrix: ZuckerTriMatrix[float]
-    w_back_ptr: ZuckerTriMatrix[ZuckerBackPointer]
-    v_back_ptr: ZuckerTriMatrix[ZuckerBackPointer]
-    wm_back_ptr: ZuckerTriMatrix[ZuckerBackPointer]
+    w_matrix: ZuckerTriangularMatrix[float]
+    v_matrix: ZuckerTriangularMatrix[float]
+    wm_matrix: ZuckerTriangularMatrix[float]
+    w_back_ptr: ZuckerTriangularMatrix[ZuckerBackPointer]
+    v_back_ptr: ZuckerTriangularMatrix[ZuckerBackPointer]
+    wm_back_ptr: ZuckerTriangularMatrix[ZuckerBackPointer]
 
 
 def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> ZuckerFoldState:
@@ -79,20 +79,20 @@ def make_fold_state(seq_len: int, init_energy: float = float("inf")) -> ZuckerFo
     """
     # Allocate the three main energy matrices (W, V, WM) as triangular matrices,
     # filled with the initial energy value (infinity by default).
-    w_matrix = ZuckerTriMatrix[float](seq_len, init_energy)
-    v_matrix = ZuckerTriMatrix[float](seq_len, init_energy)
-    wm_matrix = ZuckerTriMatrix[float](seq_len, init_energy)
+    w_matrix = ZuckerTriangularMatrix[float](seq_len, init_energy)
+    v_matrix = ZuckerTriangularMatrix[float](seq_len, init_energy)
+    wm_matrix = ZuckerTriangularMatrix[float](seq_len, init_energy)
 
     # Allocate the corresponding backpointer matrices, filling them with default, empty backpointers.
-    w_back_ptr = ZuckerTriMatrix[ZuckerBackPointer](seq_len, ZuckerBackPointer())
-    v_back_ptr = ZuckerTriMatrix[ZuckerBackPointer](seq_len, ZuckerBackPointer())
-    wm_back_ptr = ZuckerTriMatrix[ZuckerBackPointer](seq_len, ZuckerBackPointer())
+    w_back_ptr = ZuckerTriangularMatrix[ZuckerBackPointer](seq_len, ZuckerBackPointer())
+    v_back_ptr = ZuckerTriangularMatrix[ZuckerBackPointer](seq_len, ZuckerBackPointer())
+    wm_back_ptr = ZuckerTriangularMatrix[ZuckerBackPointer](seq_len, ZuckerBackPointer())
 
     # Initialize the base case for the WM (multiloop) matrix.
     # The diagonal WM[i, i] represents an empty segment within a multiloop,
     # which has an energy cost of 0.0.
     for i in range(seq_len):
-        wm_matrix.set(i, i, 0.0)
+        wm_matrix.set_energy(i, i, 0.0)
 
     return ZuckerFoldState(
         w_matrix=w_matrix,

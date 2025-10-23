@@ -53,15 +53,15 @@ def test_wm_36_debug():
     # --- Debug Output: Print a detailed trace for the target cell WM[3,6] ---
     print(f"\n=== WM[3,6] Debug ===")
     print(f"Sequence [3:7]: {seq[3:7]}")  # The subsequence is UCUA
-    print(f"WM[3,6] = {state.wm_matrix.get(3, 6):.2f}")
+    print(f"WM[3,6] = {state.wm_matrix.get_energy(3, 6):.2f}")
 
     # Display the energy contributions from the two "unpaired" recurrence options.
     print(f"\nOptions for WM[3,6]:")
     # Option 1: Add an unpaired base on the left (5' side).
-    print(f"  Unpaired left: WM[4,6] + c = {state.wm_matrix.get(4, 6):.2f} + {c} = {state.wm_matrix.get(4, 6) + c:.2f}")
+    print(f"  Unpaired left: WM[4,6] + c = {state.wm_matrix.get_energy(4, 6):.2f} + {c} = {state.wm_matrix.get_energy(4, 6) + c:.2f}")
     # Option 2: Add an unpaired base on the right (3' side).
     print(
-        f"  Unpaired right: WM[3,5] + c = {state.wm_matrix.get(3, 5):.2f} + {c} = {state.wm_matrix.get(3, 5) + c:.2f}")
+        f"  Unpaired right: WM[3,5] + c = {state.wm_matrix.get_energy(3, 5):.2f} + {c} = {state.wm_matrix.get_energy(3, 5) + c:.2f}")
 
     # Display contributions from the "attach helix" / bifurcation options.
     print(f"\n  Attach helix options:")
@@ -72,13 +72,13 @@ def test_wm_36_debug():
             # This appears to be the bifurcation WM(i,j) -> V(i,k) + WM(k+1,j).
             # Note: The print statement uses 'V' for clarity, but the value is
             # fetched from the WM matrix in this specific implementation detail.
-            v_3k = state.wm_matrix.get(3, k)
+            v_3k = state.wm_matrix.get_energy(3, k)
             # Energy of the remaining subsequence on the 3' side.
-            tail = 0.0 if k + 1 > 6 else state.wm_matrix.get(k + 1, 6)
+            tail = 0.0 if k + 1 > 6 else state.wm_matrix.get_energy(k + 1, 6)
             print(f"    k={k} ({seq[3]}-{seq[k]}): V[3,{k}]={v_3k:.2f}, tail={tail:.2f}, total={b + v_3k + tail:.2f}")
 
     # Retrieve and print the backpointer to show which option was chosen.
-    wm_bp = state.wm_back_ptr.get(3, 6)
+    wm_bp = state.wm_back_ptr.get_energy(3, 6)
     print(f"\nWM[3,6] chose: {wm_bp.operation}")
     if wm_bp.inner:
         print(f"  inner: {wm_bp.inner}")

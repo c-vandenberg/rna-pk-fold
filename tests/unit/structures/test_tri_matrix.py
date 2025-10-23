@@ -9,10 +9,10 @@ structures are optimized for dynamic programming tables where only indices
 import math
 import pytest
 
-from rna_pk_fold.structures import ZuckerTriMatrix
+from rna_pk_fold.structures import ZuckerTriangularMatrix
 from rna_pk_fold.structures.tri_matrix import (
-    EddyRivasTriMatrix,
-    EddyRivasTriBackPointer,
+    EddyRivasTriangularEnergyMatrix,
+    EddyRivasTriangularBackpointerMatrix,
 )
 
 
@@ -25,7 +25,7 @@ def test_trimatrix_init_shape_and_defaults():
     """
     seq_len = 5
     fill = 123.45
-    tri_matrix = ZuckerTriMatrix[float](seq_len, fill)
+    tri_matrix = ZuckerTriangularMatrix[float](seq_len, fill)
 
     # Verify the reported shape and size.
     assert tri_matrix.shape == (seq_len, seq_len)
@@ -34,7 +34,7 @@ def test_trimatrix_init_shape_and_defaults():
     # All cells in the upper triangle should be initialized with the fill value.
     for i in range(seq_len):
         for j in range(i, seq_len):
-            assert tri_matrix.get(i, j) == fill
+            assert tri_matrix.get_energy(i, j) == fill
 
 
 def test_trimatrix_set_get_roundtrip():
@@ -44,16 +44,16 @@ def test_trimatrix_set_get_roundtrip():
     affecting neighboring cells.
     """
     seq_len = 4
-    tri_matrix = ZuckerTriMatrix[float](seq_len, float("inf"))
+    tri_matrix = ZuckerTriangularMatrix[float](seq_len, float("inf"))
 
     # Set a single cell's value.
-    tri_matrix.set(1, 3, -7.25)
-    assert tri_matrix.get(1, 3) == -7.25
+    tri_matrix.set_energy(1, 3, -7.25)
+    assert tri_matrix.get_energy(1, 3) == -7.25
 
     # Verify that other cells remain at their initial default value.
-    assert math.isinf(tri_matrix.get(0, 0))
-    assert math.isinf(tri_matrix.get(1, 1))
-    assert math.isinf(tri_matrix.get(0, 3))
+    assert math.isinf(tri_matrix.get_energy(0, 0))
+    assert math.isinf(tri_matrix.get_energy(1, 1))
+    assert math.isinf(tri_matrix.get_energy(0, 3))
 
 
 def test_trimatrix_invalid_indices_raise():
@@ -63,7 +63,7 @@ def test_trimatrix_invalid_indices_raise():
     the matrix dimensions and in the upper triangle (i <= j).
     """
     seq_len = 3
-    tri_matrix = ZuckerTriMatrix[int](seq_len, 0)
+    tri_matrix = ZuckerTriangularMatrix[int](seq_len, 0)
 
     # A list of coordinates that should be invalid.
     bad_indices = [
@@ -77,9 +77,9 @@ def test_trimatrix_invalid_indices_raise():
     # Both get() and set() should raise an error for each invalid index pair.
     for i, j in bad_indices:
         with pytest.raises(IndexError):
-            tri_matrix.get(i, j)
+            tri_matrix.get_energy(i, j)
         with pytest.raises(IndexError):
-            tri_matrix.set(i, j, 1)
+            tri_matrix.set_energy(i, j, 1)
 
 
 def test_trimatrix_iter_upper_indices_count_and_coverage():
@@ -89,8 +89,8 @@ def test_trimatrix_iter_upper_indices_count_and_coverage():
     triangle of the matrix exactly once.
     """
     seq_len = 6
-    tri_matrix = ZuckerTriMatrix[int](seq_len, 0)
-    seen = set(tri_matrix.iter_upper_indices())
+    tri_matrix = ZuckerTriangularMatrix[int](seq_len, 0)
+    seen = set(tri_matrix.iter_upper_triangle_indices())
 
     # The total number of cells in an upper triangular matrix of size N is N*(N+1)/2.
     expected_count = seq_len * (seq_len + 1) // 2
@@ -109,12 +109,12 @@ def test_trimatrix_generic_object_storage():
     """
     n = 3
     # Initialize with an empty list as the default value.
-    tri_matrix = ZuckerTriMatrix[list](n, fill=[])
-    tri_matrix.set(0, 1, ["x", 1])
-    tri_matrix.set(1, 2, ["y", 2])
+    tri_matrix = ZuckerTriangularMatrix[list](n, fill=[])
+    tri_matrix.set_energy(0, 1, ["x", 1])
+    tri_matrix.set_energy(1, 2, ["y", 2])
 
-    assert tri_matrix.get(0, 1) == ["x", 1]
-    assert tri_matrix.get(1, 2) == ["y", 2]
+    assert tri_matrix.get_energy(0, 1) == ["x", 1]
+    assert tri_matrix.get_energy(1, 2) == ["y", 2]
 
 
 # ---------------------------------------------------------------------------
@@ -126,18 +126,18 @@ def test_re_trimatrix_defaults_and_roundtrip():
     This matrix variant defaults to +infinity.
     """
     n = 5
-    re_tri = EddyRivasTriMatrix(n=n)
+    re_tri = EddyRivasTriangularEnergyMatrix(seq_len=n)
 
     # Unset cells should default to +infinity.
-    assert math.isinf(re_tri.get(0, 0))
-    assert math.isinf(re_tri.get(2, 4))
+    assert math.isinf(re_tri.get_energy(0, 0))
+    assert math.isinf(re_tri.get_energy(2, 4))
 
     # Test a simple set/get round-trip.
-    re_tri.set(1, 3, -2.75)
-    assert re_tri.get(1, 3) == -2.75
+    re_tri.set_energy(1, 3, -2.75)
+    assert re_tri.get_energy(1, 3) == -2.75
 
     # Ensure other cells were not affected.
-    assert math.isinf(re_tri.get(1, 4))
+    assert math.isinf(re_tri.get_energy(1, 4))
 
 
 def test_re_trimatrix_empty_segment_convenience():
@@ -148,19 +148,19 @@ def test_re_trimatrix_empty_segment_convenience():
     This matrix implements that convenience directly.
     """
     n = 4
-    re_tri = EddyRivasTriMatrix(n=n)
+    re_tri = EddyRivasTriangularEnergyMatrix(seq_len=n)
 
     # Accessing (j+1, j) should return 0.0.
-    assert re_tri.get(1, 0) == 0.0
-    assert re_tri.get(2, 1) == 0.0
-    assert re_tri.get(3, 2) == 0.0
+    assert re_tri.get_energy(1, 0) == 0.0
+    assert re_tri.get_energy(2, 1) == 0.0
+    assert re_tri.get_energy(3, 2) == 0.0
 
     # This rule also applies at the boundary of the matrix.
-    assert re_tri.get(n, n - 1) == 0.0
+    assert re_tri.get_energy(n, n - 1) == 0.0
 
     # Other cases where i > j should still return +infinity.
-    assert math.isinf(re_tri.get(3, 1))
-    assert math.isinf(re_tri.get(2, 0))
+    assert math.isinf(re_tri.get_energy(3, 1))
+    assert math.isinf(re_tri.get_energy(2, 0))
 
 
 def test_re_trimatrix_out_of_bounds_are_inf_for_normal_cells():
@@ -170,14 +170,14 @@ def test_re_trimatrix_out_of_bounds_are_inf_for_normal_cells():
     which can simplify the implementation of recurrence relations in the folding engine.
     """
     n = 3
-    re_tri = EddyRivasTriMatrix(n=n)
+    re_tri = EddyRivasTriangularEnergyMatrix(seq_len=n)
 
     # Out-of-bounds access should return +inf.
-    assert math.isinf(re_tri.get(-1, 0))
-    assert math.isinf(re_tri.get(0, n))
-    assert math.isinf(re_tri.get(-2, -1))
+    assert math.isinf(re_tri.get_energy(-1, 0))
+    assert math.isinf(re_tri.get_energy(0, n))
+    assert math.isinf(re_tri.get_energy(-2, -1))
     # This behavior applies to all invalid indices except the empty-segment case.
-    assert math.isinf(re_tri.get(2, 0))
+    assert math.isinf(re_tri.get_energy(2, 0))
 
 
 def test_re_trimatrix_overwrite_values():
@@ -185,11 +185,11 @@ def test_re_trimatrix_overwrite_values():
     Verifies that setting a value in the same cell twice overwrites the old value.
     """
     n = 5
-    re_tri = EddyRivasTriMatrix(n=n)
-    re_tri.set(0, 4, -1.0)
-    assert re_tri.get(0, 4) == -1.0
-    re_tri.set(0, 4, -3.5)
-    assert re_tri.get(0, 4) == -3.5
+    re_tri = EddyRivasTriangularEnergyMatrix(seq_len=n)
+    re_tri.set_energy(0, 4, -1.0)
+    assert re_tri.get_energy(0, 4) == -1.0
+    re_tri.set_energy(0, 4, -3.5)
+    assert re_tri.get_energy(0, 4) == -3.5
 
 
 # ---------------------------------------------------------------------------
@@ -211,19 +211,19 @@ def test_re_tribackpointer_defaults_and_roundtrip():
     Unset cells should return `None`, and it should preserve object identity.
     """
     n = 4
-    bp = EddyRivasTriBackPointer(n=n)
+    bp = EddyRivasTriangularBackpointerMatrix(seq_len=n)
 
     # Unset cells should default to None, indicating no path found yet.
-    assert bp.get(0, 0) is None
-    assert bp.get(1, 3) is None
+    assert bp.get_backpointer(0, 0) is None
+    assert bp.get_backpointer(1, 3) is None
 
     # Test set/get round-trip, verifying object identity with `is`.
     v = _DummyBP("wx", payload=(1, 3))
-    bp.set(1, 3, v)
-    assert bp.get(1, 3) is v
+    bp.set_backpointer(1, 3, v)
+    assert bp.get_backpointer(1, 3) is v
 
     # A different cell should remain None.
-    assert bp.get(1, 2) is None
+    assert bp.get_backpointer(1, 2) is None
 
 
 def test_re_tribackpointer_invalid_indices_return_none():
@@ -233,13 +233,13 @@ def test_re_tribackpointer_invalid_indices_return_none():
     `None`, signifying the absence of a traceback path from that cell.
     """
     n = 3
-    bp = EddyRivasTriBackPointer(n=n)
+    bp = EddyRivasTriangularBackpointerMatrix(seq_len=n)
 
     # Out-of-bounds access should return None.
-    assert bp.get(-1, 0) is None
-    assert bp.get(0, n) is None
+    assert bp.get_backpointer(-1, 0) is None
+    assert bp.get_backpointer(0, n) is None
     # Lower-triangle access (i > j) should return None.
-    assert bp.get(2, 1) is None
+    assert bp.get_backpointer(2, 1) is None
     # Note: The "empty segment" convenience of the energy matrix does not apply here.
-    assert bp.get(1, 0) is None
+    assert bp.get_backpointer(1, 0) is None
 

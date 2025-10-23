@@ -104,7 +104,7 @@ class ZuckerFoldingEngine:
                 self._fill_w_cell(i, j, state, seq)
 
         elapsed = time.perf_counter() - start_time
-        final_energy = state.w_matrix.get(0, n - 1)
+        final_energy = state.w_matrix.get_energy(0, n - 1)
 
         logger.info(f"Zucker DP completed in {elapsed:.2f}s ({elapsed * 1000:.0f}ms)")
         logger.info(f"Final W[0,{n - 1}] = {final_energy:.3f} kcal/mol")
@@ -159,7 +159,7 @@ class ZuckerFoldingEngine:
 
         # The base case for a single nucleotide (i == j) is already initialized to 0.
         if i == j:
-            wm_back_ptr.set(i, j, ZuckerBackPointer(operation=ZuckerBacktrackOp.NONE))
+            wm_back_ptr.set_energy(i, j, ZuckerBackPointer(operation=ZuckerBacktrackOp.NONE))
             return
 
         # Initialize the best energy and backpointer for this cell.
@@ -169,7 +169,7 @@ class ZuckerFoldingEngine:
 
         # --- Recurrence Cases for WM ---
         # Case 1: Add an unpaired base at the 5' end.
-        cand_energy = wm_matrix.get(i + 1, j) + unpaired_cost_c
+        cand_energy = wm_matrix.get_energy(i + 1, j) + unpaired_cost_c
         cand_rank = 1
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_LEFT)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
@@ -177,7 +177,7 @@ class ZuckerFoldingEngine:
         )
 
         # Case 2: Add an unpaired base at the 3' end.
-        cand_energy = wm_matrix.get(i, j - 1) + unpaired_cost_c
+        cand_energy = wm_matrix.get_energy(i, j - 1) + unpaired_cost_c
         cand_rank = 1
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_RIGHT)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
@@ -191,7 +191,7 @@ class ZuckerFoldingEngine:
                 continue
 
             # Get the energy of the closing helix V(i,k).
-            v_ik = v_matrix.get(i, k)
+            v_ik = v_matrix.get_energy(i, k)
             if math.isinf(v_ik):
                 continue
 
@@ -201,7 +201,7 @@ class ZuckerFoldingEngine:
                 end_bonus = best_multiloop_end_bonus(i, k, seq, self.energy_model.params, self.config.temp_k)
 
             # Get the energy of the remaining segment of the multiloop.
-            tail = 0.0 if k + 1 > j else wm_matrix.get(k + 1, j)
+            tail = 0.0 if k + 1 > j else wm_matrix.get_energy(k + 1, j)
 
             # Total energy is the sum of the branch penalty, helix energy, bonuses, and tail energy.
             cand_energy = branch_cost_b + v_ik + end_bonus + tail
@@ -214,8 +214,8 @@ class ZuckerFoldingEngine:
             )
 
         # Store the optimal energy and backpointer for this cell.
-        wm_matrix.set(i, j, best_energy)
-        wm_back_ptr.set(i, j, best_back_ptr)
+        wm_matrix.set_energy(i, j, best_energy)
+        wm_back_ptr.set_energy(i, j, best_back_ptr)
 
     def _fill_v_cell(self, seq: str, i: int, j: int, state: ZuckerFoldState,
                      multi_close_a: float) -> None:
@@ -259,8 +259,8 @@ class ZuckerFoldingEngine:
 
         # V(i,j) is only defined if 'i' and 'j' can form a base pair.
         if not can_pair(seq[i], seq[j]):
-            v_matrix.set(i, j, math.inf)
-            v_back_ptr.set(i, j, ZuckerBackPointer())
+            v_matrix.set_energy(i, j, math.inf)
+            v_back_ptr.set_energy(i, j, ZuckerBackPointer())
             return
 
         # Initialize the best energy and backpointer for this cell.
@@ -284,7 +284,7 @@ class ZuckerFoldingEngine:
                 base_i=i, base_j=j, base_k=i + 1, base_l=j - 1, seq=seq, temp_k=self.config.temp_k
             )
             if math.isfinite(delta_g_stk):
-                inner = v_matrix.get(i + 1, j - 1)
+                inner = v_matrix.get_energy(i + 1, j - 1)
                 cand_energy = delta_g_stk + inner
                 cand_rank = 0
                 cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.STACK, inner=(i + 1, j - 1))
@@ -306,7 +306,7 @@ class ZuckerFoldingEngine:
                     continue
 
                 # Total energy is the loop energy plus the energy of the enclosed helix V(k,l).
-                cand_energy = delta_g_intl + v_matrix.get(k, l)
+                cand_energy = delta_g_intl + v_matrix.get_energy(k, l)
                 cand_rank = 1
                 cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.INTERNAL, inner=(k, l))
                 best_energy, best_rank, best_back_ptr = self._compare_candidates(
@@ -315,7 +315,7 @@ class ZuckerFoldingEngine:
 
         # Case 3: (i,j) closes a multiloop.
         if j - i - 1 >= MIN_HAIRPIN_UNPAIRED:
-            wm_inside = state.wm_matrix.get(i + 1, j - 1)
+            wm_inside = state.wm_matrix.get_energy(i + 1, j - 1)
 
             # Total energy is the multiloop closing penalty plus the energy of the interior.
             cand_energy = multi_close_a + wm_inside
@@ -328,8 +328,8 @@ class ZuckerFoldingEngine:
             )
 
         # Store the optimal energy and backpointer for this cell.
-        v_matrix.set(i, j, best_energy)
-        v_back_ptr.set(i, j, best_back_ptr)
+        v_matrix.set_energy(i, j, best_energy)
+        v_back_ptr.set_energy(i, j, best_back_ptr)
 
     def _fill_w_cell(self, i: int, j: int, state: ZuckerFoldState, seq) -> None:
         """
@@ -368,8 +368,8 @@ class ZuckerFoldingEngine:
 
         # Base case: a single nucleotide has 0 energy and no structure.
         if i == j:
-            w_matrix.set(i, j, 0.0)
-            w_back_ptr.set(i, j, ZuckerBackPointer(operation=ZuckerBacktrackOp.NONE))
+            w_matrix.set_energy(i, j, 0.0)
+            w_back_ptr.set_energy(i, j, ZuckerBackPointer(operation=ZuckerBacktrackOp.NONE))
             return
 
         # Initialize the best energy and backpointer for this cell.
@@ -379,7 +379,7 @@ class ZuckerFoldingEngine:
 
         # --- Recurrence Cases for W ---
         # Case 1: Leave base 'i' unpaired.
-        cand_energy = w_matrix.get(i + 1, j)
+        cand_energy = w_matrix.get_energy(i + 1, j)
         cand_rank = 2
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_LEFT)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
@@ -387,7 +387,7 @@ class ZuckerFoldingEngine:
         )
 
         # Case 2: Leave base 'j' unpaired.
-        cand_energy = w_matrix.get(i, j - 1)
+        cand_energy = w_matrix.get_energy(i, j - 1)
         cand_rank = 2
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_RIGHT)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
@@ -395,7 +395,7 @@ class ZuckerFoldingEngine:
         )
 
         # Case 3: The pair (i,j) is formed.
-        cand_energy = v_matrix.get(i, j)
+        cand_energy = v_matrix.get_energy(i, j)
         cand_rank = 0
         cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.PAIR)
         best_energy, best_rank, best_back_ptr = self._compare_candidates(
@@ -404,7 +404,7 @@ class ZuckerFoldingEngine:
 
         # Case 4: Bifurcation. Split the interval [i,j] into two independent subproblems.
         for k in range(i, j):
-            cand_energy = w_matrix.get(i, k) + w_matrix.get(k + 1, j)
+            cand_energy = w_matrix.get_energy(i, k) + w_matrix.get_energy(k + 1, j)
             cand_rank = 1
             cand_back_ptr = ZuckerBackPointer(operation=ZuckerBacktrackOp.BIFURCATION, split_k=k)
             best_energy, best_rank, best_back_ptr = self._compare_candidates(
@@ -416,11 +416,11 @@ class ZuckerFoldingEngine:
             logger.debug(f"\n=== W[0,{j}] Final ===")
             logger.debug(f"Best energy: {best_energy:.2f}")
             logger.debug(f"Best operation: {best_back_ptr.operation}")
-            logger.debug(f"V[0,{j}]: {v_matrix.get(i, j):.2f}")
+            logger.debug(f"V[0,{j}]: {v_matrix.get_energy(i, j):.2f}")
 
         # Store the optimal energy and backpointer for this cell.
-        w_matrix.set(i, j, best_energy)
-        w_back_ptr.set(i, j, best_back_ptr)
+        w_matrix.set_energy(i, j, best_energy)
+        w_back_ptr.set_energy(i, j, best_back_ptr)
 
     @staticmethod
     def _compare_candidates(

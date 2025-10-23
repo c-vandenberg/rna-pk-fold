@@ -30,9 +30,9 @@ def use_nested_energy_if_composed_infinite(
     float
         The composed energy for (i,j) after fallback is applied (if needed).
     """
-    composed_energy = charged_matrix.get(i_idx, j_idx)
+    composed_energy = charged_matrix.get_energy(i_idx, j_idx)
     if enable_overlap_fallback and not math.isfinite(composed_energy):
-        charged_matrix.set(i_idx, j_idx, nested_energy)
+        charged_matrix.set_energy(i_idx, j_idx, nested_energy)
         return nested_energy
 
     return composed_energy
@@ -69,7 +69,7 @@ def publish_min_energy_with_default_backpointer(
         Backtrack op used when the nested (uncharged) path is selected.
     """
     if nested_energy <= non_nested_energy:
-        final_matrix.set(i_idx, j_idx, nested_energy)
-        backpointer_store.set(i_idx, j_idx, EddyRivasBackPointer(op=uncharged_op))
+        final_matrix.set_energy(i_idx, j_idx, nested_energy)
+        backpointer_store.set_backpointer(i_idx, j_idx, EddyRivasBackPointer(op=uncharged_op))
     else:
-        final_matrix.set(i_idx, j_idx, non_nested_energy)
+        final_matrix.set_energy(i_idx, j_idx, non_nested_energy)

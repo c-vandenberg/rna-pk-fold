@@ -38,7 +38,7 @@ from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested_interva
 # Eddy-Rivas (pseudoknot) folding components
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_dynamic_programming
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pk as eddy_rivas_traceback
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pseudoknots as eddy_rivas_traceback
 
 # Utility functions
 from rna_pk_fold.utils.sequences.nucleotide_utils import validate_and_normalize_seq
@@ -188,7 +188,7 @@ def predict_zucker_nested(seq: str, energy_model: SecondaryStructureEnergyModel)
     # 3. Trace back through the matrices to reconstruct the optimal structure.
     trace_result = zucker_traceback(seq, zucker_state)
     # 4. Get the final minimum free energy for the entire sequence.
-    energy = zucker_state.w_matrix.get(0, len(seq) - 1)
+    energy = zucker_state.w_matrix.get_energy(0, len(seq) - 1)
 
     elapsed = time.perf_counter() - start_time
     logger.info(f"Prediction completed in {elapsed:.2f}s")
@@ -274,13 +274,13 @@ def predict_eddy_rivas_non_nested(
     er_engine.run_eddy_rivas_dp_with_costs(seq, zucker_state, eddy_rivas_state)
 
     # Get the final energy for the entire sequence.
-    energy = eddy_rivas_state.wx_matrix.get(0, len(seq) - 1)
+    energy = eddy_rivas_state.wx_matrix.get_energy(0, len(seq) - 1)
 
     # If the final energy is infinite, the algorithm failed; fall back to the nested result.
     if not math.isfinite(energy):
         logger.warning("Eddy-Rivas returned infinite energy, falling back to nested result.")
         trace_result = zucker_traceback(seq, zucker_state)
-        nested_energy = zucker_state.w_matrix.get(0, len(seq) - 1)
+        nested_energy = zucker_state.w_matrix.get_energy(0, len(seq) - 1)
         elapsed = time.perf_counter() - start_time
         logger.info(f"Prediction completed in {elapsed:.2f}s (fallback)")
         return trace_result.dot_bracket, float(nested_energy)

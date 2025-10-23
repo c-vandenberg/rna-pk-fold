@@ -112,7 +112,7 @@ def eddy_rivas_fold(sequence: str, energy_model: SecondaryStructureEnergyModel) 
     er_engine.run_eddy_rivas_dp_with_costs(sequence, zucker_state, eddy_rivas_state)
 
     # Get final energy
-    final_energy = eddy_rivas_state.wx_matrix.get(0, len(sequence) - 1)
+    final_energy = eddy_rivas_state.wx_matrix.get_energy(0, len(sequence) - 1)
 
     return {
         'energy': final_energy,

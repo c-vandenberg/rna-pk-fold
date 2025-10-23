@@ -44,21 +44,21 @@ def test_make_fold_state_shapes_and_defaults():
     for i in range(seq_len):
         for j in range(i, seq_len):
             # W (any structure) and V (paired structure) matrices default to +infinity.
-            assert math.isinf(fold_state.w_matrix.get(i, j))
-            assert math.isinf(fold_state.v_matrix.get(i, j))
+            assert math.isinf(fold_state.w_matrix.get_energy(i, j))
+            assert math.isinf(fold_state.v_matrix.get_energy(i, j))
 
             # WM (multiloop) has a special base case: the diagonal is 0.0.
             if i == j:
                 # WM[i,i] represents an empty segment in a multiloop, with 0.0 energy.
-                assert fold_state.wm_matrix.get(i, j) == 0.0
+                assert fold_state.wm_matrix.get_energy(i, j) == 0.0
             else:
                 # Off-diagonal elements are +infinity until calculated.
-                assert math.isinf(fold_state.wm_matrix.get(i, j))
+                assert math.isinf(fold_state.wm_matrix.get_energy(i, j))
 
             # Backpointer matrices should be initialized with default "NONE" pointers.
-            bp_w = fold_state.w_back_ptr.get(i, j)
-            bp_v = fold_state.v_back_ptr.get(i, j)
-            bp_wm = fold_state.wm_back_ptr.get(i, j)
+            bp_w = fold_state.w_back_ptr.get_energy(i, j)
+            bp_v = fold_state.v_back_ptr.get_energy(i, j)
+            bp_wm = fold_state.wm_back_ptr.get_energy(i, j)
             assert isinstance(bp_w, ZuckerBackPointer) and bp_w.operation is ZuckerBacktrackOp.NONE
             assert isinstance(bp_v, ZuckerBackPointer) and bp_v.operation is ZuckerBacktrackOp.NONE
             assert isinstance(bp_wm, ZuckerBackPointer) and bp_wm.operation is ZuckerBacktrackOp.NONE
@@ -76,24 +76,24 @@ def test_fold_state_set_get_energy_and_backpointer():
     fold_state = make_fold_state(seq_len)
 
     # --- Set specific energy values in different matrices ---
-    fold_state.w_matrix.set(1, 4, -3.25)
-    fold_state.v_matrix.set(2, 3, -1.5)
-    fold_state.wm_matrix.set(0, 4, 7.0)
+    fold_state.w_matrix.set_energy(1, 4, -3.25)
+    fold_state.v_matrix.set_energy(2, 3, -1.5)
+    fold_state.wm_matrix.set_energy(0, 4, 7.0)
 
     # --- Create and set custom backpointer objects ---
     bp_w = ZuckerBackPointer(operation=ZuckerBacktrackOp.UNPAIRED_LEFT, note="left unpaired")
     bp_v = ZuckerBackPointer(operation=ZuckerBacktrackOp.STACK, inner=(3, 6))
     bp_wm = ZuckerBackPointer(operation=ZuckerBacktrackOp.MULTI_ATTACH, split_k=2)
 
-    fold_state.w_back_ptr.set(1, 4, bp_w)
-    fold_state.v_back_ptr.set(2, 3, bp_v)
-    fold_state.wm_back_ptr.set(0, 4, bp_wm)
+    fold_state.w_back_ptr.set_energy(1, 4, bp_w)
+    fold_state.v_back_ptr.set_energy(2, 3, bp_v)
+    fold_state.wm_back_ptr.set_energy(0, 4, bp_wm)
 
     # --- Verify that retrieved values match the ones that were set ---
-    assert fold_state.w_matrix.get(1, 4) == -3.25
-    assert fold_state.v_matrix.get(2, 3) == -1.5
-    assert fold_state.wm_matrix.get(0, 4) == 7.0
+    assert fold_state.w_matrix.get_energy(1, 4) == -3.25
+    assert fold_state.v_matrix.get_energy(2, 3) == -1.5
+    assert fold_state.wm_matrix.get_energy(0, 4) == 7.0
 
-    assert fold_state.w_back_ptr.get(1, 4) is bp_w
-    assert fold_state.v_back_ptr.get(2, 3) is bp_v
-    assert fold_state.wm_back_ptr.get(0, 4) is bp_wm
+    assert fold_state.w_back_ptr.get_energy(1, 4) is bp_w
+    assert fold_state.v_back_ptr.get_energy(2, 3) is bp_v
+    assert fold_state.wm_back_ptr.get_energy(0, 4) is bp_wm

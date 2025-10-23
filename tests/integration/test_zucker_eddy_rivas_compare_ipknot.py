@@ -39,7 +39,7 @@ from rna_pk_fold.folding.zucker.zucker_dynamic_programming import ZuckerFoldingC
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_dynamic_programming as eddy_rivas_engine
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested_interval as zucker_traceback_interval
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pk as eddy_rivas_traceback
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_pseudoknots as eddy_rivas_traceback
 
 # --- Constants for Multilayer Bracket Parsing ---
 # A dictionary mapping opening brackets to their corresponding closing brackets.
@@ -285,7 +285,7 @@ def test_full_vs_ipknot_shape_and_energy(seq: str, engines_and_costs: tuple):
     # --- 2. Run Eddy-Rivas (pseudoknot) fold ---
     eddy_rivas_state = init_eddy_rivas_fold_state(len(seq))
     er_engine.run_eddy_rivas_dp_with_costs(seq, zucker_state, eddy_rivas_state)
-    our_full_energy = eddy_rivas_state.wx_matrix.get(0, len(seq) - 1)
+    our_full_energy = eddy_rivas_state.wx_matrix.get_energy(0, len(seq) - 1)
     assert math.isfinite(our_full_energy), "Eddy-Rivas prediction resulted in a non-finite energy."
 
     # --- 3. Run IPknot to get the reference structure ---
