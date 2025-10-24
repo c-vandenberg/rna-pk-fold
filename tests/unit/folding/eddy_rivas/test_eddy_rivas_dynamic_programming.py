@@ -1,14 +1,5 @@
 """
 Unit tests for the `EddyRivasFoldingEngine`, the core of the pseudoknot folding algorithm.
-
-This module tests several key components of the folding engine:
-1.  The `take_best` helper function for choosing optimal solutions.
-2.  The `_seed_from_nested` method for initializing DP matrices from a
-    secondary structure-only fold.
-3.  The `_publish_wx` and `_publish_vx` methods that combine charged and
-    uncharged substates.
-4.  A smoke test to ensure the main `fill_with_costs` method orchestrates
-    its subroutines in the correct sequence.
 """
 import math
 
@@ -16,57 +7,10 @@ from rna_pk_fold.folding.zucker import make_fold_state
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
 from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import (EddyRivasFoldingEngine, EddyRivasFoldingConfig,
-                                                                  take_best)
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import (
-    EddyRivasBackPointer,
-    EddyRivasBacktrackOp,
-)
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasFoldingEngine, EddyRivasFoldingConfig
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBacktrackOp
 
-
-# -------------------- take_best / make_bp --------------------
-
-def test_take_best_replaces_when_better_and_calls_factory_once():
-    """
-    Tests that `take_best` updates the energy and backpointer if a better score is found.
-
-    It also verifies a key optimization: the backpointer factory function (`mk`)
-    should only be called if the new score is actually better, avoiding
-    unnecessary object creation.
-    """
-    # Use a dictionary to track the number of calls to the factory.
-    factory_calls = {"n": 0}
-    def mk():
-        factory_calls["n"] += 1
-        return EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE)
-
-    # The new energy (5.0) is better than the old one (10.0).
-    best, bp = take_best(10.0, None, 5.0, mk)
-
-    # Assert that the state was updated and the factory was called exactly once.
-    assert best == 5.0
-    assert isinstance(bp, EddyRivasBackPointer)
-    assert factory_calls["n"] == 1
-
-
-def test_take_best_keeps_old_on_tie_or_worse():
-    """
-    Tests that `take_best` does not update if the new score is worse or the same.
-    """
-    old_bp = EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_YHX_SS_LEFT)
-
-    # Case 1: The new score (4.0) is worse than the old one (3.0).
-    best, bp = take_best(3.0, old_bp, 4.0, lambda: None)
-    # The original best score and backpointer object should be kept.
-    assert best == 3.0 and bp is old_bp
-
-    # Case 2: The new score is a tie.
-    best2, bp2 = take_best(3.0, old_bp, 3.0, lambda: None)
-    # The original state should also be kept in case of a tie.
-    assert best2 == 3.0 and bp2 is old_bp
-
-
-# -------------------- _seed_from_nested (static) --------------------
+# -------------------- Seed From Nested (static) --------------------
 
 def test_seed_from_nested_copies_nested_into_uncharged_and_wx_vx():
     """
@@ -165,15 +109,20 @@ def test_publish_vx_prefers_unscaled_uncharged_and_sets_backpointer():
 
 
 # -------------------- fill_with_costs: call chain smoke --------------------
-
 def test_fill_with_costs_calls_internal_steps_in_expected_order(monkeypatch):
     """
     Smoke test to verify the calling order of subroutines in `fill_with_costs`.
 
-    This test doesn't check for correct energy values. Instead, it uses `monkeypatch`
-    to replace the internal DP methods with stubs. It then asserts that the main
-    `fill_with_costs` method calls these stubs in the correct, prescribed sequence,
-    confirming the overall algorithmic flow.
+    This test stubs the refactored method names used by `EddyRivasFoldingEngine`:
+      - _fill_whx_gap_matrix
+      - _fill_vhx_gap_matrix
+      - _fill_zhx_gap_matrix
+      - _fill_yhx_gap_matrix
+      - _compose_wx_from_gapped_fragments
+      - _publish_wx_min_energy
+      - _compose_vx_from_zhx_fragments
+      - _publish_vx_min_energy
+    It asserts that `run_eddy_rivas_dp_with_costs` calls them in the expected order.
     """
     # Setup with minimal (zero) costs, as values don't matter for this test.
     costs = PseudoknotEnergies(
@@ -195,34 +144,43 @@ def test_fill_with_costs_calls_internal_steps_in_expected_order(monkeypatch):
         return orig_seed(nested_arg, re_arg)
     monkeypatch.setattr(EddyRivasFoldingEngine, "_seed_from_nested", staticmethod(seed_wrapper))
 
-    # Helper function to create a stub method that just records its name.
+    # Helper to create a stub that records its label.
     def make_stub(label):
         def stub(self, *args, **kwargs):
             calls.append(label)
         return stub
 
-    # Patch all internal DP and composition methods.
-    monkeypatch.setattr(EddyRivasFoldingEngine, "_dp_whx", make_stub("_dp_whx"))
-    monkeypatch.setattr(EddyRivasFoldingEngine, "_dp_vhx", make_stub("_dp_vhx"))
-    monkeypatch.setattr(EddyRivasFoldingEngine, "_dp_zhx", make_stub("_dp_zhx"))
-    monkeypatch.setattr(EddyRivasFoldingEngine, "_dp_yhx", make_stub("_dp_yhx"))
-    monkeypatch.setattr(EddyRivasFoldingEngine, "_compose_wx", make_stub("_compose_wx"))
-    monkeypatch.setattr(EddyRivasFoldingEngine, "_publish_wx", make_stub("_publish_wx"))
-    monkeypatch.setattr(EddyRivasFoldingEngine, "_compose_vx", make_stub("_compose_vx"))
-    monkeypatch.setattr(EddyRivasFoldingEngine, "_publish_vx", make_stub("_publish_vx"))
+    # Patch all internal DP and composition methods (refactored names).
+    monkeypatch.setattr(EddyRivasFoldingEngine, "_fill_whx_gap_matrix",
+                        make_stub("_fill_whx_gap_matrix"))
+    monkeypatch.setattr(EddyRivasFoldingEngine, "_fill_vhx_gap_matrix",
+                        make_stub("_fill_vhx_gap_matrix"))
+    monkeypatch.setattr(EddyRivasFoldingEngine, "_fill_zhx_gap_matrix",
+                        make_stub("_fill_zhx_gap_matrix"))
+    monkeypatch.setattr(EddyRivasFoldingEngine, "_fill_yhx_gap_matrix",
+                        make_stub("_fill_yhx_gap_matrix"))
+    monkeypatch.setattr(EddyRivasFoldingEngine, "_compose_wx_from_gapped_fragments",
+                        make_stub("_compose_wx_from_gapped_fragments"))
+    monkeypatch.setattr(EddyRivasFoldingEngine, "_publish_wx_min_energy",
+                        make_stub("_publish_wx_min_energy"))
+    monkeypatch.setattr(EddyRivasFoldingEngine, "_compose_vx_from_zhx_fragments",
+                        make_stub("_compose_vx_from_zhx_fragments"))
+    monkeypatch.setattr(EddyRivasFoldingEngine, "_publish_vx_min_energy",
+                        make_stub("_publish_vx_min_energy"))
 
     # Execute the main folding method.
     eng.run_eddy_rivas_dp_with_costs("ACG", nested, re_state)
 
-    # Assert that the recorded call order matches the expected algorithm flow.
+    # Assert the expected call order for the refactored method names.
     assert calls == [
         "_seed_from_nested",
-        "_dp_whx",
-        "_dp_vhx",
-        "_dp_zhx",
-        "_dp_yhx",
-        "_compose_wx",
-        "_publish_wx",
-        "_compose_vx",
-        "_publish_vx",
+        "_fill_whx_gap_matrix",
+        "_fill_vhx_gap_matrix",
+        "_fill_zhx_gap_matrix",
+        "_fill_yhx_gap_matrix",
+        "_compose_wx_from_gapped_fragments",
+        "_publish_wx_min_energy",
+        "_compose_vx_from_zhx_fragments",
+        "_publish_vx_min_energy",
     ]
+

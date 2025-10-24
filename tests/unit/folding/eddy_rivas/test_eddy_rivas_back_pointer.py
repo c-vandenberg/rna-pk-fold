@@ -9,7 +9,7 @@ and the serialization/deserialization logic used for debugging and logging.
 import pytest
 from dataclasses import FrozenInstanceError
 
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import (
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import (
     EddyRivasBackPointer,
     EddyRivasBacktrackOp,
 )

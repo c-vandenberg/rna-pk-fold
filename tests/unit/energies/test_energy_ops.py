@@ -19,7 +19,7 @@ from rna_pk_fold.energies.energy_ops import (
     multiloop_linear_energy,
     dimer_key
 )
-from rna_pk_fold.utils.energy_utils import calculate_delta_g
+from rna_pk_fold.utils.energy.energy_base_utils import calculate_delta_g
 
 
 @pytest.fixture(scope="module")

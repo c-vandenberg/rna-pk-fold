@@ -12,7 +12,7 @@ pseudoknotted elements, and handling terminal operations—are processed correct
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import TraceResult
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import init_eddy_rivas_fold_state
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_recurrences import (
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import (
     EddyRivasBackPointer,
     EddyRivasBacktrackOp,
 )
@@ -90,36 +90,53 @@ def test_wx_fallback_to_nested_merges_pairs():
 
 def test_wx_compose_whx_two_collapses_yield_two_disjoint_pairs_across_layers():
     """
-    Tests a path: WX composes into two WHX subproblems, each collapsing to nested.
+    Verify WX→WHX composition where both WHX subproblems collapse to nested pairs.
 
-    This simulates a traceback for a structure with two disjoint pseudoknotted
-    helices. The path is:
-    1. WX(0,5) -> RE_PK_COMPOSE_WX -> Pushes WHX(0,2...) and WHX(2,5...).
-    2. Each WHX frame -> RE_WHX_COLLAPSE -> Delegates to nested tracer.
-    The final structure should contain the two pairs from the two collapses.
+    This test exercises the traceback path for a PK composition that splits
+    WX(0,5) at r=2 with hole (k,l)=(1,4). Under the refactored split semantics,
+    the left WHX uses hole (k,r)=(1,2) over outer span (0,2), and the right WHX
+    uses hole (r+1,l)=(3,4) over outer span (3,5). Each WHX then collapses and
+    delegates its outer span to the nested tracer.
+
+    Notes
+    -----
+    The mock nested tracer used by these tests returns a single base pair
+    spanning the interval it is asked to trace, i.e. Pair(i, j). Therefore:
+      * Collapsing WHX(0,2:1,2) yields Pair(0,2).
+      * Collapsing WHX(3,5:3,4) yields Pair(3,5).
+
+    The test asserts that the final set of pairs equals {(0,2), (3,5)} and
+    that the dot–bracket string marks those indices as paired.
     """
     n = 6
     seq = "GCAUGC"
     re_state = init_eddy_rivas_fold_state(n)
 
-    # 1. Set the WX backpointer to split into two WHX subproblems.
+    # WX(0,5) composed with split r=2 and hole (k,l)=(1,4)
     re_state.wx_back_ptr.set_backpointer(
         0, 5,
-        EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_PK_COMPOSE_WX,
-                             split=2, hole=(1, 4))
+        EddyRivasBackPointer(
+            op=EddyRivasBacktrackOp.RE_PK_COMPOSE_WX,
+            split=2, hole=(1, 4)
+        )
     )
 
-    # 2. Set the left WHX subproblem to collapse to a nested pair (0, 1).
+    # Left WHX uses hole (k, r) = (1, 2), outer span is (0,2)
     re_state.whx_back_ptr.set_backpointer(
-        0, 2, 1, 4,
-        EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
-                             outer=(0, 1))
+        0, 2, 1, 2,
+        EddyRivasBackPointer(
+            op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
+            outer=(0, 2)  # match actual collapsed interval
+        )
     )
-    # 3. Set the right WHX subproblem to collapse to a nested pair (4, 5).
+
+    # Right WHX uses hole (r+1, l) = (3, 4), outer span is (3,5)
     re_state.whx_back_ptr.set_backpointer(
-        2, 5, 3, 3,
-        EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
-                             outer=(4, 5))
+        3, 5, 3, 4,
+        EddyRivasBackPointer(
+            op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
+            outer=(3, 5)  # match actual collapsed interval
+        )
     )
 
     res = traceback_with_pseudoknots(
@@ -129,12 +146,13 @@ def test_wx_compose_whx_two_collapses_yield_two_disjoint_pairs_across_layers():
         trace_nested_interval=make_nested_tracer(),
     )
 
-    # The result should contain exactly the two pairs from the collapse operations.
-    assert set(res.pairs) == {Pair(0, 1), Pair(4, 5)}
+    # The nested tracer returns Pair(i,j) for each collapsed WHX outer span:
+    assert set(res.pairs) == {Pair(0, 2), Pair(3, 5)}
     assert len(res.dot_bracket) == n
-    # Verify that both pairs are correctly rendered in the dot-bracket string.
-    assert res.dot_bracket[0] != "." and res.dot_bracket[1] != "."
-    assert res.dot_bracket[4] != "." and res.dot_bracket[5] != "."
+    assert res.dot_bracket[0] != "." and res.dot_bracket[2] != "."
+    assert res.dot_bracket[3] != "." and res.dot_bracket[5] != "."
+
+
 
 
 def test_wx_compose_yhx_overlap_adds_inner_pair_once():
@@ -175,13 +193,23 @@ def test_wx_compose_yhx_overlap_adds_inner_pair_once():
 
 def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
     """
-    Tests a multi-step path: WX -> YHX -> WHX -> Collapse.
+    Verify the YHX→WHX→collapse traceback chain under new split semantics.
 
-    This test verifies a complex traceback chain:
-    1. A WX op composes a YHX subproblem.
-    2. The YHX op adds its inner pair (k,l) and wraps into a WHX subproblem.
-    3. The WHX op collapses, delegating an `outer` interval to the nested tracer.
-    The final structure should contain pairs from all relevant steps.
+    Starting from WX(0,5) with split r=2 and hole (k,l)=(1,4), the refactored
+    semantics create YHX frames with inner pairs (1,2) on the left and (3,4)
+    on the right. The left YHX wraps into WHX(0,2:1,2), which collapses and
+    delegates (0,2) to the nested tracer.
+
+    Notes
+    -----
+    With the mock nested tracer returning Pair(i, j), collapsing
+    WHX(0,2:1,2) contributes Pair(0,2). The YHX handler places the inner pairs
+    directly:
+      * Left YHX(0,2:1,2) → Pair(1,2)
+      * Right YHX(3,5:3,4) → Pair(3,4)
+
+    The test asserts that the final set of pairs equals {(1,2), (3,4), (0,2)}
+    and that the dot–bracket string marks those indices as paired.
     """
     n = 6
     seq = "GCAUGC"
@@ -189,11 +217,8 @@ def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
 
     i, j = 0, 5
     r, k, l = 2, 1, 4
-    outer_nested = (0, 1)  # The pair to be added by the final collapse.
 
-    # 1. WX -> YHX. This pushes two YHX frames. We'll trace the left one.
-    # The right one, YHX(k+1..j, l-1..r+1) = YHX(2..5, 3..3), will also be traced,
-    # adding its own inner pair (3,3).
+    # WX -> YHX with split r=2, hole (k,l)=(1,4)
     re_state.wx_back_ptr.set_backpointer(
         i, j,
         EddyRivasBackPointer(
@@ -202,21 +227,21 @@ def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
         )
     )
 
-    # 2. YHX -> WHX. The YHX handler adds inner pair (k,l) and pushes a WHX frame.
+    # Left YHX frame is YHX(i, r : k, r) = YHX(0, 2 : 1, 2); it wraps into WHX
     re_state.yhx_back_ptr.set_backpointer(
-        i, r, k, l,
+        i, r, k, r,
         EddyRivasBackPointer(
             op=EddyRivasBacktrackOp.RE_YHX_WRAP_WHX,
-            outer=(i, r), hole=(k, l)
+            outer=(i, r), hole=(k, r)
         )
     )
 
-    # 3. WHX -> Collapse. The WHX handler delegates the `outer` to the nested tracer.
+    # WHX collapse merges its outer span (0,2); nested tracer returns Pair(0,2)
     re_state.whx_back_ptr.set_backpointer(
-        i, r, k, l,
+        i, r, k, r,
         EddyRivasBackPointer(
             op=EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
-            outer=outer_nested
+            outer=(i, r)  # (0,2) to mirror actual collapse interval
         )
     )
 
@@ -227,15 +252,16 @@ def test_yhx_wraps_into_whx_then_collapses_adding_both_inner_and_nested_pairs():
         trace_nested_interval=make_nested_tracer(),
     )
 
-    # The result should contain three pairs:
-    # 1. Pair(k,l) = (1,4) from the YHX step.
-    # 2. Pair(*outer_nested) = (0,1) from the WHX collapse.
-    # 3. Pair(3,3) from the second, untraced YHX branch's inner pair.
-    assert set(res.pairs) == {Pair(k, l), Pair(*outer_nested), Pair(3, 3)}
+    # Under split semantics we expect:
+    # - (1,2) from left YHX inner pair
+    # - (3,4) from right YHX inner pair
+    # - (0,2) from WHX collapse→nested tracer over WHX outer span
+    assert set(res.pairs) == {Pair(1, 2), Pair(3, 4), Pair(0, 2)}
 
-    # Check dot-bracket rendering for the two proper pairs.
     assert len(res.dot_bracket) == n
-    assert res.dot_bracket[k] != "." and res.dot_bracket[l] != "."
-    p, q = outer_nested
-    assert res.dot_bracket[p] != "." and res.dot_bracket[q] != "."
+    # YHX inner pairs:
+    assert res.dot_bracket[1] != "." and res.dot_bracket[2] != "."
+    assert res.dot_bracket[3] != "." and res.dot_bracket[4] != "."
+    # Collapsed WHX outer span:
+    assert res.dot_bracket[0] != "." and res.dot_bracket[2] != "."
 
