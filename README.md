@@ -200,7 +200,7 @@ All test RNA predictions were carried out using the `turner2004_eddyrivas1999_mi
 | GCGC | .... | 0.00 | ✅ |
 | GCAUCUAUGC | (((....))) | -1.80 | ✅ |
 | GGGAAAUCCC | (((....))) | -2.90 | ✅ |
-| AUGCUAGCUAUGC | ......((...)) | -0.10 | ✅ |
+| AUGCUAGCUAUGC | ......((...)) | -3.90 | ✅ |
 | AUAUAUAUAU | .......... | 0.00 | ✅ |
 | GCAAAGC | ....... | 0.00 | ✅ |
 | GCAAAAGC | ........ | 0.00 | ✅ |
@@ -218,35 +218,35 @@ All test RNA predictions were carried out using the `turner2004_eddyrivas1999_mi
 | GGCACAUUGCC | ((((...)))) | -5.20 | ✅ |
 | GGCAAAUUGCC | ((((...)))). | -5.20 | ✅ |
 | GGGAAACCCAAAGGGUUUCCC | (((((((((...))))))))) | -16.01 | ✅ |
-| GCGAAUCCGAUUGGCUAAGCG | ((....((....))....)). | -0.70 | ✅ |
-| GGAUCCGAAGGCUCGAUCC | ....((...))........ | -11.30 | ❌ |
-| GGGAAAUCCAUUGGAUCCCUCC | (((...)))...(((....))) | -14.81 | ❌ |
-| GCCGAUACGUAUCGGCGAU | ((((((....))))))... | -18.90 | ✅ |
+| GCGAAUCCGAUUGGCUAAGCG | ((.(((...))).))...... | -4.95 | ❌ |
+| GGAUCCGAAGGCUCGAUCC | .((.((...)).))..... | -5.75 | ❌ |
+| GGGAAAUCCAUUGGAUCCCUCC | ((((..(((...)))))))... | -12.01 | ✅ |
+| GCCGAUACGUAUCGGCGAU | ((((((....))))))... | -13.50 | ✅ |
 | GCGCGCGCGCAUUGCGCGCGCGC | ((((((((((...)))))))))) | -23.00 | ✅ |
 | GGGGCCCCGGGGCCCC | ((((((....)))))) | -12.91 | ✅ |
-| GUGUGUGUACACACAC | ((((((....)))))). | -7.10 | ✅ |
+| GUGUGUGUACACACAC | ((((....)))).... | -7.40 | ❌ |
 | UGUGUGAAACACACA | ((((((...)))))) | -7.10 | ✅ |
-| GUGUAAUUGUGU | ............ | 0.00 | ✅ |
+| GUGUAAUUGUGU | ............ | -3.80 | ✅ |
 | AUAUAUAUAU | .......... | 0.00 | ✅ |
-| AAUAAAUAAAUAA | .............. | 0.00 | ✅ |
-| AUAUAAUAUAUAUAU | (((((...))))).. | -1.20 | ❌ |
+| AAUAAAUAAAUAA | .............. | -3.80 | ✅ |
+| AUAUAAUAUAUAUAU | ............... | -3.80 | ❌ |
 | GCGCGCAGCGCGC | (((((...))))) | -8.00 | ✅ |
-| GGCGCCGCGGCC | (((......))) | -3.70 | ✅ |
+| GGCGCCGCGGCC | (((......))) | -3.80 | ✅ |
 | GCAUCUAUGC | (((....))) | -1.80 | ✅ |
-| AUGCUAGCUAUGC | ......((...)) | -0.10 | ✅ |
+| AUGCUAGCUAUGC | ......((...)) | -3.90 | ✅ |
 | GGGAAAUCCC | (((....))) | -2.90 | ✅ |
-| GGAUACGUACCU | ............ | 0.00 | ✅ |
-| CGAUGCAGCUAG | ............ | 0.00 | ✅ |
-| AAAAUAAAAUAAAAUAAAA | ................... | 0.00 | ✅ |
-| UUUUUAAAUUUUUAAAUUUU | ..(((((....))))).... | -0.30 | ❌ |
+| GGAUACGUACCU | ............ | -3.80 | ✅ |
+| CGAUGCAGCUAG | ............ | -3.80 | ✅ |
+| AAAAUAAAAUAAAAUAAAA | ................... | -3.80 | ✅ |
+| UUUUUAAAUUUUUAAAUUUU | ..(((((....))))).... | -4.90 | ❌ |
 | AUCCCUA | ....... | 0.00 | ✅ |
 | GUCCUGU | ....... | 0.00 | ✅ |
 
 ## Pseudoknot RNA Sequences
 | Sequence | Predicted Dot-Bracket Notation | Predicted $\Delta G$ (kcal/mol) | IPknot Prediction Match |
 | :--- | :--- | :--- | :--- |
-| UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC | (((((.......(((.....))).)))))((((.....))))(((((....(((...))).))))).... | -33.06 | ❌ |
-| AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU | (((((...)))))((((((.....))))))............. | -9.81 | ❌ |
+| UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC | ............(((.....))).(((..((((.....))))(((((....(((...))).))))).))) | -24.51 | ❌ |
+| AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU | (((((...)))))((((((.....))))))............. | -14.41 | ❌ |
 
 ### 2.5. Pseudoknot Prediction: Known Issues and Debugging Analysis
 ### Problem Statement
