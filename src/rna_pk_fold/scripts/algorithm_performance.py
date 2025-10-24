@@ -9,14 +9,11 @@ It analyzes the empirical time complexity and generates plots for visualization.
 
 import time
 import tracemalloc
-import random
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from importlib.resources import files as importlib_files
 
 # Import folding components (matching predict_rna.py structure)
-from rna_pk_fold.energies import SecondaryStructureEnergyLoader
 from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
 from rna_pk_fold.folding.zucker import make_fold_state as make_zucker_state
 from rna_pk_fold.folding.zucker.zucker_dynamic_programming import ZuckerFoldingConfig, ZuckerFoldingEngine

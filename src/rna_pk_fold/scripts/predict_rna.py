@@ -208,25 +208,56 @@ def predict_eddy_rivas_non_nested(
     q_ss: Optional[float]
 ) -> Tuple[str, float]:
     """
-    Runs the Eddy-Rivas (pseudoknot-aware) folding algorithm.
+    Predict an RNA secondary structure with pseudoknots using Eddy–Rivas DP.
 
-    This involves a two-phase process: first, a complete nested fold is
-    performed using the Zuker algorithm, and then the Eddy-Rivas algorithm
-    builds upon those results to find the optimal structure including pseudoknots.
+    The procedure runs in two stages:
+     1. A full nested (Zuker) fold is computed to seed baseline W/V matrices.
+     2. The Eddy–Rivas dynamic program refines this baseline to allow pseudoknotted
+     topologies.
+
+    If the Eddy–Rivas stage yields an infinite energy, the function falls back to
+    the Zuker result.
 
     Parameters
     ----------
     seq : str
-        The RNA sequence to fold.
+        RNA sequence to fold (characters like A, C, G, U).
     energy_model : SecondaryStructureEnergyModel
-        The initialized energy model.
-    All other parameters are tuning options for the Eddy-Rivas algorithm.
+        Initialized thermodynamic model used for both the Zuker baseline and to
+        derive Eddy–Rivas pseudoknot costs.
+    pk_penalty_gw : float or None
+        Optional override for the Eddy–Rivas pseudoknot seam penalty *G₍w₎*
+        (kcal/mol). If `None`, the model’s default is used.
+    enable_coax : bool
+        Enable coaxial stacking terms during the Eddy–Rivas stage. When `True`,
+        coax variants and mismatch coax are enabled with the same flag.
+    enable_overlap : bool
+        Enable the WX-overlap compositions used by Eddy–Rivas (may improve
+        structures involving overlapping helices).
+    min_hole_width : int
+        Minimum allowed inner “hole” width (in bases) for PK subproblems
+        (i.e., `l - k - 1 >= min_hole_width`). Use `0` to allow unit holes.
+    max_hole_width : int
+        Maximum allowed inner “hole” width (in bases). Use `0` to indicate no
+        upper bound.
+    q_ss : float or None
+        Optional override for the single-stranded term `q_ss` in the
+        pseudoknot cost model (kcal/mol). If `None`, the model’s default is used.
 
     Returns
     -------
     Tuple[str, float]
-        A tuple containing the predicted multilayer dot-bracket structure and
-        its minimum free energy in kcal/mol.
+        `(dot_bracket, energy)` where `dot_bracket` is a multilayer
+        dot–bracket string that may include additional bracket pairs for
+        pseudoknots, and `energy` is the minimum free energy (kcal/mol)
+        reported by the Eddy–Rivas WX matrix (or Zuker fallback).
+
+    Notes
+    -----
+    - The Zuker result is used purely as a seed/baseline; the final structure
+      and energy are taken from the Eddy–Rivas WX matrix when finite.
+    - On failure of the pseudoknot stage (infinite energy), the function
+      returns the Zuker traceback and its energy.
     """
     logger.info("=" * 60)
     logger.info("Using Eddy-Rivas (pseudoknot) algorithm")

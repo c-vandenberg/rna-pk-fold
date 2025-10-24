@@ -531,10 +531,6 @@ class EddyRivasFoldingEngine:
                 eddy_rivas_fold_state.whx_matrix.set_energy(i, j, k, l, tracker.best_energy)
                 eddy_rivas_fold_state.whx_back_ptr.set_backpointer(i, j, k, l, tracker.backpointer)
 
-                if i == 0 and j >= 33 and 20 <= k <= 30 <= l <= 35:
-                    status = "SUCCESS" if math.isfinite(tracker.best_energy) else "FAIL"
-                    print(f"[WHX {status}] ({i},{j}:{k},{l}) = {tracker.best_energy:.2f}", flush=True)
-
     # --------- VHX ---------
     def _fill_vhx_gap_matrix(
         self,
