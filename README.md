@@ -172,24 +172,53 @@ This "nested-first" strategy ensures the algorithm never performs worse than Zuc
 
 ### 2.3 Algorithm Performance Evaluation
 
-The complexity of our Rivas & Eddy algorithm implementation was measured using the `algorithm_performance.py` script.
+The complexity of our Rivas & Eddy algorithm implementation was measured using the `algorithm_performance.py` script. The first complexity measurement was carried out with **energy calculations for Irreducible Surfaces of Order 2 disabled.**
 
 **Empirical Complexity:** Benchmarking on sequences of length $N \in [20, 70]$ reveals:
 | Metric | Theoretical Complexity | Empirical Complexity | Comment | 
 | ----- | ----- | ----- | ----- |
-| **Time (Speed)** | O(N^6) composition + O(N^4) gap filling | **O(N^4.48)** | Vectorized kernels and sparse matrices provide 1.34× speedup vs. theoretical worst-case. Gap filling dominates for N ≤ 70; composition would dominate for N > 100. |
-| **Space (Memory)** | O(N^4) dense storage | **O(N^3.8)** sparse storage | Custom sparse matrix implementation stores only ~1-5% of theoretical entries. For N=70: ~50 MB actual vs. ~770 MB theoretical dense storage. |
+| **Time (Speed)** | $O(N^6)$ composition + $O(N^4)$ gap filling | **$O(N^{4.51})$** | Vectorized kernels and sparse matrices provide 1.34× speedup vs. theoretical worst-case. Gap filling dominates for N ≤ 70; composition would dominate for N > 100. |
+| **Space (Memory)** | $O(N^4)$ dense storage | **$O(N^{3.8})$ sparse storage** | Custom sparse matrix implementation stores only ~1-5% of theoretical entries. For N=70: ~50 MB actual vs. ~770 MB theoretical dense storage. |
 
 The primary limiting factor for scalability is the $O(N^4)$ memory requirement. For practical use on larger RNA molecules, constraints (like restricting loop sizes or maximum pseudoknot spans) are required, or the use of high-memory computing clusters. The Numba optimizations successfully mitigate the **time** complexity, allowing folding of sequences in the 70–100 nt range within reasonable timeframes, but the **memory** cost remains the hard limit (*Fig 1.*).
 
 <br>
   <div align="center">
-    <img src="https://github.com/user-attachments/assets/57841109-f7c7-4c22-94e3-6b253f651eb3", alt="rna-pk-fold-complexity"/>
+    <img src="https://github.com/user-attachments/assets/356a7c6e-3307-464f-a5d3-cb04d4a21597", alt="rna-pk-fold-complexity-without-is2"/>
     <p>
-      <b>Fig 1</b> Log-log plot for RNA PK Fold runtime performance and memory usage.
+      <b>Fig 1</b> Log-log plot for RNA PK Fold runtime performance and memory usage with energy calculations for Irreducible Surfaces of Order 2 disabled.
     </p>
   </div>
 <br>
+
+We then carried out the same complexity measurement with **energy calculations for Irreducible Surfaces of Order 2 enabled:**
+| Metric | Theoretical Complexity | Empirical Complexity | Comment | 
+| ----- | ----- | ----- | ----- |
+| **Time (Speed)** | $O(N^6)$ composition + $O(N^4)$ gap filling | **$O(N^{4.89})$** | IS2 bridge scanning increases complexity from $O(N^{4.48})$ to $O(N^{4.89})$, adding 74% runtime overhead (230s → 400s for N=70). Algorithm approaches theoretical $O(N^6)$ worst-case as IS2 requires nested loops over bridge coordinates within gap cells. |
+| **Space (Memory)** | $O(N^4)$ dense storage | **$O(N^{3.8})$ sparse storage** | Unchanged from IS2-disabled case. IS2 adds computational overhead but no new matrix dimensions. Sparse storage efficiency remains at ~1-5% of theoretical dense storage (50 MB vs. 770 MB for N=70). |
+
+<br>
+  <div align="center">
+    <img src="https://github.com/user-attachments/assets/c694107f-7851-46d0-b838-a5ef5a3479e1", alt="rna-pk-fold-complexity-with-is2" />
+    <p>
+      <b>Fig 2</b> Log-log plot for RNA PK Fold runtime performance and memory usage without energy calculations for Irreducible Surfaces of Order 2 enabled.
+    </p>
+  </div>
+<br>
+
+**Analysis: Why IS2-Enabled Performance Beats O(N^6) Worst-Case**
+
+Despite IS2 motif detection requiring nested loops over bridge pair candidates $(r, s)$ within each gap matrix cell $(i, j, k, l)$—theoretically an $O(N^6)$ operation—the empirical complexity of $O(N^4.89)$ reveals several practical optimizations at work:
+
+1. **Sparse Matrix Efficiency**: Only ~1-5% of theoretically possible gap matrix cells are energetically viable and actually computed. The $O(N^6)$ composition step iterates over (i, j, k, l, r) coordinates, but when most (k, l) holes are invalid or pruned, the effective iteration space is much smaller than $N^6$.
+
+2. **Gap-Filling Dominance**: For sequences N ≤ 70, the $O(N^4)$ gap matrix filling phase (WHX, VHX, ZHX, YHX) still dominates total runtime (~68% of execution time), with the $O(N^6)$ composition contributing only ~32%. IS2 overhead primarily affects gap filling, not composition.
+
+3. **Early Termination & Beam Search**: When enabled, beam search and energy thresholds prune unpromising substructures before expensive IS2 bridge scans occur. Even without explicit beam search (as in these benchmarks), energetic filtering naturally limits the search space.
+
+4. **Extrapolation to Larger N**: The fitted exponent of 4.89 would be expected to increase toward 6.0 for sequences N > 100-150, where composition loops dominate. The current test range (N ≤ 70) represents a "gap-filling regime" rather than the true asymptotic worst-case.
+
+**Practical Implications**: For production use on sequences N > 70, IS2 should be disabled unless pseudoknot topologies requiring IS2 motifs (nested multiloops within gap structures) are specifically expected. The 74% runtime penalty provides marginal structural improvement for most RNA secondary structures but becomes prohibitive at scale.
 
 ### 2.4. Test RNA Sequences Predictions
 All test RNA predictions were carried out using the `turner2004_eddyrivas1999_min.yaml` configuration file. This configuration combined energy data and parameters from both ViennaRNA<sup>1</sup> for the core Zucker (nested) algorithm, and the paper by Eddy & Rivas<sup>2</sup> for the pseudoknot algorithm. The output was then compared to the predicted structure for [IPknot](https://ws.sato-lab.org/rtips/ipknot/) and ViennaRNA.
