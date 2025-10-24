@@ -92,15 +92,15 @@ def eddy_rivas_fold(sequence: str, energy_model: SecondaryStructureEnergyModel) 
 
     # Configuration matches hardcoded defaults used in the actual prediction script
     er_config = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
-        enable_coax=False,
+        enable_coax=True,
         enable_coax_variants=False,
         enable_coax_mismatch=False,
-        enable_wx_overlap=False,
-        enable_is2=False,
+        enable_wx_overlap=True,
+        enable_is2=True,
         enable_join_drift=False,
         min_hole_width=0,
         max_hole_width=0,
-        pk_penalty_gw=-10.0, # Use favorable PK penalty for testing
+        pk_penalty_gw=-5.0,
         costs=er_costs,
         verbose=False,
     )
@@ -148,7 +148,7 @@ def benchmark_runtime(sequence_lengths: list[int], num_trials: int = 3) -> dict:
     """
     # Load energy model once (reused for all sequences)
     print("Loading energy model...")
-    energy_model = load_energy_model()
+    energy_model = load_energy_model(temp_c=25)
 
     results = {
         'lengths': sequence_lengths,
@@ -206,7 +206,7 @@ def benchmark_memory(sequence_lengths: list[int]) -> dict:
     """
     # Load energy model once
     print("\nLoading energy model for memory tests...")
-    energy_model = load_energy_model()
+    energy_model = load_energy_model(temp_c=25)
 
     results = {
         'lengths': sequence_lengths,

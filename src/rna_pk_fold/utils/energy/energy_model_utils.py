@@ -9,7 +9,7 @@ from rna_pk_fold.energies.energy_loader import SecondaryStructureEnergyLoader
 logger = logging.getLogger(__name__)
 
 
-def load_energy_model(yaml_path: Optional[str], temp_c: float) -> SecondaryStructureEnergyModel:
+def load_energy_model(temp_c: float, yaml_path: Optional[str] = None) -> SecondaryStructureEnergyModel:
     """
     Loads the RNA thermodynamic parameters and creates an energy model.
 

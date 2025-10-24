@@ -363,7 +363,7 @@ def main(argv=None) -> int:
 
     # Load the thermodynamic energy model from a YAML file.
     try:
-        energy_model = load_energy_model(cli_args.yaml, cli_args.tempC)
+        energy_model = load_energy_model(cli_args.tempC, cli_args.yaml)
     except Exception as e:
         logger.error(f"Failed to load energy model: {e}", exc_info=True)
         if not cli_args.json:
