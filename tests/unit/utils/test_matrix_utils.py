@@ -35,6 +35,8 @@ class DummyTri:
         self._d[(i, j)] = v
     def get(self, i, j):
         return self._d.get((i, j), math.inf)
+    def get_energy(self, i, j):
+        return self.get(i, j)
 
 
 class DummyGap:
@@ -45,6 +47,8 @@ class DummyGap:
         self._d[(i, j, k, l)] = v
     def get(self, i, j, k, l):
         return self._d.get((i, j, k, l), math.inf)
+    def get_energy(self, i, j, k, l):
+        return self.get(i, j, k, l)
 
 
 class DummyState:
@@ -201,20 +205,23 @@ def test_wxI_prefers_wxi_when_present_else_falls_back_to_wx():
 def test_whx_collapse_with_switches_between_charged_and_uncharged():
     """
     Tests a helper that combines the WHX collapse logic with selection between
-    "charged" (WXC) and "uncharged" (WXU) states.
+    charged (WXC) and uncharged (WXU) states.
+
+    NOTE: On a unit hole (l == k+1), the helper *always* collapses to the
+    uncharged WXU value, regardless of `charged`. If that 2D value is +inf,
+    it falls back to WHX(i,j,k,l).
     """
     st = DummyState()
     i, j, k = 3, 8, 5
 
-    st.wxu_matrix.set(i, j, -1.0) # Uncharged score.
-    st.wxc_matrix.set(i, j, -3.3) # Charged score.
+    st.wxu_matrix.set(i, j, -1.0)  # Uncharged score.
+    st.wxc_matrix.set(i, j, -3.3)  # Charged score (ignored on collapse).
 
-    # When collapsing (l=k+1), the `charged` flag determines which matrix to use.
+    # Collapse case → always use WXU (uncharged), even if charged=True.
     assert math.isclose(whx_collapse_with(st, i, j, k, k + 1, charged=False), -1.0, rel_tol=1e-12)
-    assert math.isclose(whx_collapse_with(st, i, j, k, k + 1, charged=True), -3.3, rel_tol=1e-12)
+    assert math.isclose(whx_collapse_with(st, i, j, k, k + 1, charged=True),  -1.0, rel_tol=1e-12)
 
-    # Test fallback behavior: if the target 2D collapse matrix is empty (+inf),
-    # the function should fall back to the value in the original 4D WHX matrix.
+    # Fallback: if the collapse target (WXU/WXC) is +inf, fall back to WHX(i,j,k,l).
     st = DummyState()
     st.whx_matrix.set(i, j, k, k + 1, -7.7)
     assert math.isclose(whx_collapse_with(st, i, j, k, k + 1, charged=True), -7.7, rel_tol=1e-12)
@@ -222,21 +229,25 @@ def test_whx_collapse_with_switches_between_charged_and_uncharged():
 
 def test_zhx_collapse_with_switches_between_charged_and_uncharged():
     """
-    Tests that `zhx_collapse_with` mirrors the behavior of `whx_collapse_with`,
-    but for the VXC and VXU matrices.
+    Tests that `zhx_collapse_with` mirrors `whx_collapse_with`.
+
+    NOTE: On a unit hole (l == k+1), the helper *always* collapses to the
+    uncharged VXU value, regardless of `charged`. If that 2D value is +inf,
+    it falls back to ZHX(i,j,k,l).
     """
     clear_matrix_lookup_caches()
     st = DummyState()
     i, j, k = 0, 4, 1
 
     st.vxu_matrix.set(i, j, -2.0)
-    st.vxc_matrix.set(i, j, -5.0)
+    st.vxc_matrix.set(i, j, -5.0)  # Ignored on collapse.
 
-    # The `charged` flag should correctly select between VXC and VXU.
+    # Collapse case → always use VXU (uncharged), even if charged=True.
     assert math.isclose(zhx_collapse_with(st, i, j, k, k + 1, charged=False), -2.0, rel_tol=1e-12)
-    assert math.isclose(zhx_collapse_with(st, i, j, k, k + 1, charged=True), -5.0, rel_tol=1e-12)
+    assert math.isclose(zhx_collapse_with(st, i, j, k, k + 1, charged=True),  -2.0, rel_tol=1e-12)
 
-    # Test the fallback to the ZHX matrix if VXC/VXU are empty.
+    # Fallback behavior when VXU/VXC are +inf:
     st = DummyState()
     st.zhx_matrix.set(i, j, k, k + 1, -0.123)
     assert math.isclose(zhx_collapse_with(st, i, j, k, k + 1, charged=False), -0.123, rel_tol=1e-12)
+

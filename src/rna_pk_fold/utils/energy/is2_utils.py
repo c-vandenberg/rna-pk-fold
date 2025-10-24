@@ -51,19 +51,19 @@ def compute_is2_outer_bridge_energy(
         The calculated energy for the IS2 outer bridge in kcal/mol, or 0.0 if
         the energy function or value is not defined in the `tables` object.
     """
-    # Check if a 'tables' object with the required attribute exists.
-    if tables and hasattr(tables, "IS2_outer"):
-        # Retrieve the attribute, which could be a function or a constant float.
-        energy_calculator = tables.compute_is2_outer_bridge_energy
-        # If it's a function, call it with the provided coordinates.
-        if callable(energy_calculator):
-            return energy_calculator(seq, i_index, j_index, r_index, s_index)
-        # If it's not a function, treat it as a pre-calculated float value.
-        else:
-            return float(energy_calculator)
+    if not tables:
+        return 0.0
 
-    # If the required attribute or tables object doesn't exist, return a neutral energy.
-    return 0.0
+    # Safely get the specific energy calculation function for the YHX context.
+    energy_calculator = getattr(tables, "IS2_outer", None)
+    if energy_calculator is None:
+        return 0.0
+
+    # Call the function and ensure the result is a float.
+    if callable(energy_calculator):
+        return float(energy_calculator(seq, i_index, j_index, r_index, s_index))
+
+    return float(energy_calculator)
 
 
 def compute_is2_outer_bridge_energy_yhx(

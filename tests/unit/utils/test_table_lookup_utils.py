@@ -7,10 +7,10 @@ fallback mechanisms and a core thermodynamic safety check (`clamp_non_favorable`
 """
 import math
 
-from rna_pk_fold.utils.data.table_lookup_utils import table_lookup, clamp_non_favorable
+from rna_pk_fold.utils.data.table_lookup_utils import table_lookup
 
 
-# ----------------------- table_lookup -----------------------
+# ----------------------- Table Lookup -----------------------
 def test_table_lookup_returns_value_on_hit():
     """
     Tests the primary success case: when the composite key is found in the table,
@@ -62,34 +62,3 @@ def test_table_lookup_tuple_order_is_significant():
     assert math.isclose(table_lookup(tbl, "U", "A", default_value=0.7), 0.7)
     # The correct key ("A", "U") is a hit.
     assert math.isclose(table_lookup(tbl, "A", "U", default_value=0.7), -0.3)
-
-
-# -------------------- clamp_non_favorable -------------------
-def test_clamp_non_favorable_negative_zero_positive():
-    """
-    Tests the core logic: stabilizing (negative/zero) energies pass through,
-    while destabilizing (positive) energies are clamped to 0.0.
-    """
-    # Negative (favorable/stabilizing) passes through.
-    assert math.isclose(clamp_non_favorable(-1.2), -1.2)
-    # Zero (neutral) passes through.
-    assert math.isclose(clamp_non_favorable(0.0), 0.0)
-    # Small positive (destabilizing) is clamped to 0.0.
-    assert math.isclose(clamp_non_favorable(1e-9), 0.0)
-    # Large positive is clamped to 0.0.
-    assert math.isclose(clamp_non_favorable(3.14), 0.0)
-
-
-def test_clamp_non_favorable_infinities_and_nan():
-    """
-    Tests edge cases involving special floating-point values.
-    """
-    # Positive infinity (destabilizing) should be clamped to 0.0.
-    assert math.isclose(clamp_non_favorable(math.inf), 0.0)
-    # Negative infinity (stabilizing) should pass through.
-    assert math.isinf(clamp_non_favorable(-math.inf)) and clamp_non_favorable(-math.inf) < 0
-
-    # NaN is clamped to 0.0 for safety.
-    nan_val = float("nan")
-    out = clamp_non_favorable(nan_val)
-    assert math.isclose(out, 0.0)

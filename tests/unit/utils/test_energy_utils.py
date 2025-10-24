@@ -7,7 +7,7 @@ Gibbs free energy (ΔG) and the lookup and extrapolation of loop energies.
 """
 import math
 
-from rna_pk_fold.utils.energy_utils import (
+from rna_pk_fold.utils.energy.energy_base_utils import (
     calculate_delta_g,
     lookup_loop_baseline_js,
     R_CAL,

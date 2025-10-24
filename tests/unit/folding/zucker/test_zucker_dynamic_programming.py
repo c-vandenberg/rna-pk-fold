@@ -14,7 +14,7 @@ import math
 import pytest
 from dataclasses import replace
 
-from rna_pk_fold.folding.zucker.zucker_recurrences import (
+from rna_pk_fold.folding.zucker.zucker_dynamic_programming import (
     ZuckerFoldingEngine,
     ZuckerFoldingConfig,
 )

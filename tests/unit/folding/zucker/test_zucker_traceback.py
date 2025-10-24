@@ -15,7 +15,7 @@ involves two main steps for each case:
 import pytest
 
 from rna_pk_fold.folding.zucker.zucker_fold_state import make_fold_state
-from rna_pk_fold.folding.zucker.zucker_recurrences import ZuckerFoldingEngine, ZuckerFoldingConfig
+from rna_pk_fold.folding.zucker.zucker_dynamic_programming import ZuckerFoldingEngine, ZuckerFoldingConfig
 from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.energies import SecondaryStructureEnergies

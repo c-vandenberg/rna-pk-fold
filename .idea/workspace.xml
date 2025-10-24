@@ -5,9 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="412c1b24-9f3a-48e6-b1d0-5a7a528ee298" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/tests/unit/energies/test_energy_ops.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/energies/test_energy_ops.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_back_pointer.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_back_pointer.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_recurrences.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/eddy_rivas/test_eddy_rivas_recurrences.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/unit/folding/zucker/test_trace.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/unit/folding/zucker/test_trace.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -40,6 +38,7 @@
     "Python tests.Python tests in test_compare_vienna_rna.py.executor": "Run",
     "Python tests.Python tests in test_constraints.py.executor": "Run",
     "Python tests.Python tests in test_eddy_rivas_back_pointer.py.executor": "Run",
+    "Python tests.Python tests in test_eddy_rivas_dynamic_programming.py.executor": "Run",
     "Python tests.Python tests in test_eddy_rivas_fold_state.py.executor": "Run",
     "Python tests.Python tests in test_eddy_rivas_recurrences.py.executor": "Run",
     "Python tests.Python tests in test_eddy_rivas_traceback.py.executor": "Run",

@@ -29,7 +29,7 @@ def test_wm_36_debug():
     """
     # --- Setup: Load energy model and initialize the folding engine ---
     from rna_pk_fold.folding.zucker import make_fold_state
-    from rna_pk_fold.folding.zucker.zucker_recurrences import ZuckerFoldingEngine, ZuckerFoldingConfig
+    from rna_pk_fold.folding.zucker.zucker_dynamic_programming import ZuckerFoldingEngine, ZuckerFoldingConfig
     from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
     from rna_pk_fold.energies import SecondaryStructureEnergyLoader
     from importlib.resources import files as ir_files

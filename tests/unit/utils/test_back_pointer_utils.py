@@ -12,7 +12,6 @@ on the behavior of the accessor functions themselves.
 import pytest
 from types import SimpleNamespace
 
-# Adjust this import path to match your file containing wx_bp/whx_bp/...
 from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import (
     get_wx_backpointer, get_whx_backpointer, get_yhx_backpointer, get_zhx_backpointer, get_vhx_backpointer
 )
@@ -21,28 +20,29 @@ from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import (
 class Recorder2:
     """
     A minimal mock object for a 2-index backpointer map.
-    It mimics the `.get(i, j)` method and records the arguments it was called with,
-    allowing tests to verify the behavior of accessor functions.
+    It mimics the `.get_backpointer(i, j)` method and records the arguments
+    it was called with, allowing tests to verify the behavior of accessor functions.
     """
     def __init__(self, ret=None):
         self.last_args = None
-        self._ret = ret  # The value to return when `get` is called.
+        self._ret = ret  # The value to return when `get_backpointer` is called.
 
-    def get(self, i, j):
+    def get_backpointer(self, i, j):
         self.last_args = (i, j)
         return self._ret
+
 
 
 class Recorder4:
     """
     A minimal mock object for a 4-index (sparse gap) backpointer map.
-    It mimics the `.get(i, j, k, l)` method and records the call arguments.
+    It mimics the `.get_backpointer(i, j, k, l)` method and records the call arguments.
     """
     def __init__(self, ret=None):
         self.last_args = None
-        self._ret = ret  # The value to return when `get` is called.
+        self._ret = ret  # The value to return when `get_backpointer` is called.
 
-    def get(self, i, j, k, l):
+    def get_backpointer(self, i, j, k, l):
         self.last_args = (i, j, k, l)
         return self._ret
 
@@ -68,26 +68,28 @@ def state():
 
 def test_wx_bp_returns_recorded_value_and_calls_get_with_correct_arity_and_order(state):
     """
-    Tests the `wx_bp` helper function.
+    Tests the `wx` backpointer accessor.
 
     This test verifies two key behaviors:
-    1. The helper correctly returns whatever value the underlying `.get()` method provides.
-    2. The helper calls the `.get()` method with the correct arguments (i, j) and in the correct order.
+    1. The helper correctly returns whatever value the underlying
+       `.get_backpointer()` method provides.
+    2. The helper calls the `.get_backpointer()` method with the correct
+       arguments (i, j) and in the correct order.
     """
     # --- Test "hit" path: a backpointer is found ---
     sentinel = object()
-    state.wx_back_ptr._ret = sentinel # Configure the recorder to return a specific object.
+    state.wx_back_ptr._ret = sentinel  # Configure the recorder to return a specific object.
 
     # Call the helper function.
     got = get_wx_backpointer(state, 3, 7)
 
     # Assert that the returned value is the one we configured.
     assert got is sentinel
-    # Assert that the underlying `get` method was called with the correct arguments.
+    # Assert that the underlying `get_backpointer` method was called with the correct arguments.
     assert state.wx_back_ptr.last_args == (3, 7)
 
     # --- Test "miss" path: no backpointer is found ---
-    state.wx_back_ptr._ret = None # Configure the recorder to return None.
+    state.wx_back_ptr._ret = None  # Configure the recorder to return None.
     got_none = get_wx_backpointer(state, 1, 2)
     assert got_none is None
     assert state.wx_back_ptr.last_args == (1, 2)
@@ -106,23 +108,23 @@ def test_hole_backpointer_helpers_return_value_and_call_order(state, func, attr_
     """
     Tests all 4-index ("hole") backpointer helper functions using parametrization.
 
-    This single test validates that each of the specified helper functions (`whx_bp`,
-    `yhx_bp`, etc.) correctly calls the appropriate `get` method on the state
-    object with the four indices (i, j, k, l) in the correct order, and that it
-    passes through the return value.
+    This single test validates that each specified helper function correctly calls
+    the appropriate `get_backpointer` method on the state object with the four
+    indices (i, j, k, l) in the correct order, and that it passes through the
+    return value.
     """
     # Get the correct recorder object from the mock state based on the test parameter.
     rec: Recorder4 = getattr(state, attr_name)
 
     # --- Test "hit" path ---
     sentinel = object()
-    rec._ret = sentinel # Configure the recorder to return our sentinel object.
+    rec._ret = sentinel  # Configure the recorder to return our sentinel object.
 
     # Use distinct coordinates to ensure the argument order is tested correctly.
     i, j, k, l = (2, 9, 4, 7)
     got = func(state, i, j, k, l)
 
-    # Verify the return value and the arguments passed to the underlying `get` method.
+    # Verify the return value and the arguments passed to the underlying `get_backpointer` method.
     assert got is sentinel
     assert rec.last_args == (i, j, k, l)
 
