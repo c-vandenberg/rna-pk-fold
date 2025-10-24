@@ -441,3 +441,27 @@ def _compute_span_length(i: int, j: int) -> int:
         The non-negative span length.
     """
     return max(0, j - i)
+
+
+def safe_split_left(outer_start: int, outer_end: int, split: int | None) -> int | None:
+    """
+    Ensure a left-split index makes progress: outer_start < split < outer_end.
+    Returns the valid split or None if degenerate (no progress).
+    """
+    valid_split = (outer_start + outer_end) // 2 if split is None else split
+    if valid_split <= outer_start or valid_split >= outer_end:
+        return None
+
+    return valid_split
+
+
+def safe_split_right(outer_start: int, outer_end: int, split: int | None) -> int | None:
+    """
+    Ensure a right-split index makes progress: outer_start <= split < outer_end-1.
+    Returns the valid split or None if degenerate (no progress).
+    """
+    valid_split = (outer_start + outer_end) // 2 if split is None else split
+    if valid_split < outer_start or valid_split >= outer_end:
+        return None
+    return valid_split
+

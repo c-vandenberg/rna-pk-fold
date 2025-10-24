@@ -81,6 +81,12 @@ def merge_nested_region_pairs(
     pair_to_layer : Dict[Tuple[int, int], int]
         The main dictionary mapping pairs to layers, which will be updated.
     """
+    # Fast path: degenerate intervals cannot contain pairs.
+    if j_index <= i_index:
+        print(f"\n[MERGE] Interval [{i_index},{j_index}] at layer={layer_index}")
+        print("[MERGE] Found 0 nested pairs:")
+        return
+
     print(f"\n[MERGE] Interval [{i_index},{j_index}] at layer={layer_index}")
     trace_result = collect_pairs(seq, nested_state, i_index, j_index)
     print(f"[MERGE] Found {len(trace_result.pairs)} nested pairs:")
@@ -148,7 +154,6 @@ def place_pair_in_first_non_crossing_layer(
     int
         The layer on which the pair was successfully placed.
     """
-    print(f"[PLACE_PAIR] Attempting ({i_index},{j_index}) from layer {starting_layer}", flush=True)
     # Start checking from the suggested layer.
     current_layer = starting_layer
     while True:
@@ -168,7 +173,6 @@ def place_pair_in_first_non_crossing_layer(
         if not conflict_found:
             # ...place the new pair on this layer.
             add_canonical_pair_if_absent(pairs, pair_to_layer, i_index, j_index, current_layer)
-            print(f"[PAIR] ({i_index},{j_index}) -> L{current_layer}", flush=True)
             # Return the layer where the pair was placed.
             return current_layer
 
