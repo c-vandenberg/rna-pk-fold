@@ -288,7 +288,7 @@ def predict_eddy_rivas_non_nested(
         enable_coax_variants=enable_coax,
         enable_coax_mismatch=enable_coax,
         enable_wx_overlap=enable_overlap,
-        enable_is2=False,
+        enable_is2=True,
         enable_join_drift=False,
         min_hole_width=min_hole_width,
         max_hole_width=max_hole_width,
