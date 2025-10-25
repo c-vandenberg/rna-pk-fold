@@ -1,10 +1,12 @@
 from __future__ import annotations
 import logging
-from typing import Set, Dict, Tuple, Callable, Any
+from typing import Set, Dict, Tuple, Callable, Any, Optional
 
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import TraceResult
 from rna_pk_fold.utils.sequences.indices_utils import canonical_pair
+
+Span = Tuple[int, int]
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +89,9 @@ def merge_nested_region_pairs(
         print("[MERGE] Found 0 nested pairs:")
         return
 
-    print(f"\n[MERGE] Interval [{i_index},{j_index}] at layer={layer_index}")
+    print(f"\n[MERGE] Interval [{i_index},{j_index}] at layer={layer_index}", flush=True)
     trace_result = collect_pairs(seq, nested_state, i_index, j_index)
-    print(f"[MERGE] Found {len(trace_result.pairs)} nested pairs:")
+    print(f"[MERGE] Found {len(trace_result.pairs)} nested pairs:", flush=True)
     for pair in trace_result.pairs:
         print(f"  → ({pair.base_i},{pair.base_j})")
         add_canonical_pair_if_absent(
@@ -211,3 +213,110 @@ def audit_layer_assignments(pair_to_layer: dict[tuple[int, int], int]) -> None:
             f"[L{layer_idx}] pairs={len(layer_pairs)} crossings_within_layer={within_layer_crossings}",
             flush=True,
         )
+
+
+def is_strict_subspan(outer_span: Span, candidate_span: Span) -> bool:
+    """
+    Check whether a span lies strictly inside another span.
+
+    A *strict subspan* means the candidate is fully contained within the outer
+    span and is not equal to it.
+
+    Parameters
+    ----------
+    outer_span : tuple[int, int]
+        Inclusive indices ``(i, j)`` of the outer span, with ``i <= j``.
+    candidate_span : tuple[int, int]
+        Inclusive indices ``(a, b)`` of the candidate span, with ``a <= b``.
+
+    Returns
+    -------
+    bool
+        ``True`` if ``candidate_span`` satisfies ``i <= a <= b <= j`` and
+        ``(a, b) != (i, j)``; ``False`` otherwise.
+
+    Notes
+    -----
+    Indices are assumed to be 0-based and inclusive.
+    """
+    outer_start, outer_end = outer_span
+    cand_start, cand_end = candidate_span
+    return (outer_start <= cand_start <= cand_end <= outer_end) and (
+            (cand_start, cand_end) != (outer_start, outer_end)
+    )
+
+
+def is_noncollapsed_hole(hole_span: Span) -> bool:
+    """
+    Determine whether a hole span is non-collapsed.
+
+    In this context, a hole ``(k, l)`` is *non-collapsed* if there is at least
+    one index strictly between ``k`` and ``l`` (i.e., ``k + 1 < l``).
+
+    Parameters
+    ----------
+    hole_span : tuple[int, int]
+        Inclusive indices ``(k, l)`` of the hole span, with ``k <= l``.
+
+    Returns
+    -------
+    bool
+        ``True`` if ``k + 1 < l``; ``False`` otherwise.
+
+    Notes
+    -----
+    Indices are assumed to be 0-based and inclusive.
+    """
+    k, l = hole_span
+    return (k + 1) < l
+
+
+def validate_is2_bridge_span(
+    outer_span: Span,
+    hole_span: Span,
+    bridge_span: Optional[Span],
+    *,
+    require_noncollapsed_hole: bool = False,
+) -> Optional[Span]:
+    """
+    Validate an IS2 bridge span and return it if it guarantees progress.
+
+    The bridge must exist, be a strict subspan of the outer span, differ from
+    the hole span, and (optionally) the hole must be non-collapsed.
+
+    Parameters
+    ----------
+    outer_span : tuple[int, int]
+        Inclusive indices ``(i, j)`` of the outer span.
+    hole_span : tuple[int, int]
+        Inclusive indices ``(k, l)`` of the hole span.
+    bridge_span : tuple[int, int] or None
+        Inclusive indices ``(r, s)`` of the proposed bridge span. If ``None``,
+        the validation fails.
+    require_noncollapsed_hole : bool, optional
+        If ``True``, additionally require that ``hole_span`` be non-collapsed
+        (i.e., ``k + 1 < l``). Default is ``False``.
+
+    Returns
+    -------
+    tuple[int, int] or None
+        The validated ``bridge_span`` if all conditions are met; otherwise ``None``.
+
+    Notes
+    -----
+    Validation conditions:
+
+    * ``bridge_span`` is provided (not ``None``).
+    * ``bridge_span`` is a strict subspan of ``outer_span``.
+    * ``bridge_span`` is not equal to ``hole_span``.
+    * If ``require_noncollapsed_hole`` is ``True``, then ``k + 1 < l`` for ``hole_span``.
+    """
+    if bridge_span is None:
+        return None
+    if require_noncollapsed_hole and not is_noncollapsed_hole(hole_span):
+        return None
+    if not is_strict_subspan(outer_span, bridge_span):
+        return None
+    if bridge_span == hole_span:
+        return None
+    return bridge_span
