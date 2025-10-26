@@ -9,7 +9,8 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldSt
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasBacktrackOp
 from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import (merge_nested_region_pairs,
                                                                        place_pair_in_first_non_crossing_layer,
-                                                                       audit_layer_assignments, validate_is2_bridge_span)
+                                                                       audit_layer_assignments, validate_is2_bridge_span,
+                                                                       choose_pk_branch)
 from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import (get_wx_backpointer, get_whx_backpointer,
                                                                       get_yhx_backpointer, get_zhx_backpointer,
                                                                       get_vhx_backpointer)
@@ -170,6 +171,7 @@ def traceback_with_pseudoknots(
 
             # 1.2. Handle WX composition from two WHX subproblems.
             if op is EddyRivasBacktrackOp.RE_PK_COMPOSE_WX:
+                # derive left/right coordinates
                 if backpointer.hole_left and backpointer.hole_right:
                     left_k, left_l = backpointer.hole_left
                     right_k, right_l = backpointer.hole_right
@@ -177,9 +179,29 @@ def traceback_with_pseudoknots(
                     left_k, left_l = k_idx, split_index
                     right_k, right_l = split_index + 1, l_idx
 
-                # Both subproblems are WHX and are considered part of the base nested layer.
-                trace_stack.append(("WHX", outer_start, left_l, left_k, left_l, 0))
-                trace_stack.append(("WHX", right_k, outer_end, right_k, right_l, 0))
+                # Decide per side
+                left_choice, (li, lj, lk, ll) = choose_pk_branch(eddy_rivas_fold_state, "L", outer_start, left_l,
+                                                                  left_k, left_l)
+                right_choice, (ri, rj, rk, rl) = choose_pk_branch(eddy_rivas_fold_state, "R", right_k, outer_end,
+                                                                   right_k, right_l)
+
+                # Push right branch first so left runs next (stack is LIFO)
+                if right_choice == "YHX":
+                    trace_stack.append(("YHX", ri, rj, rk, rl, layer_idx))
+                elif right_choice == "WHX":
+                    trace_stack.append(("WHX", ri, rj, rk, rl, 0))
+                else:
+                    # flatten if nothing to trace
+                    merge_nested_region_pairs(seq, nested_state, ri, rj, layer_idx, trace_nested_interval, base_pairs,
+                                              pair_to_layer)
+
+                if left_choice == "YHX":
+                    trace_stack.append(("YHX", li, lj, lk, ll, layer_idx))
+                elif left_choice == "WHX":
+                    trace_stack.append(("WHX", li, lj, lk, ll, 0))
+                else:
+                    merge_nested_region_pairs(seq, nested_state, li, lj, layer_idx, trace_nested_interval, base_pairs,
+                                              pair_to_layer)
                 continue
 
             # 1.3. Handle WX composition from two YHX subproblems.

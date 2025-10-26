@@ -1,10 +1,12 @@
 from __future__ import annotations
+import math
 import logging
 from typing import Set, Dict, Tuple, Callable, Any, Optional
 
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import TraceResult
 from rna_pk_fold.utils.sequences.indices_utils import canonical_pair
+from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import get_whx_backpointer, get_yhx_backpointer
 
 Span = Tuple[int, int]
 
@@ -320,3 +322,33 @@ def validate_is2_bridge_span(
     if bridge_span == hole_span:
         return None
     return bridge_span
+
+
+def choose_pk_branch(
+    state,
+    side: str,
+    i: int, j: int,  # outer span
+    k: int, l: int,  # hole span for that side
+) -> Tuple[str, Tuple[int,int,int,int]]:
+    """
+    Decide whether this PK branch should be traced as YHX (crossing) or WHX (nested).
+    Preference: YHX if it has a backpointer; otherwise WHX; otherwise None→flatten.
+    Returns ("YHX"|"WHX"|"FLATTEN", (i,j,k,l)).
+    """
+    yhx_backpointer = get_yhx_backpointer(state, i, j, k, l)
+    whx_backpointer = get_whx_backpointer(state, i, j, k, l)
+
+    yhx_energy = state.yhx_matrix.get_energy(i, j, k, l) if yhx_backpointer is not None else math.inf
+    whx_energy = state.whx_matrix.get_energy(i, j, k, l) if whx_backpointer is not None else math.inf
+
+    # Prefer YHX when it exists and is no worse than WHX
+    if yhx_backpointer is not None and yhx_energy <= whx_energy + 1e-9:
+        print(f"[WX CHOOSE-{side}] YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})", flush=True)
+        return "YHX", (i, j, k, l)
+    if whx_backpointer is not None:
+        print(f"[WX CHOOSE-{side}] WHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})", flush=True)
+        return "WHX", (i, j, k, l)
+
+    print(f"[WX CHOOSE-{side}] FLATTEN (no BP in YHX/WHX)", flush=True)
+
+    return "FLATTEN", (i, j, k, l)
