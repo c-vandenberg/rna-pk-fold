@@ -243,9 +243,9 @@ def scan_is2_best_outer_bridge(
         raise ValueError(f"unsupported inner matrix: {inner_matrix_name}")
 
     if bridge_energy_kind == "yhx":
-        bridge_get = lambda r, s2: compute_is2_outer_bridge_energy_yhx(config, seq, i_idx, j_idx, r, s2)
+        bridge_get = lambda r, s2: compute_is2_outer_bridge_energy_yhx(config.pk_energies, seq, i_idx, j_idx, r, s2)
     else:
-        bridge_get = lambda r, s2: compute_is2_outer_bridge_energy(seq, config, i_idx, j_idx, r, s2)
+        bridge_get = lambda r, s2: compute_is2_outer_bridge_energy(seq, config.pk_energies, i_idx, j_idx, r, s2)
 
     best_val = math.inf
     best_bridge: Optional[Tuple[int, int]] = None

@@ -1,6 +1,7 @@
 import math
 from typing import Tuple, Any, Optional, Iterable
 
+from rna_pk_fold.energies.energy_pk_ops import dangle_outer_left, dangle_outer_right
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_gap_energy_for_named_matrix
 
 
@@ -16,104 +17,133 @@ def _get_first_attr(obj: Any, candidate_names: Iterable[str]) -> Optional[Any]:
             return getattr(obj, name)
     return None
 
+# ---------------------------------------------------------------------
+# IS2 Bridge Energy Models
+# ---------------------------------------------------------------------
+def _outer_trim_sizes(i_index: int, j_index: int, r_index: int, s_index: int) -> Tuple[int, int]:
+    """
+    Number of trimmed/unpaired bases on the outer span when placing a bridge (r, s).
+
+    Returns
+    -------
+    (n_left, n_right) with:
+      n_left  = r - i       (bases removed on 5' side)
+      n_right = j - s       (bases removed on 3' side)
+    """
+    return max(0, r_index - i_index), max(0, j_index - s_index)
+
 
 def compute_is2_outer_bridge_energy(
     seq: str,
-    tables: Any,
+    pk_energies: Any,
     i_index: int,
     j_index: int,
     r_index: int,
-    s_index: int
+    s_index: int,
 ) -> float:
     """
-    Safely calculates the energy for an IS2 (Irreducible Surface of Order 2) outer bridge.
+    Energy for an IS2 "outer bridge" when the OUTER pair (i,j) is already closed.
 
-    This function acts as a safe wrapper to compute the energy contribution of the
-    "bridge" part of an IS2 motif, which spans from an outer helix `(i, j)` to an
-    inner helix `(r, s)`. It dynamically calls a function or uses a float value
-    provided in the `tables` object.
+    Context
+    -------
+    Used from VHX/ZHX IS2 cases where the inner subproblem is ZHX or VHX and
+    the outer pair (i, j) is paired by construction. Because (i,j) is already
+    paired, we DO NOT add another ~P_out here (that would double-count).
+    We charge for unpaired outer trim, plus a small multiloop-like overhead.
+
+    Model
+    -----
+      E = (n_left + n_right) * q_tilde_out
+          + (m_tilde_vhx + m_tilde_whx)
+          + optional dangles at i/j if trimming occurred
+
+    Where:
+      n_left  = r - i
+      n_right = j - s
 
     Parameters
     ----------
     seq : str
-        The RNA sequence.
-    tables : Any
-        An object expected to have an `IS2_outer` attribute, which can be
-        either a callable function `fn(seq, i, j, r, s)` or a float value.
+    pk_energies : PseudoknotEnergies
     i_index, j_index : int
-        The indices of the outer closing pair.
+        Outer pair indices (i < j), paired in this context.
     r_index, s_index : int
-        The indices of the inner closing pair.
+        Bridge pair indices (i <= r <= k) and (l <= s <= j)
 
     Returns
     -------
-    float
-        The calculated energy for the IS2 outer bridge in kcal/mol, or 0.0 if
-        the energy function or value is not defined in the `tables` object.
+    float : kcal/mol
     """
-    if not tables:
-        return 0.0
+    n_left, n_right = _outer_trim_sizes(i_index, j_index, r_index, s_index)
 
-    # Safely get the specific energy calculation function for the YHX context.
-    energy_calculator = getattr(tables, "IS2_outer", None)
-    if energy_calculator is None:
-        return 0.0
+    # Per-base outer single-strand penalties
+    ss_cost = (n_left + n_right) * float(pk_energies.q_tilde_out)
 
-    # Call the function and ensure the result is a float.
-    if callable(energy_calculator):
-        return float(energy_calculator(seq, i_index, j_index, r_index, s_index))
+    # Multiloop-like overhead to connect the outer and inner helices
+    ml_cost = float(pk_energies.m_tilde_vhx) + float(pk_energies.m_tilde_whx)
 
-    return float(energy_calculator)
+    # If we trimmed at either side, allow a single sequence-aware outer dangle on that side.
+    dangle_cost = 0.0
+    if n_left > 0:
+        dangle_cost += float(dangle_outer_left(seq, i_index, pk_energies))
+    if n_right > 0:
+        dangle_cost += float(dangle_outer_right(seq, j_index, pk_energies))
+
+    return ss_cost + ml_cost + dangle_cost
 
 
 def compute_is2_outer_bridge_energy_yhx(
-    config: Any,
+    pk_energies: Any,
     seq: str,
     i_index: int,
     j_index: int,
     r_index: int,
-    s_index: int
+    s_index: int,
 ) -> float:
     """
-    Safely calculates the IS2 outer bridge energy in the YHX matrix context.
+    Energy for an IS2 "outer bridge" in the YHX context.
 
-    This is a specialized version of the IS2 energy calculation tailored for the
-    recursion rules of the YHX gap matrix. It safely retrieves the appropriate
-    energy function from the configuration object.
+    Context
+    -------
+    Used when the INNER subproblem is WHX and the OUTER span is handled by YHX
+    (i.e., (k,l) is paired, but (i,j) is not fixed at the time of recursion).
+    Here we include a ~P_out cost because forming the bridge implies closing (i,j)
+    in this pathway, plus outer unpaired penalties and a small multiloop overhead.
 
-    Parameters
-    ----------
-    config : Any
-        The folding configuration object, expected to have a `tables` attribute.
-    seq : str
-        The RNA sequence.
-    i_index, j_index : int
-        The indices of the outer closing pair.
-    r_index, s_index : int
-        The indices of the inner closing pair.
+    Model
+    -----
+      E = p_tilde_out
+          + (n_left + n_right) * q_tilde_out
+          + (m_tilde_yhx + m_tilde_whx)
+          + optional dangles at i/j if trimming occurred
 
     Returns
     -------
-    float
-        The calculated energy for the IS2 outer bridge in kcal/mol, or 0.0 if
-        the energy function is not defined in the configuration.
+    float : kcal/mol
     """
-    # Safely get the 'tables' object from the main configuration.
-    tables = getattr(config, "tables", None)
-    if tables is None:
-        return 0.0
+    n_left, n_right = _outer_trim_sizes(i_index, j_index, r_index, s_index)
 
-    # Safely get the specific energy calculation function for the YHX context.
-    energy_function = getattr(tables, "IS2_outer_yhx", None)
-    if energy_function is None:
-        return 0.0
+    # Forming the outer pair in this YHX path (count once)
+    pair_cost = float(pk_energies.p_tilde_out)
 
-    # Call the function and ensure the result is a float.
-    return float(energy_function(seq, i_index, j_index, r_index, s_index))
+    # Per-base outer single-strand penalties
+    ss_cost = (n_left + n_right) * float(pk_energies.q_tilde_out)
+
+    # Multiloop-like overhead for YHX↔WHX coupling
+    ml_cost = float(pk_energies.m_tilde_yhx) + float(pk_energies.m_tilde_whx)
+
+    # Sequence-aware dangles if we trimmed
+    dangle_cost = 0.0
+    if n_left > 0:
+        dangle_cost += float(dangle_outer_left(seq, i_index, pk_energies))
+    if n_right > 0:
+        dangle_cost += float(dangle_outer_right(seq, j_index, pk_energies))
+
+    return pair_cost + ss_cost + ml_cost + dangle_cost
 
 
 # ---------------------------------------------------------------------
-# Scanning / dispatch
+# Dispatcher + Full Scan
 # ---------------------------------------------------------------------
 def compute_is2_bridge_energy(
     config: Any,
@@ -130,11 +160,6 @@ def compute_is2_bridge_energy(
     if bridge_kind_name == "yhx":
         return compute_is2_outer_bridge_energy_yhx(
             config, seq, i_index, j_index, r_index, s_index
-        )
-    if bridge_kind_name == "default":
-        tables = getattr(config, "tables", None)
-        return compute_is2_outer_bridge_energy(
-            seq, tables, i_index, j_index, r_index, s_index
         )
     raise ValueError(f"Unknown bridge_kind: {bridge_kind_name}")
 
