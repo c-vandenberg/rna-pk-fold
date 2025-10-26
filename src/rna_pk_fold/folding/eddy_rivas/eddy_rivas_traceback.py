@@ -18,6 +18,72 @@ from rna_pk_fold.utils.dynamic_programming.dp_split_utils import safe_split_left
 
 logger = logging.getLogger(__name__)
 
+PROGRESS_OPS_WHX = {
+    EddyRivasBacktrackOp.RE_WHX_SHRINK_LEFT,
+    EddyRivasBacktrackOp.RE_WHX_SHRINK_RIGHT,
+    EddyRivasBacktrackOp.RE_WHX_TRIM_LEFT,
+    EddyRivasBacktrackOp.RE_WHX_TRIM_RIGHT,
+    EddyRivasBacktrackOp.RE_WHX_SS_BOTH,
+    EddyRivasBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX,
+    EddyRivasBacktrackOp.RE_WHX_SPLIT_RIGHT_WX_WHX,
+    EddyRivasBacktrackOp.RE_WHX_OVERLAP_SPLIT,
+    EddyRivasBacktrackOp.RE_WHX_COLLAPSE,
+}
+
+PROGRESS_OPS_YHX = {
+    EddyRivasBacktrackOp.RE_YHX_DANGLE_L,
+    EddyRivasBacktrackOp.RE_YHX_DANGLE_R,
+    EddyRivasBacktrackOp.RE_YHX_DANGLE_LR,
+    EddyRivasBacktrackOp.RE_YHX_SS_LEFT,
+    EddyRivasBacktrackOp.RE_YHX_SS_RIGHT,
+    EddyRivasBacktrackOp.RE_YHX_SS_BOTH,
+    EddyRivasBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX,
+    EddyRivasBacktrackOp.RE_YHX_SPLIT_RIGHT_WX_YHX,
+    EddyRivasBacktrackOp.RE_YHX_WRAP_WHX,
+    EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L,
+    EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R,
+    EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR,
+}
+
+PROGRESS_OPS_ZHX = {
+    EddyRivasBacktrackOp.RE_ZHX_FROM_VHX,
+    EddyRivasBacktrackOp.RE_ZHX_DANGLE_L,
+    EddyRivasBacktrackOp.RE_ZHX_DANGLE_R,
+    EddyRivasBacktrackOp.RE_ZHX_DANGLE_LR,
+    EddyRivasBacktrackOp.RE_ZHX_SS_LEFT,
+    EddyRivasBacktrackOp.RE_ZHX_SS_RIGHT,
+    EddyRivasBacktrackOp.RE_ZHX_SPLIT_LEFT_ZHX_WX,
+    EddyRivasBacktrackOp.RE_ZHX_SPLIT_RIGHT_ZHX_WX,
+}
+
+PROGRESS_OPS_VHX = {
+    EddyRivasBacktrackOp.RE_VHX_DANGLE_L,
+    EddyRivasBacktrackOp.RE_VHX_DANGLE_R,
+    EddyRivasBacktrackOp.RE_VHX_DANGLE_LR,
+    EddyRivasBacktrackOp.RE_VHX_SS_LEFT,
+    EddyRivasBacktrackOp.RE_VHX_SS_RIGHT,
+    EddyRivasBacktrackOp.RE_VHX_SPLIT_LEFT_ZHX_WX,
+    EddyRivasBacktrackOp.RE_VHX_SPLIT_RIGHT_ZHX_WX,
+    EddyRivasBacktrackOp.RE_VHX_WRAP_WHX,
+    EddyRivasBacktrackOp.RE_VHX_CLOSE_BOTH,
+}
+
+def _target_will_progress_to_whx(state, i, j, k, l) -> bool:
+    bp = get_whx_backpointer(state, i, j, k, l)
+    return (bp is not None) and (bp.op in PROGRESS_OPS_WHX)
+
+def _target_will_progress_to_yhx(state, i, j, k, l) -> bool:
+    bp = get_yhx_backpointer(state, i, j, k, l)
+    return (bp is not None) and (bp.op in PROGRESS_OPS_YHX)
+
+def _target_will_progress_to_zhx(state, i, j, k, l) -> bool:
+    bp = get_zhx_backpointer(state, i, j, k, l)
+    return (bp is not None) and (bp.op in PROGRESS_OPS_ZHX)
+
+def _target_will_progress_to_vhx(state, i, j, k, l) -> bool:
+    bp = get_vhx_backpointer(state, i, j, k, l)
+    return (bp is not None) and (bp.op in PROGRESS_OPS_VHX)
+
 
 def traceback_with_pseudoknots(
     seq: str,
@@ -383,16 +449,24 @@ def traceback_with_pseudoknots(
 
             # 2.11 IS2 route that resolves the inner hole via YHX logic.
             elif op is EddyRivasBacktrackOp.RE_WHX_IS2_INNER_YHX:
-                bridge = validate_is2_bridge_span(
-                    (outer_start, outer_end), (k_idx, l_idx), getattr(backpointer, "bridge", None)
-                )
-                if bridge is None:
-                    print("[WHX IS2] invalid/missing bridge → merge nested", flush=True)
+                if backpointer.bridge:
+                    yi, yj = backpointer.bridge
+                    strict_subspan = (outer_start <= yi <= yj <= outer_end) and ((yi, yj) != (outer_start, outer_end))
+                    equal_span = (yi, yj) == (outer_start, outer_end)
+                    ok_not_hole = ((yi, yj) != (k_idx, l_idx))
+                    if (strict_subspan or (
+                            equal_span and _target_will_progress_to_yhx(eddy_rivas_fold_state, yi, yj, k_idx,
+                                                                        l_idx))) and ok_not_hole:
+                        print(f"[WHX IS2] handoff → YHX({yi},{yj}:{k_idx},{l_idx})", flush=True)
+                        trace_stack.append(("YHX", yi, yj, k_idx, l_idx, layer_idx))
+                        continue
+                    print("[WHX IS2] bridge rejected (non-progress or equals hole) → merge nested", flush=True)
                     merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
-                                       trace_nested_interval, base_pairs, pair_to_layer)
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 else:
-                    r2, s2 = bridge
-                    trace_stack.append(("YHX", r2, s2, k_idx, l_idx, layer_idx))
+                    print("[WHX IS2] missing bridge → merge nested", flush=True)
+                    merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 continue
 
             else:
@@ -481,16 +555,26 @@ def traceback_with_pseudoknots(
 
             # 3.4. For IS2 motif, delegate to WHX
             elif op is EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX:
-                bridge = validate_is2_bridge_span(
-                    (outer_start, outer_end), (k_idx, l_idx), getattr(backpointer, "bridge", None)
-                )
-                if bridge is None:
-                    print("[YHX IS2] invalid/missing bridge → merge nested", flush=True)
+                if backpointer.bridge:
+                    wi, wj = backpointer.bridge
+                    # Accept if (a) strict subspan of [i..j], or
+                    #         (b) equal span but target WHX will make immediate progress.
+                    strict_subspan = (outer_start <= wi <= wj <= outer_end) and ((wi, wj) != (outer_start, outer_end))
+                    equal_span = (wi, wj) == (outer_start, outer_end)
+                    ok_not_hole = ((wi, wj) != (k_idx, l_idx))
+                    if (strict_subspan or (
+                            equal_span and _target_will_progress_to_whx(eddy_rivas_fold_state, wi, wj, k_idx,
+                                                                        l_idx))) and ok_not_hole:
+                        print(f"[YHX IS2] handoff → WHX({wi},{wj}:{k_idx},{l_idx})", flush=True)
+                        trace_stack.append(("WHX", wi, wj, k_idx, l_idx, layer_idx))
+                        continue
+                    print("[YHX IS2] bridge rejected (non-progress or equals hole) → merge nested", flush=True)
                     merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
-                                       trace_nested_interval, base_pairs, pair_to_layer)
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 else:
-                    wi, wj = bridge
-                    trace_stack.append(("WHX", wi, wj, k_idx, l_idx, layer_idx))
+                    print("[YHX IS2] missing bridge → merge nested", flush=True)
+                    merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 continue
 
             # 3.6. Unknown operation fallback
@@ -559,18 +643,22 @@ def traceback_with_pseudoknots(
 
             # 4.4. An IS2 motif,
             elif op is EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX:
-                bridge = validate_is2_bridge_span(
-                    (outer_start, outer_end), (k_idx, l_idx),
-                    getattr(backpointer, "bridge", None),
-                    require_noncollapsed_hole=True,  # VHX expects a proper (k,l)
-                )
-                if bridge is None:
-                    print("[ZHX IS2] invalid/missing bridge → merge nested", flush=True)
+                if backpointer.bridge:
+                    vi, vj = backpointer.bridge
+                    strict_subspan = (outer_start <= vi <= vj <= outer_end) and ((vi, vj) != (outer_start, outer_end))
+                    equal_span = (vi, vj) == (outer_start, outer_end)
+                    ok_geom = ((vi, vj) != (k_idx, l_idx)) and (k_idx + 1 < l_idx)
+                    if (strict_subspan or (
+                            equal_span and _target_will_progress_to_vhx(eddy_rivas_fold_state, vi, vj, k_idx,
+                                                                        l_idx))) and ok_geom:
+                        print(f"[ZHX IS2] handoff → VHX({vi},{vj}:{k_idx},{l_idx})", flush=True)
+                        trace_stack.append(("VHX", vi, vj, k_idx, l_idx, layer_idx))
+                        continue
+                    print("[ZHX IS2] bridge rejected → merge nested", flush=True)
                     merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
-                                       trace_nested_interval, base_pairs, pair_to_layer)
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 else:
-                    vi, vj = bridge
-                    trace_stack.append(("VHX", vi, vj, k_idx, l_idx, layer_idx))
+                    print("[ZHX IS2] missing bridge → merge nested", flush=True)
                 continue
 
             # 4.5. Unknown operation fallback
@@ -636,16 +724,22 @@ def traceback_with_pseudoknots(
 
             # 5.4. An IS2 motif.
             elif op is EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX:
-                bridge = validate_is2_bridge_span(
-                    (outer_start, outer_end), (k_idx, l_idx), getattr(backpointer, "bridge", None)
-                )
-                if bridge is None:
-                    print("[VHX IS2] invalid/missing bridge → merge nested", flush=True)
+                if backpointer.bridge:
+                    zi, zj = backpointer.bridge
+                    strict_subspan = (outer_start <= zi <= zj <= outer_end) and ((zi, zj) != (outer_start, outer_end))
+                    equal_span = (zi, zj) == (outer_start, outer_end)
+                    ok_not_hole = ((zi, zj) != (k_idx, l_idx))
+                    if (strict_subspan or (
+                            equal_span and _target_will_progress_to_zhx(eddy_rivas_fold_state, zi, zj, k_idx,
+                                                                        l_idx))) and ok_not_hole:
+                        print(f"[VHX IS2] handoff → ZHX({zi},{zj}:{k_idx},{l_idx})", flush=True)
+                        trace_stack.append(("ZHX", zi, zj, k_idx, l_idx, layer_idx))
+                        continue
+                    print("[VHX IS2] bridge rejected → merge nested", flush=True)
                     merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
-                                       trace_nested_interval, base_pairs, pair_to_layer)
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 else:
-                    zi, zj = bridge
-                    trace_stack.append(("ZHX", zi, zj, k_idx, l_idx, layer_idx))
+                    print("[VHX IS2] missing bridge → merge nested", flush=True)
                 continue
 
             # 5.5. Mulitloop wrap

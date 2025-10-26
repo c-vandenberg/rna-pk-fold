@@ -169,7 +169,7 @@ def place_pair_in_first_non_crossing_layer(
                     (i_index, j_index), (existing_i, existing_j)
             ):
                 # If a crossing is found, mark a conflict and stop checking this layer.
-                has_conflict = True
+                conflict_found = True
                 print(f"  Conflict with ({existing_i},{existing_j}) on L{current_layer}", flush=True)
                 break
 

@@ -202,35 +202,12 @@ def scan_is2_best_outer_bridge(
     """
     Scan all outer-bridge coordinates `(r, s)` and return the best IS2 energy.
 
-    This enumerates `r in [i..k]` and `s in [l..j]`, combines the inner-gap
-    energy with the corresponding outer-bridge energy, and returns the minimum.
-
-    Parameters
-    ----------
-    state : EddyRivasFoldState
-        Fold state containing gap and triangular matrices.
-    config : Any
-        Folding configuration (tables required by bridge energy).
-    seq : str
-        RNA sequence.
-    i_idx, j_idx : int
-        Outer span indices.
-    k_idx, l_idx : int
-        Inner hole indices.
-    inner_matrix_name : str
-        One of "vhx", "zhx", "yhx", "whx" to choose the inner sub-problem.
-    bridge_energy_kind : str
-        Either "default" (general bridge) or "yhx" (YHX-specific bridge model).
-    op : EddyRivasBacktrackOp
-        Operation to annotate in the backpointer if selected.
-
-    Returns
-    -------
-    Tuple[float, Optional[Tuple[int, int]], EddyRivasBacktrackOp]
-        `(best_energy, best_bridge, op)`, where `best_bridge` is `(r, s)` or
-        None if no finite candidate exists.
+    Progress guards:
+      - Skip bridges identical to the outer span (r,s)==(i,j) or to the hole (r,s)==(k,l).
+      - Require at least one outer trim: (r > i) or (s < j).
+      - Respect min_outer_left / min_outer_right: if both sides fail their minimums, skip.
     """
-    # Inner sub-problem getter
+    # --- Inner sub-problem getter ---
     if inner_matrix_name == "vhx":
         inner_get = lambda r, s2: state.vhx_matrix.get_energy(r, s2, k_idx, l_idx)
     elif inner_matrix_name == "zhx":
@@ -242,23 +219,44 @@ def scan_is2_best_outer_bridge(
     else:
         raise ValueError(f"unsupported inner matrix: {inner_matrix_name}")
 
+    # --- Bridge energy model ---
     if bridge_energy_kind == "yhx":
         bridge_get = lambda r, s2: compute_is2_outer_bridge_energy_yhx(config.pk_energies, seq, i_idx, j_idx, r, s2)
     else:
         bridge_get = lambda r, s2: compute_is2_outer_bridge_energy(seq, config.pk_energies, i_idx, j_idx, r, s2)
 
+    # --- Progress constraints (min outer trims) ---
+    min_left = int(getattr(config.pk_energies, "min_outer_left", 0))
+    min_right = int(getattr(config.pk_energies, "min_outer_right", 0))
+
     best_val = math.inf
     best_bridge: Optional[Tuple[int, int]] = None
-    candidate_energy = 0.0
 
     for r in range(i_idx, k_idx + 1):
         for s2 in range(l_idx, j_idx + 1):
-            if r <= s2:
-                inner_val = inner_get(r, s2)
-                if math.isfinite(inner_val):
-                    candidate_energy = bridge_get(r, s2) + inner_val
-                if candidate_energy < best_val:
-                    best_val, best_bridge = candidate_energy, (r, s2)
+            if r > s2:
+                continue
+
+            # Skip trivial/non-progress bridges
+            if (r, s2) == (i_idx, j_idx):
+                continue  # identical to the full outer span
+            if (r, s2) == (k_idx, l_idx):
+                continue  # identical to the hole
+            n_left = max(0, r - i_idx)
+            n_right = max(0, j_idx - s2)
+            if n_left == 0 and n_right == 0:
+                continue  # must actually trim on at least one side
+            if (min_left > 0 or min_right > 0) and (n_left < min_left and n_right < min_right):
+                continue  # both sides fail their minimums
+
+            inner_val = inner_get(r, s2)
+            if not math.isfinite(inner_val):
+                continue
+
+            cand = bridge_get(r, s2) + inner_val
+            if cand < best_val:
+                best_val = cand
+                best_bridge = (r, s2)
 
     return best_val, best_bridge, op
 
