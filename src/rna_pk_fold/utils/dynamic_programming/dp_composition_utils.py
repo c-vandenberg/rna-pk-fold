@@ -80,6 +80,34 @@ def hole_has_internal_bases(hole_span: Tuple[int, int]) -> bool:
     return (l_idx - k_idx) > 1
 
 
+def hole_is_pairable(can_pair_mask, hole_left_idx: int, hole_right_idx: int) -> bool:
+    """
+    Check whether a hole base pair (k, l) is permitted by a pairing mask.
+
+    Parameters
+    ----------
+    can_pair_mask : Any
+        2D boolean-like structure such that ``pairing_mask[k][l]`` is truthy
+        when positions ``k`` and ``l`` can pair. If the mask is unavailable or
+        indices are out of range, this function treats the pair as permitted.
+    hole_left_idx : int
+        Left index of the hole (k).
+    hole_right_idx : int
+        Right index of the hole (l).
+
+    Returns
+    -------
+    bool
+        ``True`` if the mask permits the pair or if the mask is missing/out-of-range;
+        ``False`` if the mask explicitly disallows the pair.
+    """
+    try:
+        return bool(can_pair_mask[hole_left_idx][hole_right_idx])
+    except Exception:
+        # Mask not available or indices out-of-bounds: let upstream filters decide.
+        return True
+
+
 # ---------------------------------------------------------------------
 # WX Composition: Array Preparation (One Pass Over Split Point `r`)
 # ---------------------------------------------------------------------

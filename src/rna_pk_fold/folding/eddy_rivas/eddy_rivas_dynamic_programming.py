@@ -1,3 +1,4 @@
+import os
 import math
 import time
 import logging
@@ -20,7 +21,7 @@ from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
     update_tracker_for_vhx_multiloop_close_and_wrap, update_tracker_for_hole_dangles_using_vhx, update_tracker_for_hole_ss_with_right_tiebreak,
     update_tracker_for_outer_dangles_using_vhx, update_tracker_for_outer_ss_with_right_tiebreak, update_tracker_for_yhx_multiloop_wrap_whx,
     update_tracker_for_outer_ss_both, update_tracker_for_whx_shrink_hole, update_tracker_for_whx_trim_outer, update_tracker_for_whx_collapse_to_nested,
-    update_tracker_for_whx_ss_both_outer, update_tracker_for_whx_splits, update_tracker_for_whx_overlap_split, update_tracker_for_whx_is2_bridge
+    update_tracker_for_whx_ss_both_outer, update_tracker_for_whx_splits, update_tracker_for_whx_overlap_split
 )
 from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (evaluate_wx_composition_for_hole,
                                                                         evaluate_wx_yhx_overlap_for_span,
@@ -31,6 +32,7 @@ from rna_pk_fold.utils.dynamic_programming.dp_split_utils import (compute_vhx_be
                                                                   YhxSplitMode)
 from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import (use_nested_energy_if_composed_infinite,
                                                                     publish_min_energy_with_default_backpointer)
+from rna_pk_fold.utils.energy.is2_utils import validate_is2_progress
 from rna_pk_fold.utils.logging.debug_utils import debug_print, count_finite_cells
 from rna_pk_fold.utils.logging.logging_utils import setup_logger
 
@@ -524,7 +526,35 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 10: IS2 motif (Outer Bridge + Inner YHX). ----------
                 if self.config.enable_is2:
-                    update_tracker_for_whx_is2_bridge(tracker, eddy_rivas_fold_state, self.config, seq, i, j, k, l)
+                    # Aliases for readability (no behavior change)
+                    outer_i, outer_j, hole_k, hole_l = i, j, k, l
+
+                    # Find the best outer bridge that transitions into YHX.
+                    # Notes:
+                    #   - inner_matrix_name="yhx": IS2 hands off to YHX on the inside
+                    #   - bridge_energy_kind="default": WHX uses default bridge energy (YHX uses "yhx")
+                    is2_energy, is2_bridge_bp, _ = scan_is2_best_outer_bridge(
+                        eddy_rivas_fold_state, self.config, seq, outer_i, outer_j, hole_k, hole_l,
+                        inner_matrix_name="yhx",
+                        bridge_energy_kind="default",
+                        op=EddyRivasBacktrackOp.RE_WHX_IS2_INNER_YHX,
+                    )
+
+                    if is2_bridge_bp is not None:
+                        bridge_i, bridge_j = is2_bridge_bp
+                        is_is2_ok, info = validate_is2_progress(
+                            outer_i, outer_j, hole_k, hole_l, bridge_i, bridge_j,
+                            require_proper_hole=False,  # YHX can accept a collapsed hole
+                            can_pair_mask=can_pair_mask,
+                        )
+                        if is_is2_ok:
+                            tracker.update_if_better(
+                                is2_energy,
+                                EddyRivasBackPointer(
+                                    op=EddyRivasBacktrackOp.RE_WHX_IS2_INNER_YHX,
+                                    outer=(outer_i, outer_j), hole=(hole_k, hole_l), bridge=(bridge_i, bridge_j),
+                                ),
+                            )
 
                 # -------- Publish Cell --------
                 debug_print(debug_cell, f"  FINAL: best={tracker.best_energy:.2f} bp={tracker.backpointer}")
@@ -653,20 +683,30 @@ class EddyRivasFoldingEngine:
 
                 # -------- Case 7: IS2 (Outer Bridge + Inner ZHX) --------
                 if self.config.enable_is2:
-                    is2_best, is2_bp, _ = scan_is2_best_outer_bridge(
-                        eddy_rivas_fold_state, self.config, seq, i, j, k, l,
-                        inner_matrix_name="zhx", # VHX uses ZHX as the inner problem here
+                    outer_i, outer_j, hole_k, hole_l = i, j, k, l
+
+                    is2_energy, is2_bridge_bp, _ = scan_is2_best_outer_bridge(
+                        eddy_rivas_fold_state, self.config, seq, outer_i, outer_j, hole_k, hole_l,
+                        inner_matrix_name="zhx",  # VHX hands off to ZHX
                         bridge_energy_kind="default",
-                        op=EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX
+                        op=EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX,
                     )
-                    if is2_bp is not None:
-                        r2, s2 = is2_bp
-                        tracker.update_if_better(
-                            is2_best, EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX,
-                                outer=(i, j), hole=(k, l), bridge=(r2, s2)
-                            )
+
+                    if is2_bridge_bp is not None:
+                        bridge_i, bridge_j = is2_bridge_bp
+                        is_is2_ok, info = validate_is2_progress(
+                            outer_i, outer_j, hole_k, hole_l, bridge_i, bridge_j,
+                            require_proper_hole=True,  # ZHX requires k+1 < l
+                            can_pair_mask=can_pair_mask,
                         )
+                        if is_is2_ok:
+                            tracker.update_if_better(
+                                is2_energy,
+                                EddyRivasBackPointer(
+                                    op=EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX,
+                                    outer=(outer_i, outer_j), hole=(hole_k, hole_l), bridge=(bridge_i, bridge_j),
+                                ),
+                            )
 
                 # -------- Case 8: Multiloop - Close Around/Wrap on WHX Sub-problem --------
                 update_tracker_for_vhx_multiloop_close_and_wrap(
@@ -799,19 +839,30 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 5: IS2 Motif (Outer Bridge + Inner VHX)). ----------
                 if self.config.enable_is2:
-                    is2_best, is2_bp, _ = scan_is2_best_outer_bridge(
-                        eddy_rivas_fold_state, self.config, seq, i, j, k, l,
-                        inner_matrix_name="vhx", bridge_energy_kind="default",
-                        op=EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX
+                    outer_i, outer_j, hole_k, hole_l = i, j, k, l
+
+                    is2_energy, is2_bridge_bp, _ = scan_is2_best_outer_bridge(
+                        eddy_rivas_fold_state, self.config, seq, outer_i, outer_j, hole_k, hole_l,
+                        inner_matrix_name="vhx",  # ZHX hands off to VHX
+                        bridge_energy_kind="default",
+                        op=EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX,
                     )
-                    if is2_bp is not None:
-                        r2, s2 = is2_bp
-                        tracker.update_if_better(
-                            is2_best, EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX,
-                                outer=(i, j), hole=(k, l), bridge=(r2, s2)
-                            )
+
+                    if is2_bridge_bp is not None:
+                        bridge_i, bridge_j = is2_bridge_bp
+                        is_is2_ok, info = validate_is2_progress(
+                            outer_i, outer_j, hole_k, hole_l, bridge_i, bridge_j,
+                            require_proper_hole=True,  # VHX requires k+1 < l
+                            can_pair_mask=can_pair_mask,
                         )
+                        if is_is2_ok:
+                            tracker.update_if_better(
+                                is2_energy,
+                                EddyRivasBackPointer(
+                                    op=EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX,
+                                    outer=(outer_i, outer_j), hole=(hole_k, hole_l), bridge=(bridge_i, bridge_j),
+                                ),
+                            )
 
                 # -------- Publish Cells --------
                 eddy_rivas_fold_state.zhx_matrix.set_energy(i, j, k, l, tracker.best_energy)
@@ -947,19 +998,31 @@ class EddyRivasFoldingEngine:
 
                 # ---------- Case 5: IS2 motif (Outer Bridge + Inner WHX. ----------
                 if self.config.enable_is2:
-                    is2_best, is2_bp, _ = scan_is2_best_outer_bridge(
-                        eddy_rivas_fold_state, self.config, seq, i, j, k, l,
-                        inner_matrix_name="whx", bridge_energy_kind="yhx",
-                        op=EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX
+                    outer_i, outer_j, hole_k, hole_l = i, j, k, l
+
+                    # For YHX context, WHX uses the YHX-flavored bridge energy.
+                    is2_energy, is2_bridge_bp, _ = scan_is2_best_outer_bridge(
+                        eddy_rivas_fold_state, self.config, seq, outer_i, outer_j, hole_k, hole_l,
+                        inner_matrix_name="whx",
+                        bridge_energy_kind="yhx",  # WHX scored with YHX bridge flavor in this context
+                        op=EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX,
                     )
-                    if is2_bp is not None:
-                        r2, s2 = is2_bp
-                        tracker.update_if_better(
-                            is2_best, EddyRivasBackPointer(
-                                op=EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX,
-                                outer=(i, j), hole=(k, l), bridge=(r2, s2)
-                            )
+
+                    if is2_bridge_bp is not None:
+                        bridge_i, bridge_j = is2_bridge_bp
+                        is_is2_ok, info = validate_is2_progress(
+                            outer_i, outer_j, hole_k, hole_l, bridge_i, bridge_j,
+                            require_proper_hole=True,  # WHX requires k+1 < l
+                            can_pair_mask=can_pair_mask,
                         )
+                        if is_is2_ok:
+                            tracker.update_if_better(
+                                is2_energy,
+                                EddyRivasBackPointer(
+                                    op=EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX,
+                                    outer=(outer_i, outer_j), hole=(hole_k, hole_l), bridge=(bridge_i, bridge_j),
+                                ),
+                            )
 
                 # ---------- Publish Cells ----------
                 eddy_rivas_fold_state.yhx_matrix.set_energy(i, j, k, l, tracker.best_energy)

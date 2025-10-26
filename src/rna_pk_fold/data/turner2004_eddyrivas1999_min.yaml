@@ -644,7 +644,7 @@ pseudoknot:
 
   # Multiloop penalties for gap structures
   M_tilde_yhx: 3.4         # M~ - YHX multiloop
-  M_tilde_vhx: 3.4        # M~ - VHX multiloop
+  M_tilde_vhx: 2.8        # M~ - VHX multiloop
   M_tilde_whx: 3.4         # M~ - WHX multiloop
 
   # Dangle fallbacks
@@ -666,12 +666,12 @@ pseudoknot:
     "UA|AU": -0.3
     "GU|UG": -0.2
     "UG|GU": -0.2
-  coax_scale: 0.83          # g from the paper
+  coax_scale: 0.90          # g from the paper
   coax_scale_oo: 1.0        # software knob (not in paper)
   coax_scale_oi: 1.0        # software knob (not in paper)
   coax_scale_io: 1.0        # software knob (not in paper)
   coax_min_helix_len: 1     # software knob (not in paper)
-  coax_bonus: 0.0           # paper gives no bonus; keep 0
+  coax_bonus: -0.10           # paper gives no bonus; keep 0
 
   # Join drift & narrow-hole caps (not in paper)
   join_drift_penalty: 0.0
@@ -679,7 +679,7 @@ pseudoknot:
 
   # Overlap/charging penalties (paper provides G_wh, G_w, G_wI)
   Gwh: 0.0                  # overlapping pseudoknots (paper)
-  Gwi: 1.0                 # “generating a pseudoknot in a multiloop” (paper’s G_wI)
+  Gwi: 0.2                 # “generating a pseudoknot in a multiloop” (paper’s G_wI)
   Gwh_wx: 0.0               # software-specific; not in paper
   Gwh_whx: 0.0              # software-specific; not in paper
 

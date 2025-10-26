@@ -1,10 +1,14 @@
 from __future__ import annotations
+import math
 import logging
 from typing import Set, Dict, Tuple, Callable, Any, Optional
 
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBacktrackOp
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import TraceResult
 from rna_pk_fold.utils.sequences.indices_utils import canonical_pair
+from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import (get_whx_backpointer, get_yhx_backpointer,
+                                                                      get_zhx_backpointer, get_vhx_backpointer)
 
 Span = Tuple[int, int]
 
@@ -167,7 +171,7 @@ def place_pair_in_first_non_crossing_layer(
                     (i_index, j_index), (existing_i, existing_j)
             ):
                 # If a crossing is found, mark a conflict and stop checking this layer.
-                has_conflict = True
+                conflict_found = True
                 print(f"  Conflict with ({existing_i},{existing_j}) on L{current_layer}", flush=True)
                 break
 
@@ -320,3 +324,70 @@ def validate_is2_bridge_span(
     if bridge_span == hole_span:
         return None
     return bridge_span
+
+
+def select_pseudoknot_branch(
+    fold_state: Any,
+    side_label: str,
+    outer_i: int,
+    outer_j: int,
+    hole_k: int,
+    hole_l: int,
+) -> Tuple[str, Tuple[int,int,int,int]]:
+    """
+    Select how to trace a pseudoknot branch: crossing (YHX), nested (WHX), or flattened.
+
+    The decision prefers YHX when it has a backpointer and its energy is no worse
+    than WHX; otherwise it falls back to WHX if available; otherwise the branch
+    is flattened.
+
+    Parameters
+    ----------
+    fold_state : Any
+        Folding state providing accessors:
+        ``get_yhx_backpointer(i, j, k, l)``, ``get_whx_backpointer(i, j, k, l)``,
+        and energy queries via ``fold_state.yhx_matrix.get_energy(...)`` and
+        ``fold_state.whx_matrix.get_energy(...)``.
+    side_label : str
+        Label for logging (e.g., ``"L"`` or ``"R"``).
+    outer_i : int
+        Left index of the outer span.
+    outer_j : int
+        Right index of the outer span.
+    hole_k : int
+        Left index of the hole span for this branch.
+    hole_l : int
+        Right index of the hole span for this branch.
+
+    Returns
+    -------
+    tuple of (str, tuple of int)
+        A pair ``(choice, indices)`` where:
+        - ``choice`` is one of ``"YHX"``, ``"WHX"``, or ``"FLATTEN"``.
+        - ``indices`` is the 4-tuple ``(outer_i, outer_j, hole_k, hole_l)``.
+
+    Notes
+    -----
+    Ties are broken in favor of YHX when both have backpointers and YHX is not
+    energetically worse than WHX (within a tiny epsilon).
+    """
+    yhx_backpointer = get_yhx_backpointer(fold_state, outer_i, outer_j, hole_k, hole_l)
+    whx_backpointer = get_whx_backpointer(fold_state, outer_i, outer_j, hole_k, hole_l)
+
+    yhx_energy = fold_state.yhx_matrix.get_energy(
+        outer_i, outer_j, hole_k, hole_l
+    ) if yhx_backpointer is not None else math.inf
+    whx_energy = fold_state.whx_matrix.get_energy(
+        outer_i, outer_j, hole_k, hole_l
+    ) if whx_backpointer is not None else math.inf
+
+    # Prefer YHX when it exists and is no worse than WHX
+    if yhx_backpointer is not None and yhx_energy <= whx_energy + 1e-9:
+        print(f"[WX CHOOSE-{side_label}] YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})", flush=True)
+        return "YHX", (outer_i, outer_j, hole_k, hole_l)
+    if whx_backpointer is not None:
+        print(f"[WX CHOOSE-{side_label}] WHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})", flush=True)
+        return "WHX", (outer_i, outer_j, hole_k, hole_l)
+
+    print(f"[WX CHOOSE-{side_label}] FLATTEN (no BP in YHX/WHX)", flush=True)
+    return "FLATTEN", (outer_i, outer_j, hole_k, hole_l)
