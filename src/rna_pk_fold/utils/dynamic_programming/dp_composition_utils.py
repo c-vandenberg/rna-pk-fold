@@ -142,7 +142,7 @@ def build_wx_split_arrays(
         split_idx = k_idx + split_offset
 
         # Enforce the strict Rivas & Eddy ordering for pseudoknot helices.
-        if config.enable_strict_compliment_order and not (i_idx < k_idx <= split_idx < l_idx <= j_idx):
+        if config.enable_strict_complement_order and not (i_idx < k_idx <= split_idx < l_idx <= j_idx):
             continue
 
         # Enforce minimum lengths for the 5' and 3' outer segments.
@@ -582,7 +582,7 @@ def build_vx_split_arrays_and_coax(
         split_idx = k_idx + split_offset
 
         # Enforce the strict Rivas & Eddy ordering for pseudoknot helices.
-        if config.enable_strict_compliment_order and not (i_idx < k_idx <= split_idx < l_idx <= j_idx):
+        if config.enable_strict_complement_order and not (i_idx < k_idx <= split_idx < l_idx <= j_idx):
             continue
 
         # Enforce minimum lengths for the 5' and 3' outer segments.

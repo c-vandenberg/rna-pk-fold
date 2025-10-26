@@ -70,7 +70,7 @@ class EddyRivasFoldingConfig:
         If True, allows the hole to shift slightly at a join point.
     enable_is2 : bool
         If True, includes energy calculations for Irreducible Surfaces of Order 2.
-    enable_strict_compliment_order : bool
+    enable_strict_complement_order : bool
         If True, enforces the strict ordering i < k <= r < l <= j for pseudoknots.
     verbose : bool
         If True, enables verbose logging.
@@ -82,7 +82,7 @@ class EddyRivasFoldingConfig:
     enable_coax_mismatch: bool = True
     enable_join_drift: bool = True
     enable_is2: bool = True
-    enable_strict_compliment_order: bool = True
+    enable_strict_complement_order: bool = True
     verbose: bool = False
 
 # -----------------------

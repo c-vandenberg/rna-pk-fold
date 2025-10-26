@@ -150,7 +150,7 @@ def predict_eddy_rivas_non_nested(
     enable_overlap: bool,
     enable_is2: bool,
     enable_join_drift: bool,
-    enable_strict_compliment_order: bool
+    enable_strict_complement_order: bool
 ) -> Tuple[str, float]:
     """
     Predict an RNA secondary structure with pseudoknots using Eddy–Rivas DP.
@@ -180,7 +180,7 @@ def predict_eddy_rivas_non_nested(
         Enable energy calculations for Irreducible Surfaces of Order 2.
     enable_join_drift : bool
         Enable slight hole shifting at a join point.
-    enable_strict_compliment_order : bool
+    enable_strict_complement_order : bool
         Enable strict ordering i < k <= r < l <= j for pseudoknots.
 
     Returns
@@ -229,7 +229,7 @@ def predict_eddy_rivas_non_nested(
         enable_coax_mismatch=enable_coax,
         enable_join_drift=enable_join_drift,
         enable_is2=enable_is2,
-        enable_strict_compliment_order=enable_strict_compliment_order,
+        enable_strict_complement_order=enable_strict_complement_order,
         verbose=logger.isEnabledFor(logging.INFO),
     )
 
@@ -351,7 +351,7 @@ def main(argv=None) -> int:
                 enable_overlap=cli_args.overlap,
                 enable_is2=cli_args.is2,
                 enable_join_drift=cli_args.join_drift,
-                enable_strict_compliment_order=cli_args.strict_compliment_order
+                enable_strict_complement_order=cli_args.strict_compliment_order
             )
         else:  # 'auto' mode
             try:
@@ -364,7 +364,7 @@ def main(argv=None) -> int:
                     enable_overlap=cli_args.overlap,
                     enable_is2=cli_args.is2,
                     enable_join_drift=cli_args.join_drift,
-                    enable_strict_compliment_order=cli_args.strict_compliment_order
+                    enable_strict_complement_order=cli_args.strict_compliment_order
                 )
                 engine_used = "eddy_rivas"
             except Exception as e:
