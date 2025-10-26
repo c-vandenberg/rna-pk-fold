@@ -101,60 +101,6 @@ def setup_cli_logging(verbose_level: int, log_file: Optional[str] = None) -> Non
         logger.info(f"Logs will be saved to: {DEFAULT_LOG_DIR.resolve()}")
 
 
-# --------------------------
-# Helpers
-# --------------------------
-def build_eddy_rivas_costs(
-    energy_model: SecondaryStructureEnergyModel,
-    q_ss_override: Optional[float],
-    gw_override: Optional[float]
-) -> eddy_rivas_dynamic_programming.PseudoknotEnergies:
-    """
-    Constructs the pseudoknot energy parameter object, applying CLI overrides.
-
-    This function takes the base pseudoknot parameters from the loaded energy
-    model and replaces specific values with any overrides provided via
-    command-line arguments.
-
-    Parameters
-    ----------
-    energy_model : SecondaryStructureEnergyModel
-        The fully loaded energy model.
-    q_ss_override : Optional[float]
-        An optional override for the single-stranded base penalty (`q_ss`).
-    gw_override : Optional[float]
-        An optional override for the pseudoknot initiation penalty (`Gw`).
-
-    Returns
-    -------
-    eddy_rivas_recurrences.PseudoknotEnergies
-        A data object containing the final set of pseudoknot energy parameters.
-
-    Raises
-    ------
-    ValueError
-        If the loaded energy model does not contain pseudoknot parameters.
-    """
-    # Extract the base pseudoknot parameters from the energy model.
-    base_pk_params = energy_model.params.PSEUDOKNOT
-    if base_pk_params is None:
-        raise ValueError("No pseudoknot parameters found in the provided YAML file!")
-
-    # Collect any command-line overrides into a dictionary.
-    cli_overrides = {}
-    if gw_override is not None:
-        cli_overrides["pk_penalty_gw"] = gw_override
-    if q_ss_override is not None:
-        cli_overrides["q_ss"] = q_ss_override
-
-    # If there are no overrides, return the original parameters.
-    if not cli_overrides:
-        return base_pk_params
-
-    # Otherwise, create a new dataclass instance with the overrides applied.
-    return replace(base_pk_params, **cli_overrides)
-
-
 def predict_zucker_nested(seq: str, energy_model: SecondaryStructureEnergyModel) -> Tuple[str, float]:
     """
     Runs the Zuker (nested-only) folding algorithm on a sequence.
@@ -200,12 +146,11 @@ def predict_zucker_nested(seq: str, energy_model: SecondaryStructureEnergyModel)
 def predict_eddy_rivas_non_nested(
     seq: str,
     energy_model: SecondaryStructureEnergyModel,
-    pk_penalty_gw: Optional[float],
     enable_coax: bool,
     enable_overlap: bool,
-    min_hole_width: int,
-    max_hole_width: int,
-    q_ss: Optional[float]
+    enable_is2: bool,
+    enable_join_drift: bool,
+    enable_strict_compliment_order: bool
 ) -> Tuple[str, float]:
     """
     Predict an RNA secondary structure with pseudoknots using Eddy–Rivas DP.
@@ -225,24 +170,18 @@ def predict_eddy_rivas_non_nested(
     energy_model : SecondaryStructureEnergyModel
         Initialized thermodynamic model used for both the Zuker baseline and to
         derive Eddy–Rivas pseudoknot costs.
-    pk_penalty_gw : float or None
-        Optional override for the Eddy–Rivas pseudoknot seam penalty *G₍w₎*
-        (kcal/mol). If `None`, the model’s default is used.
     enable_coax : bool
         Enable coaxial stacking terms during the Eddy–Rivas stage. When `True`,
         coax variants and mismatch coax are enabled with the same flag.
     enable_overlap : bool
         Enable the WX-overlap compositions used by Eddy–Rivas (may improve
         structures involving overlapping helices).
-    min_hole_width : int
-        Minimum allowed inner “hole” width (in bases) for PK subproblems
-        (i.e., `l - k - 1 >= min_hole_width`). Use `0` to allow unit holes.
-    max_hole_width : int
-        Maximum allowed inner “hole” width (in bases). Use `0` to indicate no
-        upper bound.
-    q_ss : float or None
-        Optional override for the single-stranded term `q_ss` in the
-        pseudoknot cost model (kcal/mol). If `None`, the model’s default is used.
+    enable_is2 : bool
+        Enable energy calculations for Irreducible Surfaces of Order 2.
+    enable_join_drift : bool
+        Enable slight hole shifting at a join point.
+    enable_strict_compliment_order : bool
+        Enable strict ordering i < k <= r < l <= j for pseudoknots.
 
     Returns
     -------
@@ -273,29 +212,27 @@ def predict_eddy_rivas_non_nested(
 
     # --- Phase 2: Run the Eddy-Rivas algorithm. ---
     logger.info("Running pseudoknot (Eddy-Rivas) phase...")
-    # Build the specific cost model for pseudoknots, applying any CLI overrides.
-    er_costs = build_eddy_rivas_costs(energy_model, q_ss_override=q_ss, gw_override=pk_penalty_gw)
 
-    # Log the final parameters being used for the Eddy-Rivas run.
-    logger.info(f"PK penalty Gw: {er_costs.pk_penalty_gw}")
+    # Log the CLI parameters being used for the Eddy-Rivas run.
     logger.info(f"Coaxial stacking: {enable_coax}")
     logger.info(f"WX overlap: {enable_overlap}")
-    logger.info(f"Hole width: [{min_hole_width}, {max_hole_width if max_hole_width > 0 else '∞'}]")
+    logger.info(f"Join Drift: {enable_join_drift}")
+
+    pk_energies = energy_model.params.PSEUDOKNOT
 
     # Configure the Eddy-Rivas engine.
     er_config = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
+        pk_energies=pk_energies,
         enable_coax=enable_coax,
+        enable_wx_overlap=enable_overlap,
         enable_coax_variants=enable_coax,
         enable_coax_mismatch=enable_coax,
-        enable_wx_overlap=enable_overlap,
-        enable_is2=True,
-        enable_join_drift=False,
-        min_hole_width=min_hole_width,
-        max_hole_width=max_hole_width,
-        pk_penalty_gw=er_costs.pk_penalty_gw,
-        costs=er_costs,
+        enable_join_drift=enable_join_drift,
+        enable_is2=enable_is2,
+        enable_strict_compliment_order=enable_strict_compliment_order,
         verbose=logger.isEnabledFor(logging.INFO),
     )
+
     er_engine = eddy_rivas_dynamic_programming.EddyRivasFoldingEngine(er_config)
 
     # Initialize the state object for the Eddy-Rivas matrices.
@@ -342,35 +279,33 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Predict RNA structure (dot-bracket) and ΔG.")
     parser.add_argument("sequence", help="RNA sequence (A,C,G,U; T will be converted to U)")
     parser.add_argument("--engine", choices=["auto", "zucker", "eddy_rivas"], default="auto",
-                      help="Which predictor to use (default: auto).")
+                        help="Which predictor to use (default: auto).")
     parser.add_argument("--yaml", default=None,
-                      help="Path to parameter YAML (defaults to package data).")
+                        help="Path to parameter YAML (defaults to package data).")
     parser.add_argument("--tempC", type=float, default=37.0,
-                      help="Temperature in °C (default: 37.0).")
+                        help="Temperature in °C (default: 37.0).")
     parser.add_argument("--json", action="store_true",
-                      help="Emit JSON instead of human-readable text.")
+                        help="Emit JSON instead of human-readable text.")
 
     # Logging arguments
     parser.add_argument("-v", "--verbose", action="count", default=0,
-                      help="Increase verbosity (-v=INFO, -vv=DEBUG)")
+                        help="Increase verbosity (-v=INFO, -vv=DEBUG)")
     parser.add_argument("--log-file", default=None,
-                      help="Path to log file (default: var/log/predict_rna_TIMESTAMP.log if verbose)")
+                        help="Path to log file (default: var/log/predict_rna_TIMESTAMP.log if verbose)")
     parser.add_argument("--quiet", action="store_true",
-                      help="Suppress all output except final result")
+                        help="Suppress all output except final result")
 
     # Eddy-Rivas tuning arguments
-    parser.add_argument("--pk-gw", type=float, default=None,
-                      help="Override pseudoknot penalty Gw (kcal/mol).")
-    parser.add_argument("--coax", action="store_true",
-                      help="Enable coaxial stacking terms in ER (default: on).", default=True)
-    parser.add_argument("--overlap", action="store_true",
-                      help="Enable WX overlap path in ER (default: on).", default=True)
-    parser.add_argument("--min-hole-width", type=int, default=0,
-                      help="Minimum hole width (k,l) seam interior (default: 0).")
-    parser.add_argument("--max-hole-width", type=int, default=0,
-                      help="Maximum hole width (0 means no cap).")
-    parser.add_argument("--q-ss", type=float, default=None,
-                      help="Backbone per-SS penalty used by ER recurrences (default: from YAML).")
+    parser.add_argument("--coax", action="store_true", default=True,
+                        help="Enable coaxial stacking terms in Eddy Rivas (default: on).")
+    parser.add_argument("--overlap", action="store_true", default=True,
+                        help="Enable WX overlap path in Eddy Rivas (default: on).")
+    parser.add_argument("--is2", action="store_true", default=True,
+                        help="Enable energy calculations for Irreducible Surfaces of Order 2 (default: on).")
+    parser.add_argument("--join_drift", action="store_true", default=True,
+                        help="Enable slight hole shifting at a join point (default: on).")
+    parser.add_argument("--strict_compliment_order", action="store_true", default=True,
+                        help="Enable strict ordering i < k <= r < l <= j for pseudoknots (default: on).")
 
     cli_args = parser.parse_args(argv)
 
@@ -412,12 +347,11 @@ def main(argv=None) -> int:
             dot_bracket, delta_g = predict_eddy_rivas_non_nested(
                 normalized_sequence,
                 energy_model,
-                pk_penalty_gw=cli_args.pk_gw,
                 enable_coax=cli_args.coax,
                 enable_overlap=cli_args.overlap,
-                min_hole_width=cli_args.min_hole_width,
-                max_hole_width=cli_args.max_hole_width,
-                q_ss=cli_args.q_ss,
+                enable_is2=cli_args.is2,
+                enable_join_drift=cli_args.join_drift,
+                enable_strict_compliment_order=cli_args.strict_compliment_order
             )
         else:  # 'auto' mode
             try:
@@ -426,12 +360,11 @@ def main(argv=None) -> int:
                 dot_bracket, delta_g = predict_eddy_rivas_non_nested(
                     normalized_sequence,
                     energy_model,
-                    pk_penalty_gw=cli_args.pk_gw,
                     enable_coax=cli_args.coax,
                     enable_overlap=cli_args.overlap,
-                    min_hole_width=cli_args.min_hole_width,
-                    max_hole_width=cli_args.max_hole_width,
-                    q_ss=cli_args.q_ss,
+                    enable_is2=cli_args.is2,
+                    enable_join_drift=cli_args.join_drift,
+                    enable_strict_compliment_order=cli_args.strict_compliment_order
                 )
                 engine_used = "eddy_rivas"
             except Exception as e:

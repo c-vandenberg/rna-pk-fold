@@ -148,12 +148,28 @@ class PseudoknotEnergies:
         Parameters for coaxial stacking over a one-base mismatch.
     join_drift_penalty : float
         Penalty for an experimental feature allowing hole positions to shift.
+    join_drift_radius: int
+        The maximum distance the hole can shift if `enable_join_drift` is True.
+    min_hole_width : int
+        The minimum allowed width of a pseudoknot hole (l - k).
+    max_hole_width : int
+        The maximum allowed width of a pseudoknot hole (l - k).
+    min_outer_left : int
+        The minimum length of the 5' outer segment [i..r].
+    min_outer_right : int
+        The minimum length of the 3' outer segment [r+1..j].
     short_hole_caps : Optional[Dict[int, float]]
         Penalties for sterically unfavorable short linkers between helices.
     g_wh, g_wi, g_wh_wx, g_wh_whx : float
         Penalties for initiating various types of overlapping or internal pseudoknots.
     pk_penalty_gw : float
         The main penalty for introducing a new pseudoknot.
+    beam_k : int
+        If > 0, enables beam search, keeping at most K holes (k, l) per outer
+        span (i, j).
+    beam_v_threshold : float
+        Threshold for beam search; keeps holes (k, l) only if the nested
+        energy V[k][l] is below this value.
     """
     # --- Scalar Penalties for Pseudoknot Contexts (Tilde Parameters) ---
     q_ss: float
@@ -186,9 +202,15 @@ class PseudoknotEnergies:
     mismatch_coax_scale: float = 0.5
     mismatch_coax_bonus: float = 0.0
 
-    # --- Penalties for Specific Geometries ---
     join_drift_penalty: float = 0.0
+    join_drift_radius: int = 0
     short_hole_caps: Optional[Dict[int, float]] = None
+
+    # --- Minimum & maximum hole widths and outer segment lengths ---
+    min_hole_width: int = 0
+    max_hole_width: int = 0
+    min_outer_left: int = 0
+    min_outer_right: int = 0
 
     # --- Global Composition and Overlap Penalties (G-values) ---
     g_wh: float = 0.0
@@ -196,5 +218,9 @@ class PseudoknotEnergies:
     g_wh_wx: float = 0.0
     g_wh_whx: float = 0.0
 
-    # The main penalty for introducing a pseudoknot structure.
+    # --- Penalty for introducing a pseudoknot structure ---
     pk_penalty_gw: float = 1.0
+
+    # --- Beam Parameters ---
+    beam_k = 0
+    beam_v_threshold = 0.0

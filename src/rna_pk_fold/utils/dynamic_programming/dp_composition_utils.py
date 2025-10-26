@@ -142,11 +142,12 @@ def build_wx_split_arrays(
         split_idx = k_idx + split_offset
 
         # Enforce the strict Rivas & Eddy ordering for pseudoknot helices.
-        if config.strict_complement_order and not (i_idx < k_idx <= split_idx < l_idx <= j_idx):
+        if config.enable_strict_compliment_order and not (i_idx < k_idx <= split_idx < l_idx <= j_idx):
             continue
 
         # Enforce minimum lengths for the 5' and 3' outer segments.
-        if (split_idx - i_idx) < config.min_outer_left or (j_idx - (split_idx + 1)) < config.min_outer_right:
+        if ((split_idx - i_idx) < config.pk_energies.min_outer_left or
+                (j_idx - (split_idx + 1)) < config.pk_energies.min_outer_right):
             continue
 
         # Calculate energies for the left and right gapped subproblems.
@@ -389,7 +390,7 @@ def evaluate_wx_composition_for_hole(
     ) = build_wx_split_arrays(fold_state, config, i_idx, j_idx, k_idx, l_idx, can_pair_mask)
 
     # Calculate penalty for very short loops between helices.
-    loop_cap_penalty = short_hole_penalty(config.costs, k_idx, l_idx)
+    loop_cap_penalty = short_hole_penalty(config.pk_energies, k_idx, l_idx)
 
     # --- Kernel Execution ---
     # Pass the energy vectors to the optimized Numba kernel to find the best split point 'r'
@@ -496,8 +497,8 @@ def evaluate_wx_yhx_overlap_for_span(
     best_backpointer = None
 
     # Iterate through a different set of inner holes and split points.
-    for (k_inner_idx, l_inner_idx) in iter_inner_holes(i_idx, j_idx, min_hole_width=config.min_hole_width):
-        loop_cap_penalty = short_hole_penalty(config.costs, k_inner_idx, l_inner_idx)
+    for (k_inner_idx, l_inner_idx) in iter_inner_holes(i_idx, j_idx, min_hole_width=config.pk_energies.min_hole_width):
+        loop_cap_penalty = short_hole_penalty(config.pk_energies, k_inner_idx, l_inner_idx)
         for split_idx in range(i_idx, j_idx):
             left_y_energy = fold_state.yhx_matrix.get_energy(i_idx, split_idx, k_inner_idx, l_inner_idx)
             right_y_energy = fold_state.yhx_matrix.get_energy(split_idx + 1, j_idx, k_inner_idx, l_inner_idx)
@@ -581,11 +582,12 @@ def build_vx_split_arrays_and_coax(
         split_idx = k_idx + split_offset
 
         # Enforce the strict Rivas & Eddy ordering for pseudoknot helices.
-        if config.strict_complement_order and not (i_idx < k_idx <= split_idx < l_idx <= j_idx):
+        if config.enable_strict_compliment_order and not (i_idx < k_idx <= split_idx < l_idx <= j_idx):
             continue
 
         # Enforce minimum lengths for the 5' and 3' outer segments.
-        if (split_idx - i_idx) < config.min_outer_left or (j_idx - (split_idx + 1)) < config.min_outer_right:
+        if ((split_idx - i_idx) < config.pk_energies.min_outer_left or
+                (j_idx - (split_idx + 1)) < config.pk_energies.min_outer_right):
             continue
 
         # Calculate energies for the left and right gapped sub-problems from the ZHX matrix.
@@ -605,7 +607,7 @@ def build_vx_split_arrays_and_coax(
 
         # Calculate the coaxial stacking energy bonus for this specific split point 'r'.
         adjacent = split_idx == k_idx # Check if the helices are adjacent for a flush stack.
-        cx_total, cx_bonus = coax_pack(seq, i_idx, j_idx, split_idx, k_idx, l_idx, config, config.costs, adjacent)
+        cx_total, cx_bonus = coax_pack(seq, i_idx, j_idx, split_idx, k_idx, l_idx, config, config.pk_energies, adjacent)
         coax_total[split_offset] = cx_total
         coax_bonus[split_offset] = cx_bonus
 
@@ -666,7 +668,7 @@ def evaluate_vx_composition_for_hole(
         coax_bonus,
     ) = build_vx_split_arrays_and_coax(fold_state, config, seq, i_idx, j_idx, k_idx, l_idx, can_pair_mask)
 
-    loop_cap_penalty = short_hole_penalty(config.costs, k_idx, l_idx)
+    loop_cap_penalty = short_hole_penalty(config.pk_energies, k_idx, l_idx)
 
     # --- Kernel Execution ---
     # Pass the energy vectors to the optimized Numba kernel. It efficiently finds the

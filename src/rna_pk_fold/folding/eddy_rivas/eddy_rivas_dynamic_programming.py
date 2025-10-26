@@ -56,6 +56,8 @@ class EddyRivasFoldingConfig:
 
     Attributes
     ----------
+    pk_energies : PseudoknotEnergies
+        A data object containing all pseudoknot thermodynamic energy parameters.
     enable_coax : bool
         If True, enables coaxial stacking energy bonuses.
     enable_wx_overlap : bool
@@ -66,54 +68,22 @@ class EddyRivasFoldingConfig:
         If True, allows coaxial stacking at seams with a one-nucleotide gap.
     enable_join_drift : bool
         If True, allows the hole to shift slightly at a join point.
-    drift_radius : int
-        The maximum distance the hole can shift if `enable_join_drift` is True.
     enable_is2 : bool
         If True, includes energy calculations for Irreducible Surfaces of Order 2.
-    pk_penalty_gw : float
-        The free energy penalty (in kcal/mol) for initiating a pseudoknot (Gw).
-    max_hole_width : int
-        The maximum allowed width of a pseudoknot hole (l - k).
-    min_hole_width : int
-        The minimum allowed width of a pseudoknot hole.
-    min_outer_left : int
-        The minimum length of the 5' outer segment [i..r].
-    min_outer_right : int
-        The minimum length of the 3' outer segment [r+1..j].
-    beam_k : int
-        If > 0, enables beam search, keeping at most K holes (k, l) per outer
-        span (i, j).
-    beam_v_threshold : float
-        Threshold for beam search; keeps holes (k, l) only if the nested
-        energy V[k][l] is below this value.
-    strict_complement_order : bool
+    enable_strict_compliment_order : bool
         If True, enforces the strict ordering i < k <= r < l <= j for pseudoknots.
-    costs : Optional[PseudoknotEnergies]
-        A data object containing all thermodynamic energy parameters.
-    tables : Optional[Any]
-        An object containing pre-computed energy tables (e.g., for dangle ends).
     verbose : bool
         If True, enables verbose logging.
     """
+    pk_energies: PseudoknotEnergies
     enable_coax: bool = True
-    enable_wx_overlap: bool = False
-    enable_coax_variants: bool = False
-    enable_coax_mismatch: bool = False
-    enable_join_drift: bool = False
-    drift_radius: int = 0
-    enable_is2: bool = False
-    pk_penalty_gw: float = 1.0
-    max_hole_width: int = 0
-    min_hole_width: int = 0
-    min_outer_left: int = 0
-    min_outer_right: int = 0
-    beam_k: int = 0
-    beam_v_threshold: float = 0.0
-    strict_complement_order: bool = True
-    costs: Optional[PseudoknotEnergies] = None
-    tables: object = None
+    enable_wx_overlap: bool = True
+    enable_coax_variants: bool = True
+    enable_coax_mismatch: bool = True
+    enable_join_drift: bool = True
+    enable_is2: bool = True
+    enable_strict_compliment_order: bool = True
     verbose: bool = False
-
 
 # -----------------------
 # Engine
@@ -211,25 +181,6 @@ class EddyRivasFoldingEngine:
         # Reset any memoized matrix lookups (module-level caches).
         clear_matrix_lookup_caches()
 
-        # --- Load model configuration
-        config = self._load_config()
-        q_ss = config["q_ss"]
-        g_w = config["g_w"]
-        g_wh = config["g_wh"]  # kept for completeness
-        g_wi = config["g_wi"]
-        g_wh_wx = config["g_wh_wx"]
-        g_wh_whx = config["g_wh_whx"]
-        g_coax_scale = config["g"]
-        p_out = config["p_out"]
-        p_hole = config["p_hole"]
-        l_tilde = config["l_tilde"]
-        r_tilde = config["r_tilde"]
-        q_tilde_out = config["q_tilde_out"]
-        q_tilde_hole = config["q_tilde_hole"]
-        m_tilde_yhx = config["m_tilde_yhx"]
-        m_tilde_vhx = config["m_tilde_vhx"]
-        m_tilde_whx = config["m_tilde_whx"]
-
         # --- Phase 1: Seeding ---
         seed_start = time.perf_counter()
         self._seed_from_nested(nested_state, eddy_rivas_fold_state)
@@ -240,6 +191,7 @@ class EddyRivasFoldingEngine:
         eddy_rivas_fold_state.vxu_matrix.enable_dense_storage()
         eddy_rivas_fold_state.vxc_matrix.enable_dense_storage()
 
+        pk_energies = self.config.pk_energies
         can_pair_mask = build_can_pair_mask(seq)
 
         self.timings['seed'] = time.perf_counter() - seed_start
@@ -249,7 +201,13 @@ class EddyRivasFoldingEngine:
         # WHX
         logger.info("Filling WHX matrix...")
         whx_start = time.perf_counter()
-        self._fill_whx_gap_matrix(seq, eddy_rivas_fold_state, q_ss, g_wh_whx, can_pair_mask)
+        self._fill_whx_gap_matrix(
+            seq,
+            eddy_rivas_fold_state,
+            pk_energies.q_ss,
+            pk_energies.g_wh_whx,
+            can_pair_mask
+        )
         self.timings['whx'] = time.perf_counter() - whx_start
         logger.info(f"WHX filled in {self.timings['whx']:.2f}s")
 
@@ -267,9 +225,15 @@ class EddyRivasFoldingEngine:
         logger.info("Filling VHX matrix...")
         vhx_start = time.perf_counter()
         self._fill_vhx_gap_matrix(
-            seq, eddy_rivas_fold_state,
-            g_wi, p_hole, l_tilde, r_tilde,
-            q_tilde_hole, m_tilde_vhx, m_tilde_whx,
+            seq,
+            eddy_rivas_fold_state,
+            pk_energies.g_wi,
+            pk_energies.p_tilde_hole,
+            pk_energies.l_tilde,
+            pk_energies.r_tilde,
+            pk_energies.q_tilde_hole,
+            pk_energies.m_tilde_vhx,
+            pk_energies.m_tilde_whx,
             can_pair_mask
         )
         self.timings['vhx'] = time.perf_counter() - vhx_start
@@ -278,7 +242,14 @@ class EddyRivasFoldingEngine:
         # ZHX
         logger.info("Filling ZHX matrix...")
         zhx_start = time.perf_counter()
-        self._fill_zhx_gap_matrix(seq, eddy_rivas_fold_state, g_wi, p_hole, q_tilde_hole, can_pair_mask)
+        self._fill_zhx_gap_matrix(
+            seq,
+            eddy_rivas_fold_state,
+            pk_energies.g_wi,
+            pk_energies.p_tilde_hole,
+            pk_energies.q_tilde_hole,
+            can_pair_mask
+        )
         self.timings['zhx'] = time.perf_counter() - zhx_start
         logger.info(f"ZHX filled in {self.timings['zhx']:.2f}s")
 
@@ -286,9 +257,13 @@ class EddyRivasFoldingEngine:
         logger.info("Filling YHX matrix...")
         yhx_start = time.perf_counter()
         self._fill_yhx_gap_matrix(
-            seq, eddy_rivas_fold_state,
-            g_wi, p_out, q_tilde_out,
-            m_tilde_yhx, m_tilde_whx,
+            seq,
+            eddy_rivas_fold_state,
+            pk_energies.g_wi,
+            pk_energies.p_tilde_out,
+            pk_energies.q_tilde_out,
+            pk_energies.m_tilde_yhx,
+            pk_energies.m_tilde_whx,
             can_pair_mask
         )
         self.timings['yhx'] = time.perf_counter() - yhx_start
@@ -316,7 +291,13 @@ class EddyRivasFoldingEngine:
         # WX Composition & Publish
         logger.info("Composing WX matrix...")
         wx_start = time.perf_counter()
-        self._compose_wx_from_gapped_fragments(seq, eddy_rivas_fold_state, g_w, g_wh_wx, can_pair_mask)
+        self._compose_wx_from_gapped_fragments(
+            seq,
+            eddy_rivas_fold_state,
+            pk_energies.pk_penalty_gw,
+            pk_energies.g_wh_wx,
+            can_pair_mask
+        )
         self._publish_wx_min_energy(eddy_rivas_fold_state)
         self.timings['wx_compose'] = time.perf_counter() - wx_start
         logger.info(f"WX composed in {self.timings['wx_compose']:.2f}s")
@@ -324,7 +305,13 @@ class EddyRivasFoldingEngine:
         # VX Composition & Publish
         logger.info("Composing VX matrix...")
         vx_start = time.perf_counter()
-        self._compose_vx_from_zhx_fragments(seq, eddy_rivas_fold_state, g_w, g_coax_scale, can_pair_mask)
+        self._compose_vx_from_zhx_fragments(
+            seq,
+            eddy_rivas_fold_state,
+            pk_energies.pk_penalty_gw,
+            pk_energies.coax_scale,
+            can_pair_mask
+        )
         self._publish_vx_min_energy(eddy_rivas_fold_state)
         self.timings['vx_compose'] = time.perf_counter() - vx_start
         logger.info(f"VX composed in {self.timings['vx_compose']:.2f}s")
@@ -366,28 +353,6 @@ class EddyRivasFoldingEngine:
         logger.info(f"  Gap matrices:   {gap_total:7.2f}s ({gap_total / self.timings['total'] * 100:5.1f}%)")
         logger.info(f"  Compositions:   {comp_total:7.2f}s ({comp_total / self.timings['total'] * 100:5.1f}%)")
         logger.info("=" * 60)
-
-    def _load_config(self):
-        costs_config = self.config.costs
-        config_tables = getattr(self.config, "tables", None)
-        return dict(
-            q_ss=costs_config.q_ss,
-            g_w=self.config.pk_penalty_gw,
-            g_wh=getattr(costs_config, "Gwh", 0.0),
-            g_wi=costs_config.g_wi,
-            g_wh_wx=getattr(costs_config, "Gwh_wx", 0.0),
-            g_wh_whx=getattr(costs_config, "Gwh_whx", 0.0),
-            g=costs_config.coax_scale,
-            p_out=getattr(config_tables, "P_tilde_out", getattr(costs_config, "P_tilde_out", 1.0)),
-            p_hole=getattr(config_tables, "P_tilde_hole", getattr(costs_config, "P_tilde_hole", 1.0)),
-            l_tilde=getattr(config_tables, "L_tilde", 0.0),
-            r_tilde=getattr(costs_config, "R_tilde", 0.0),
-            q_tilde_out=getattr(config_tables, "Q_tilde_out", getattr(costs_config, "Q_tilde_out", 0.0)),
-            q_tilde_hole=getattr(config_tables, "Q_tilde_hole", getattr(costs_config, "Q_tilde_hole", 0.0)),
-            m_tilde_yhx=getattr(config_tables, "M_tilde_yhx", getattr(costs_config, "M_tilde_yhx", 0.0)),
-            m_tilde_vhx=getattr(config_tables, "M_tilde_vhx", getattr(costs_config, "M_tilde_vhx", 0.0)),
-            m_tilde_whx=getattr(config_tables, "M_tilde_whx", getattr(costs_config, "M_tilde_whx", 0.0)),
-        )
 
     # --------- Seeding ---------
     @staticmethod
@@ -752,7 +717,7 @@ class EddyRivasFoldingEngine:
                 # ---------- Case 2: Dangles around the newly formed (k,l) pair from VHX. ----------
                 update_tracker_for_hole_dangles_using_vhx(
                     tracker, eddy_rivas_fold_state.vhx_matrix.get_energy,
-                    seq, self.config.costs,
+                    seq, self.config.pk_energies,
                     i, j, k, l,
                     tilde_p_hole, internal_pk_penalty,
                     EddyRivasBacktrackOp.RE_ZHX_DANGLE_L,
@@ -883,7 +848,7 @@ class EddyRivasFoldingEngine:
                 # ---------- Case 1: Dangles on the Outer Pair (i,j) From VHX. ----------
                 update_tracker_for_outer_dangles_using_vhx(
                     tracker, eddy_rivas_fold_state.vhx_matrix.get_energy,
-                    seq, self.config.costs,
+                    seq, self.config.pk_energies,
                     i, j, k, l,
                     tilde_p_out, internal_pk_penalty,
                     EddyRivasBacktrackOp.RE_YHX_DANGLE_L,
@@ -907,7 +872,7 @@ class EddyRivasFoldingEngine:
                 # ---------- Case 3: Multiloop Wrap of WHX. ----------
                 update_tracker_for_yhx_multiloop_wrap_whx(
                     tracker, eddy_rivas_fold_state.whx_matrix.get_energy,
-                    seq, self.config.costs,
+                    seq, self.config.pk_energies,
                     i, j, k, l,
                     tilde_p_out, tilde_m_yhx, tilde_m_whx, internal_pk_penalty,
                     EddyRivasBacktrackOp.RE_YHX_WRAP_WHX,

@@ -59,7 +59,7 @@ def test_publish_wx_prefers_unscaled_uncharged_and_sets_backpointer():
     re_state = init_eddy_rivas_fold_state(n)
     # Use zero-cost energies to isolate the logic being tested.
     cfg = EddyRivasFoldingConfig(
-        costs=PseudoknotEnergies(
+        pk_energies=PseudoknotEnergies(
             q_ss=0.0, p_tilde_out=0.0, p_tilde_hole=0.0, q_tilde_out=0.0, q_tilde_hole=0.0,
             l_tilde=0.0, r_tilde=0.0, m_tilde_yhx=0.0, m_tilde_vhx=0.0, m_tilde_whx=0.0
         )
@@ -87,7 +87,7 @@ def test_publish_vx_prefers_unscaled_uncharged_and_sets_backpointer():
     n = 2
     re_state = init_eddy_rivas_fold_state(n)
     cfg = EddyRivasFoldingConfig(
-        costs=PseudoknotEnergies(
+        pk_energies=PseudoknotEnergies(
             q_ss=0.0, p_tilde_out=0.0, p_tilde_hole=0.0, q_tilde_out=0.0, q_tilde_hole=0.0,
             l_tilde=0.0, r_tilde=0.0, m_tilde_yhx=0.0, m_tilde_vhx=0.0, m_tilde_whx=0.0
         )
@@ -129,7 +129,7 @@ def test_fill_with_costs_calls_internal_steps_in_expected_order(monkeypatch):
         q_ss=0.0, p_tilde_out=1.0, p_tilde_hole=1.0, q_tilde_out=0.0, q_tilde_hole=0.0,
         l_tilde=0.0, r_tilde=0.0, m_tilde_yhx=0.0, m_tilde_vhx=0.0, m_tilde_whx=0.0,
     )
-    cfg = EddyRivasFoldingConfig(costs=costs)
+    cfg = EddyRivasFoldingConfig(pk_energies=costs)
     eng = EddyRivasFoldingEngine(cfg)
     nested = make_fold_state(3)
     re_state = init_eddy_rivas_fold_state(3)

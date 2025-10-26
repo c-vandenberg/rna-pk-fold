@@ -116,13 +116,13 @@ def should_skip_gap_cell(
     """
     # Hole width guard
     hole_width = (l_idx - k_idx - 1)
-    if config.min_hole_width != 0 and hole_width < config.min_hole_width:
+    if config.pk_energies.min_hole_width != 0 and hole_width < config.pk_energies.min_hole_width:
         return True
-    if config.max_hole_width != 0 and hole_width > config.max_hole_width:
+    if config.pk_energies.max_hole_width != 0 and hole_width > config.pk_energies.max_hole_width:
         return True
 
     # Beam guard
-    if config.beam_v_threshold != 0.0 and vxu_lookup(k_idx, l_idx) > config.beam_v_threshold:
+    if config.pk_energies.beam_v_threshold != 0.0 and vxu_lookup(k_idx, l_idx) > config.pk_energies.beam_v_threshold:
         return True
 
     # Optional Watson–Crick mask
@@ -245,7 +245,7 @@ def scan_is2_best_outer_bridge(
     if bridge_energy_kind == "yhx":
         bridge_get = lambda r, s2: compute_is2_outer_bridge_energy_yhx(config, seq, i_idx, j_idx, r, s2)
     else:
-        bridge_get = lambda r, s2: compute_is2_outer_bridge_energy(seq, config.tables, i_idx, j_idx, r, s2)
+        bridge_get = lambda r, s2: compute_is2_outer_bridge_energy(seq, config, i_idx, j_idx, r, s2)
 
     best_val = math.inf
     best_bridge: Optional[Tuple[int, int]] = None
@@ -398,7 +398,7 @@ def update_tracker_for_hole_dangles_using_vhx(
     tracker: BestCandidateTracker,
     vhx_get: Callable[[int, int, int, int], float],
     seq: str,
-    costs,
+    pk_energies,
     i_idx: int,
     j_idx: int,
     k_idx: int,
@@ -421,7 +421,7 @@ def update_tracker_for_hole_dangles_using_vhx(
         Energy accessor for VHX.
     seq : str
         RNA sequence.
-    costs : Any
+    pk_energies : Any
         Energy parameter tables.
     i_idx, j_idx, k_idx, l_idx : int
         Coordinates of the subproblem.
@@ -435,8 +435,8 @@ def update_tracker_for_hole_dangles_using_vhx(
     # Left Right
     energy = vhx_get(i_idx, j_idx, k_idx - 1, l_idx + 1)
     if math.isfinite(energy):
-        left_hole_energy = dangle_hole_left(seq, k_idx, costs)
-        right_hole_energy = dangle_hole_right(seq, l_idx, costs)
+        left_hole_energy = dangle_hole_left(seq, k_idx, pk_energies)
+        right_hole_energy = dangle_hole_right(seq, l_idx, pk_energies)
         tracker.update_if_better(
             left_hole_energy + right_hole_energy + tilde_p_hole + energy + internal_pk_penalty,
             EddyRivasBackPointer(op=op_left_right, outer=(i_idx, j_idx), hole=(k_idx, l_idx)),
@@ -445,7 +445,7 @@ def update_tracker_for_hole_dangles_using_vhx(
     # Right
     energy = vhx_get(i_idx, j_idx, k_idx - 1, l_idx)
     if math.isfinite(energy):
-        right_hole_energy = dangle_hole_right(seq, l_idx - 1, costs)
+        right_hole_energy = dangle_hole_right(seq, l_idx - 1, pk_energies)
         tracker.update_if_better(
             right_hole_energy + tilde_p_hole + energy + internal_pk_penalty,
             EddyRivasBackPointer(op=op_right, outer=(i_idx, j_idx), hole=(k_idx, l_idx)),
@@ -454,7 +454,7 @@ def update_tracker_for_hole_dangles_using_vhx(
     # Left
     energy = vhx_get(i_idx, j_idx, k_idx, l_idx + 1)
     if math.isfinite(energy):
-        left_hole_energy = dangle_hole_left(seq, k_idx + 1, costs)
+        left_hole_energy = dangle_hole_left(seq, k_idx + 1, pk_energies)
         tracker.update_if_better(
             left_hole_energy + tilde_p_hole + energy + internal_pk_penalty,
             EddyRivasBackPointer(op=op_left, outer=(i_idx, j_idx), hole=(k_idx, l_idx)),
@@ -465,7 +465,7 @@ def update_tracker_for_outer_dangles_using_vhx(
     tracker: BestCandidateTracker,
     vhx_get: Callable[[int, int, int, int], float],
     seq: str,
-    costs,
+    pk_energies,
     i_idx: int,
     j_idx: int,
     k_idx: int,
@@ -488,7 +488,7 @@ def update_tracker_for_outer_dangles_using_vhx(
         Energy accessor for VHX.
     seq : str
         RNA sequence.
-    costs : Any
+    pk_energies : Any
         Energy parameter tables.
     i_idx, j_idx, k_idx, l_idx : int
         Coordinates of the subproblem.
@@ -502,7 +502,7 @@ def update_tracker_for_outer_dangles_using_vhx(
     # -------- Case 1: Dangles on the Left Side of the Outer Pair --------
     energy = vhx_get(i_idx + 1, j_idx, k_idx, l_idx)
     if math.isfinite(energy):
-        outer_left_dangle_energy = dangle_outer_left(seq, i_idx, costs)
+        outer_left_dangle_energy = dangle_outer_left(seq, i_idx, pk_energies)
         tracker.update_if_better(
             outer_left_dangle_energy + tilde_p_out + energy + internal_pk_penalty,
             EddyRivasBackPointer(op=op_left, outer=(i_idx, j_idx), hole=(k_idx, l_idx)),
@@ -511,7 +511,7 @@ def update_tracker_for_outer_dangles_using_vhx(
     # -------- Case 2: Dangles on the Right Side of the Outer Pair --------
     energy = vhx_get(i_idx, j_idx - 1, k_idx, l_idx)
     if math.isfinite(energy):
-        outer_right_dangle_energy = dangle_outer_right(seq, j_idx, costs)
+        outer_right_dangle_energy = dangle_outer_right(seq, j_idx, pk_energies)
         tracker.update_if_better(
             outer_right_dangle_energy + tilde_p_out + energy + internal_pk_penalty,
             EddyRivasBackPointer(op=op_right, outer=(i_idx, j_idx), hole=(k_idx, l_idx)),
@@ -520,8 +520,8 @@ def update_tracker_for_outer_dangles_using_vhx(
     # -------- Case 3: Dangles on Both Sides of the Outer Pair --------
     energy = vhx_get(i_idx + 1, j_idx - 1, k_idx, l_idx)
     if math.isfinite(energy):
-        outer_left_dangle_energy = dangle_outer_left(seq, i_idx, costs)
-        outer_right_dangle_energy = dangle_outer_right(seq, j_idx, costs)
+        outer_left_dangle_energy = dangle_outer_left(seq, i_idx, pk_energies)
+        outer_right_dangle_energy = dangle_outer_right(seq, j_idx, pk_energies)
         tracker.update_if_better(
             outer_left_dangle_energy
             + outer_right_dangle_energy
@@ -647,7 +647,7 @@ def update_tracker_for_yhx_multiloop_wrap_whx(
     tracker: BestCandidateTracker,
     whx_get: Callable[[int, int, int, int], float],
     seq: str,
-    costs,
+    pk_energies,
     i_idx: int,
     j_idx: int,
     k_idx: int,
@@ -671,7 +671,7 @@ def update_tracker_for_yhx_multiloop_wrap_whx(
         Energy accessor for WHX.
     seq : str
         RNA sequence.
-    costs : Any
+    pk_energies : Any
         Energy parameter tables.
     i_idx, j_idx, k_idx, l_idx : int
         Coordinates of the sub-problem.
@@ -697,7 +697,7 @@ def update_tracker_for_yhx_multiloop_wrap_whx(
     # 2. Wrap on 5' (Left) Side
     energy = whx_get(i_idx + 1, j_idx, k_idx - 1, l_idx + 1)
     if math.isfinite(energy):
-        outer_left_dangle_energy = dangle_outer_left(seq, i_idx, costs)
+        outer_left_dangle_energy = dangle_outer_left(seq, i_idx, pk_energies)
         tracker.update_if_better(
             outer_left_dangle_energy + tilde_p_out + tilde_m_yhx + tilde_m_whx + energy + internal_pk_penalty,
             EddyRivasBackPointer(op=op_left, outer=(i_idx, j_idx), hole=(k_idx, l_idx)),
@@ -706,7 +706,7 @@ def update_tracker_for_yhx_multiloop_wrap_whx(
     # 3. Wrap on 3' (Right) Side
     energy = whx_get(i_idx, j_idx - 1, k_idx - 1, l_idx + 1)
     if math.isfinite(energy):
-        outer_right_dangle_energy = dangle_outer_right(seq, j_idx, costs)
+        outer_right_dangle_energy = dangle_outer_right(seq, j_idx, pk_energies)
         tracker.update_if_better(
             outer_right_dangle_energy + tilde_p_out + tilde_m_yhx + tilde_m_whx + energy + internal_pk_penalty,
             EddyRivasBackPointer(op=op_right, outer=(i_idx, j_idx), hole=(k_idx, l_idx)),
@@ -715,8 +715,8 @@ def update_tracker_for_yhx_multiloop_wrap_whx(
     # 4. Wrap on Both Sides
     energy = whx_get(i_idx + 1, j_idx - 1, k_idx - 1, l_idx + 1)
     if math.isfinite(energy):
-        outer_left_dangle_energy = dangle_outer_left(seq, i_idx, costs)
-        outer_right_dangle_energy = dangle_outer_right(seq, j_idx, costs)
+        outer_left_dangle_energy = dangle_outer_left(seq, i_idx, pk_energies)
+        outer_right_dangle_energy = dangle_outer_right(seq, j_idx, pk_energies)
         tracker.update_if_better(
             outer_left_dangle_energy
             + outer_right_dangle_energy

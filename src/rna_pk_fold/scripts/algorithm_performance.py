@@ -98,7 +98,7 @@ def eddy_rivas_fold(sequence: str, energy_model: SecondaryStructureEnergyModel) 
         min_hole_width=0,
         max_hole_width=0,
         pk_penalty_gw=-5.0,
-        costs=er_costs,
+        pk_energies=er_costs,
         verbose=False,
     )
 

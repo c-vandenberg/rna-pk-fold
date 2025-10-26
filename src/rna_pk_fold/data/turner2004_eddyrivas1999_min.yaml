@@ -675,7 +675,14 @@ pseudoknot:
 
   # Join drift & narrow-hole caps (not in paper)
   join_drift_penalty: 0.0
+  join_drift_radius: 0
   short_hole_caps: {}
+
+  # Minimum & maximum hole widths and outer segment lengths
+  min_hole_width: 0
+  max_hole_width: 0
+  min_outer_left: 0
+  min_outer_right: 0
 
   # Overlap/charging penalties (paper provides G_wh, G_w, G_wI)
   Gwh: 0.0                  # overlapping pseudoknots (paper)
@@ -685,3 +692,7 @@ pseudoknot:
 
   # Pseudoknot introduction penalty (paper’s G_w)
   pk_penalty_gw: -5
+
+  # Beam Parameters
+  beam_k: 0
+  beam_v_threshold: 0.0
