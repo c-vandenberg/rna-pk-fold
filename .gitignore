@@ -4,8 +4,8 @@
 
 # .idea and .run directories
 .run/
-.idea/
-.idea
+/.idea/
+/.idea
 
 # Byte-compiled/optimized/DLL files
 *.pyc
