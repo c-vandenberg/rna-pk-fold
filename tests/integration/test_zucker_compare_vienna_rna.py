@@ -30,8 +30,7 @@ from rna_pk_fold.energies import SecondaryStructureEnergyLoader
 from rna_pk_fold.energies.energy_model import SecondaryStructureEnergyModel
 from rna_pk_fold.folding.common_traceback import dotbracket_to_pairs
 from rna_pk_fold.folding.zucker import make_fold_state
-from rna_pk_fold.folding.zucker.zucker_recurrences import (ZuckerFoldingConfig,
-                                                           ZuckerFoldingEngine)
+from rna_pk_fold.folding.zucker.zucker_dynamic_programming import ZuckerFoldingConfig, ZuckerFoldingEngine
 from rna_pk_fold.folding.zucker.zucker_traceback import traceback_nested
 
 # Mark all tests in this file as integration tests.
