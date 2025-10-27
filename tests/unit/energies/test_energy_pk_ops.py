@@ -35,7 +35,6 @@ def pk_costs() -> PseudoknotEnergies:
     easy to trace which energy terms are being applied in the tests and to
     verify correct fallback behavior.
     """
-    # Minimal but expressive defaults; maps use bigram tuple keys per your types
     return PseudoknotEnergies(
         q_ss=0.2,
         p_tilde_out=1.0,

@@ -35,7 +35,6 @@ def yaml_path():
     str
         The absolute file path to the test YAML data file.
     """
-    # Use the same minimal YAML you validated earlier
     return ir_files(rna_pk_fold) / "data" / "xia1998_zucker_turner1999_min.yaml"
 
 
@@ -117,7 +116,6 @@ def test_stack_energy_cu_gg_matches_nn(rna_energy_bundle):
     i, j, k, l = 0, 3, 1, 2
     T = 310.15
 
-    # Build the exact Turner key your code uses for the nearest-neighbor table.
     key = dimer_key(seq, i, j)
     assert key in rna_energy_bundle.NN_STACK, f"Expected NN stack key {key!r} in table"
 

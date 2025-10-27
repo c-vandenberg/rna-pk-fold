@@ -479,7 +479,7 @@ hairpin_mismatches:
 # - For each closing pair (pair), provide a nucleotide×nucleotide
 #   matrix (nucs × nucs) giving the energy when the closing pair
 #   X–Y is adjacent to one nucleotide on the left (L) and one
-#   on the right (R) inside a multiloop. The flattened key your
+#   on the right (R) inside a multiloop. The flattened key the
 #   loader produces is "LX/YR".
 # - Used ONLY for multiloop closures.
 # ------------------------------------------------------
