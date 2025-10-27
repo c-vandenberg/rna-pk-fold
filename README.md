@@ -48,11 +48,34 @@ rna-pk-fold GCGCGCGCGCAUUGCGCGCGCGC
 
 The following arguments can be passed to the script:
 ```
-usage: rna-pk-fold [-h] [--engine {auto,zucker,eddy_rivas}] [--yaml YAML] [--tempC TEMPC] [--json] [-v] [--log-file LOG_FILE] [--quiet]
-                   [--pk-gw PK_GW] [--coax] [--overlap] [--min-hole-width MIN_HOLE_WIDTH] [--max-hole-width MAX_HOLE_WIDTH] [--q-ss Q_SS]
-                   sequence
+usage: predict_rna.py [-h] [--engine {auto,zucker,eddy_rivas}] [--yaml YAML] [--tempC TEMPC] [--json]
+                      [-v] [--log-file LOG_FILE] [--quiet]
+                      [--coax] [--overlap] [--is2] [--join_drift] [--strict_compliment_order]
+                      sequence
 
 ```
+
+**Base Arguments**
+* `sequence` (positional): RNA sequence (A,C,G,U; T is converted to U).
+* `--engine {auto,zucker,eddy_rivas}`: Predictor to use (default: auto).
+* `--yaml PATH`: Path to energy parameter YAML (defaults to packaged data).
+* `--tempC FLOAT`: Temperature in °C (default: 37.0).
+* `--json`: Emit machine-readable JSON instead of human-readable text.
+
+**Logging Arguments**
+* `-v / -vv`: Increase verbosity (INFO/DEBUG).
+* `--log-file PATH`: Write logs to a specific file.
+* `--quiet`: Suppress all output except the final result.
+
+**Eddy-Rivas Tuning Arguments (Only Used with `--engine eddy_rivas` or `--engine auto`)**
+
+These flags are enabled by default in the current script.
+* `--coax`: Enable coaxial stacking terms.
+* `--overlap`: Enable WX overlap compositions.
+* `--is2`: Enable IS2 energy calculations.
+* `--join_drift`: Enable slight hole shifting at a join point.
+* `--strict_compliment_order`: Enforce strict i < k ≤ r < l ≤ j ordering.
+
 
 **Example Output:**
 ```
@@ -229,7 +252,7 @@ All test RNA predictions were carried out using the `turner2004_eddyrivas1999_mi
 | GCGC | .... | 0.00 | ✅ |
 | GCAUCUAUGC | (((....))) | -1.80 | ✅ |
 | GGGAAAUCCC | (((....))) | -2.90 | ✅ |
-| AUGCUAGCUAUGC | ......((...)) | -3.90 | ✅ |
+| AUGCUAGCUAUGC | ......((...)) | -0.10 | ✅ |
 | AUAUAUAUAU | .......... | 0.00 | ✅ |
 | GCAAAGC | ....... | 0.00 | ✅ |
 | GCAAAAGC | ........ | 0.00 | ✅ |
@@ -247,35 +270,35 @@ All test RNA predictions were carried out using the `turner2004_eddyrivas1999_mi
 | GGCACAUUGCC | ((((...)))) | -5.20 | ✅ |
 | GGCAAAUUGCC | ((((...)))). | -5.20 | ✅ |
 | GGGAAACCCAAAGGGUUUCCC | (((((((((...))))))))) | -16.01 | ✅ |
-| GCGAAUCCGAUUGGCUAAGCG | ((.(((...))).))...... | -4.95 | ❌ |
-| GGAUCCGAAGGCUCGAUCC | .((.((...)).))..... | -5.75 | ❌ |
-| GGGAAAUCCAUUGGAUCCCUCC | ((((..(((...)))))))... | -12.01 | ✅ |
-| GCCGAUACGUAUCGGCGAU | ((((((....))))))... | -13.50 | ✅ |
+| GCGAAUCCGAUUGGCUAAGCG | ((.(((...))).))...... | -4.95 | ✅ |
+| GGAUCCGAAGGCUCGAUCC | ((....((....))....)) | -5.35 | ❌ |
+| GGGAAAUCCAUUGGAUCCCUCC | ((((..(((...)))))))... | -7.40 | ✅ |
+| GCCGAUACGUAUCGGCGAU | ((((((....))))))... | -8.90 | ✅ |
 | GCGCGCGCGCAUUGCGCGCGCGC | ((((((((((...)))))))))) | -23.00 | ✅ |
 | GGGGCCCCGGGGCCCC | ((((((....)))))) | -12.91 | ✅ |
-| GUGUGUGUACACACAC | ((((....)))).... | -7.40 | ❌ |
+| GUGUGUGUACACACAC | ((((((....)))))) | -7.10 | ✅ |
 | UGUGUGAAACACACA | ((((((...)))))) | -7.10 | ✅ |
-| GUGUAAUUGUGU | ............ | -3.80 | ✅ |
+| GUGUAAUUGUGU | ............ | -0.00 | ✅ |
 | AUAUAUAUAU | .......... | 0.00 | ✅ |
-| AAUAAAUAAAUAA | .............. | -3.80 | ✅ |
-| AUAUAAUAUAUAUAU | ............... | -3.80 | ❌ |
+| AAUAAAUAAAUAA | .............. | -0.00 | ✅ |
+| AUAUAAUAUAUAUAU | (((((...))))).. | -1.20 | ❌ |
 | GCGCGCAGCGCGC | (((((...))))) | -8.00 | ✅ |
-| GGCGCCGCGGCC | (((......))) | -3.80 | ✅ |
+| GGCGCCGCGGCC | (((......))) | -3.70 | ✅ |
 | GCAUCUAUGC | (((....))) | -1.80 | ✅ |
-| AUGCUAGCUAUGC | ......((...)) | -3.90 | ✅ |
+| AUGCUAGCUAUGC | ......((...)) | -0.10 | ✅ |
 | GGGAAAUCCC | (((....))) | -2.90 | ✅ |
-| GGAUACGUACCU | ............ | -3.80 | ✅ |
-| CGAUGCAGCUAG | ............ | -3.80 | ✅ |
-| AAAAUAAAAUAAAAUAAAA | ................... | -3.80 | ✅ |
-| UUUUUAAAUUUUUAAAUUUU | ..(((((....))))).... | -4.90 | ❌ |
+| GGAUACGUACCU | ............ | -0.00 | ✅ |
+| CGAUGCAGCUAG | ............ | -0.00 | ✅ |
+| AAAAUAAAAUAAAAUAAAA | ................... | -0.00 | ✅ |
+| UUUUUAAAUUUUUAAAUUUU | ..(((((....))))).... | -0.30 | ❌ |
 | AUCCCUA | ....... | 0.00 | ✅ |
 | GUCCUGU | ....... | 0.00 | ✅ |
 
 ## Pseudoknot RNA Sequences
 | Sequence | Predicted Dot-Bracket Notation | Predicted $\Delta G$ (kcal/mol) | IPknot Prediction Match |
 | :--- | :--- | :--- | :--- |
-| UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC | ............(((.....))).(((..((((.....))))(((((....(((...))).))))).))) | -24.51 | ❌ |
-| AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU | (((((...)))))((((((.....))))))............. | -14.41 | ❌ |
+| UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC | ............(((.....))).(((..((((.....))))(((((....(((...))).))))).))) | -19.91 | ❌ |
+| AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU | (((((...)))))((((((.....))))))............. | -9.81 | ❌ |
 
 ### 2.5. Pseudoknot Prediction: Known Issues and Debugging Analysis
 ### Problem Statement
@@ -438,8 +461,7 @@ Even though we fill gaps for all holes, the composition arrays (which use these 
 **Actual Impact:**
 * Implementing the above has expanded the state space and increased the number of plausible candidates.
 * However, the the algorithm still does not predict non-nested structures for the test sequences.
-* Additionally, the algorithm performs worse on the `test_zucker_eddy_rivas_compare_ipknot.py` smoke test, with 10/47 tests now failing compared to 6/47 tests failing prior to these changes being implemented. These additional failures are from the algorithm incorrectly predicting non-PK structures.
-* This is likely because these increased number of plausible collapsed gap routes candidates are now **competing with the Zucker nested structure** and are winning. However further investigation is needed.
+* Further investigation is therefore needed.
 
 ### Current Status (17/10/2025)
 ✅ Performs $O(N^{4.5})$ composition with proper energy calculations<br>
