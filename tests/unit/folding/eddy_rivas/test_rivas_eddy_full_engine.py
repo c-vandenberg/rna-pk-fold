@@ -16,7 +16,8 @@ import pytest
 from rna_pk_fold.folding.eddy_rivas import eddy_rivas_dynamic_programming
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBacktrackOp
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState, init_eddy_rivas_fold_state
-from rna_pk_fold.structures.tri_matrix import ZuckerTriangularMatrix, EddyRivasTriangularEnergyMatrix, EddyRivasTriangularBackpointerMatrix
+from rna_pk_fold.structures.tri_matrix import (ZuckerTriangularMatrix, EddyRivasTriangularEnergyMatrix,
+                                               EddyRivasTriangularBackpointerMatrix)
 from rna_pk_fold.structures.gap_matrix import SparseGapEnergyMatrix, SparseGapBackpointerMatrix
 
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState, make_fold_state
