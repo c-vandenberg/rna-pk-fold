@@ -2,12 +2,13 @@ import math
 import numpy as np
 from typing import Optional, Tuple
 
-from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
 from rna_pk_fold.energies.energy_pk_ops import short_hole_penalty, coax_pack
 from rna_pk_fold.folding.eddy_rivas.numba_kernels import compose_wx_min_energy_over_splits, compose_vx_min_energy_over_splits
-from rna_pk_fold.utils.dynamic_programming.matrix_utils import (whx_collapse_with, zhx_collapse_with,
-                                                                get_yhx_energy_with_collapse)
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import get_whx_energy_with_collapse, get_yhx_energy_with_collapse
+from rna_pk_fold.utils.dynamic_programming.matrix_utils import whx_collapse_with, zhx_collapse_with
 from rna_pk_fold.utils.sequences.iter_utils import iter_inner_holes
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 
 
 # ---------------------------------------------------------------------
@@ -712,3 +713,36 @@ def evaluate_vx_composition_for_hole(
     )
 
     return candidate_energy, backpointer
+
+
+def op_must_cross(op) -> bool:
+    """
+    Conservative test: YHX/ZHX ops are the pseudoknot gap states.
+    If your op enum exposes names, this keeps it future-proof.
+    """
+    name = getattr(op, "name", str(op))
+    return name.startswith("RE_YHX_") or name.startswith("RE_ZHX_")
+
+
+def bp_has_pk(bp: Optional[EddyRivasBackPointer]) -> bool:
+    return bool(bp and bp.has_pk)
+
+
+def wx_candidate_has_pk(efs: EddyRivasFoldState, i: int, j: int, k: int, l: int, r: int) -> bool:
+    """
+    Decide if the WX composition candidate (i,j) with hole (k,l) and split r is
+    actually pseudoknotted. We mirror the chooser used in composition: pick
+    WHX vs YHX on each side by energy and say 'PK' iff at least one side uses YHX.
+    (If equal or non-finite ties, we default to WHX to avoid false positives.)
+    """
+    whx_l = get_whx_energy_with_collapse(efs.whx_matrix, efs.wxu_matrix, i, r, k, r)
+    yhx_l = get_yhx_energy_with_collapse(efs.yhx_matrix, i, r, k, r)
+
+    whx_r = get_whx_energy_with_collapse(efs.whx_matrix, efs.wxu_matrix, r + 1, j, r + 1, l)
+    yhx_r = get_yhx_energy_with_collapse(efs.yhx_matrix, r + 1, j, r + 1, l)
+
+    # If either side strictly prefers YHX, we treat it as introducing a crossing.
+    left_uses_yhx  = math.isfinite(yhx_l) and (not math.isfinite(whx_l) or yhx_l <  whx_l)
+    right_uses_yhx = math.isfinite(yhx_r) and (not math.isfinite(whx_r) or yhx_r < whx_r)
+
+    return left_uses_yhx or right_uses_yhx

@@ -1,7 +1,7 @@
 import math
 import time
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 import numpy as np
@@ -25,7 +25,8 @@ from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
 from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (evaluate_wx_composition_for_hole,
                                                                         evaluate_wx_yhx_overlap_for_span,
                                                                         set_span_cell_with_backpointer,
-                                                                        evaluate_vx_composition_for_hole)
+                                                                        evaluate_vx_composition_for_hole,
+                                                                        wx_candidate_has_pk)
 from rna_pk_fold.utils.dynamic_programming.dp_split_utils import (compute_vhx_best_split_over_zhx_wx, compute_zhx_best_split_over_zhx_wx,
                                                                   compute_yhx_best_split_over_yhx_wx, VhxSplitMode, ZhxSplitMode,
                                                                   YhxSplitMode)
@@ -582,10 +583,12 @@ class EddyRivasFoldingEngine:
                 )
                 if math.isfinite(zhx_energy):
                     tracker.update_pair_with_right_tiebreak(
-                        tilde_q_hole + zhx_energy,  # Left view
-                        tilde_q_hole + zhx_energy,  # Right view (same energy)
-                        EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_VHX_SS_LEFT, outer=(i, j), hole=(k, l)),
-                        EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_VHX_SS_RIGHT, outer=(i, j), hole=(k, l)),
+                        tilde_q_hole + zhx_energy,
+                        tilde_q_hole + zhx_energy,
+                        EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_VHX_SS_LEFT, outer=(i, j), hole=(k, l),
+                                             has_pk=True),
+                        EddyRivasBackPointer(op=EddyRivasBacktrackOp.RE_VHX_SS_RIGHT, outer=(i, j), hole=(k, l),
+                                             has_pk=True),
                     )
 
                 # -------- Cases 5: Split on the 5' (Left Side) - r in [i..k-1]  →  ZHX(i,j:r,l) + WX(r+1,k) --------
@@ -598,7 +601,7 @@ class EddyRivasFoldingEngine:
                         cand_left,
                         EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_VHX_SPLIT_LEFT_ZHX_WX,
-                            outer=(i, j), hole=(k, l), split=r_star
+                            outer=(i, j), hole=(k, l), split=r_star, has_pk=True
                         ),
                     )
 
@@ -612,7 +615,7 @@ class EddyRivasFoldingEngine:
                         cand_right,
                         EddyRivasBackPointer(
                             op=EddyRivasBacktrackOp.RE_VHX_SPLIT_RIGHT_ZHX_WX,
-                            outer=(i, j), hole=(k, l), split=s2_star
+                            outer=(i, j), hole=(k, l), split=s2_star, has_pk=True
                         ),
                     )
 
@@ -629,7 +632,7 @@ class EddyRivasFoldingEngine:
                         tracker.update_if_better(
                             is2_best, EddyRivasBackPointer(
                                 op=EddyRivasBacktrackOp.RE_VHX_IS2_INNER_ZHX,
-                                outer=(i, j), hole=(k, l), bridge=(r2, s2)
+                                outer=(i, j), hole=(k, l), bridge=(r2, s2), has_pk=True
                             )
                         )
 
@@ -774,7 +777,7 @@ class EddyRivasFoldingEngine:
                         tracker.update_if_better(
                             is2_best, EddyRivasBackPointer(
                                 op=EddyRivasBacktrackOp.RE_ZHX_IS2_INNER_VHX,
-                                outer=(i, j), hole=(k, l), bridge=(r2, s2)
+                                outer=(i, j), hole=(k, l), bridge=(r2, s2), has_pk=True
                             )
                         )
 
@@ -922,7 +925,7 @@ class EddyRivasFoldingEngine:
                         tracker.update_if_better(
                             is2_best, EddyRivasBackPointer(
                                 op=EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX,
-                                outer=(i, j), hole=(k, l), bridge=(r2, s2)
+                                outer=(i, j), hole=(k, l), bridge=(r2, s2), has_pk=True
                             )
                         )
 
@@ -993,7 +996,18 @@ class EddyRivasFoldingEngine:
                 cand_energy, cand_bp = evaluate_wx_composition_for_hole(
                     eddy_rivas_fold_state, self.config, seq, i, j, k, l, pseudoknot_penalty, can_pair_mask
                 )
-                if cand_energy < best_composed_energy and cand_bp is not None:
+                if cand_bp is not None and cand_bp.op == EddyRivasBacktrackOp.RE_PK_COMPOSE_WX:
+                    r_star = cand_bp.split
+                    if r_star is not None:
+                        cand_has_pk = wx_candidate_has_pk(eddy_rivas_fold_state, i, j, k, l, r_star)
+                        cand_bp = replace(cand_bp, has_pk=cand_has_pk, charged=cand_has_pk)
+
+                        if not cand_has_pk:
+                            # Evaluate_wx_composition_for_hole included Gw; remove it here
+                            cand_energy -= pseudoknot_penalty
+
+                # Normal selection thereafter
+                if cand_bp is not None and cand_energy < best_composed_energy:
                     best_composed_energy, best_backpointer = cand_energy, cand_bp
 
 

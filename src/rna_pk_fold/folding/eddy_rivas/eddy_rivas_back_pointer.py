@@ -191,6 +191,7 @@ class EddyRivasBackPointer:
     bridge: Optional[Interval] = None
     drift: Optional[int] = None
     charged: Optional[bool] = None
+    has_pk: bool = False
     note: Optional[str] = None
 
     # A generic tuple to hold arguments for simplified validation in unit tests.
