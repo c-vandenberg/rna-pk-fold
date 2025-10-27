@@ -83,6 +83,7 @@ def run_ipknot(seq: str) -> Tuple[str, float]:
         temp_fasta.write(seq + "\n")
         fasta_path = temp_fasta.name
 
+    process = None
     try:
         # Run the ipknot command with the '-E' flag to output the score.
         process = subprocess.run(
@@ -97,6 +98,9 @@ def run_ipknot(seq: str) -> Tuple[str, float]:
             os.unlink(fasta_path)
         except OSError:
             pass
+
+    if not process:
+        raise ValueError("IPKnot command could not be run.")
 
     # --- Parse IPknot Output ---
     output = process.stdout.strip()
