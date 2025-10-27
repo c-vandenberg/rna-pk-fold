@@ -715,34 +715,61 @@ def evaluate_vx_composition_for_hole(
     return candidate_energy, backpointer
 
 
-def op_must_cross(op) -> bool:
+def wx_candidate_has_pk(
+    fold_state: "EddyRivasFoldState",
+    outer_start: int,
+    outer_end: int,
+    hole_start: int,
+    hole_end: int,
+    split_index: int,
+) -> bool:
     """
-    Conservative test: YHX/ZHX ops are the pseudoknot gap states.
-    If your op enum exposes names, this keeps it future-proof.
+    Determine if a WX composition candidate introduces a crossing (pseudoknot).
+
+    The decision mirrors the WX composition chooser: compute left/right energies
+    for WHX and YHX (with collapse helpers). If either side **strictly** prefers
+    YHX over WHX, the candidate is considered pseudoknotted.
+
+    Parameters
+    ----------
+    fold_state : EddyRivasFoldState
+        Current Eddy–Rivas DP state containing WX/WHX/YHX matrices.
+    outer_start : int
+        5' index (i) of the outer span.
+    outer_end : int
+        3' index (j) of the outer span.
+    hole_start : int
+        5' index (k) of the hole span.
+    hole_end : int
+        3' index (l) of the hole span.
+    split_index : int
+        Split position (r) that divides the outer span into left (i..r) and right (r+1..j).
+
+    Returns
+    -------
+    bool
+        ``True`` if the composition uses YHX on at least one side (left or right);
+        ``False`` otherwise.
+
+    Notes
+    -----
+    Ties and non-finite comparisons default to WHX to avoid false positives.
     """
-    name = getattr(op, "name", str(op))
-    return name.startswith("RE_YHX_") or name.startswith("RE_ZHX_")
+    whx_left = get_whx_energy_with_collapse(
+        fold_state.whx_matrix, fold_state.wxu_matrix, outer_start, split_index, hole_start, split_index
+    )
+    yhx_left = get_yhx_energy_with_collapse(
+        fold_state.yhx_matrix, outer_start, split_index, hole_start, split_index
+    )
 
+    whx_right = get_whx_energy_with_collapse(
+        fold_state.whx_matrix, fold_state.wxu_matrix, split_index + 1, outer_end, split_index + 1, hole_end
+    )
+    yhx_right = get_yhx_energy_with_collapse(
+        fold_state.yhx_matrix, split_index + 1, outer_end, split_index + 1, hole_end
+    )
 
-def bp_has_pk(bp: Optional[EddyRivasBackPointer]) -> bool:
-    return bool(bp and bp.has_pk)
-
-
-def wx_candidate_has_pk(efs: EddyRivasFoldState, i: int, j: int, k: int, l: int, r: int) -> bool:
-    """
-    Decide if the WX composition candidate (i,j) with hole (k,l) and split r is
-    actually pseudoknotted. We mirror the chooser used in composition: pick
-    WHX vs YHX on each side by energy and say 'PK' iff at least one side uses YHX.
-    (If equal or non-finite ties, we default to WHX to avoid false positives.)
-    """
-    whx_l = get_whx_energy_with_collapse(efs.whx_matrix, efs.wxu_matrix, i, r, k, r)
-    yhx_l = get_yhx_energy_with_collapse(efs.yhx_matrix, i, r, k, r)
-
-    whx_r = get_whx_energy_with_collapse(efs.whx_matrix, efs.wxu_matrix, r + 1, j, r + 1, l)
-    yhx_r = get_yhx_energy_with_collapse(efs.yhx_matrix, r + 1, j, r + 1, l)
-
-    # If either side strictly prefers YHX, we treat it as introducing a crossing.
-    left_uses_yhx  = math.isfinite(yhx_l) and (not math.isfinite(whx_l) or yhx_l <  whx_l)
-    right_uses_yhx = math.isfinite(yhx_r) and (not math.isfinite(whx_r) or yhx_r < whx_r)
+    left_uses_yhx = math.isfinite(yhx_left) and (not math.isfinite(whx_left) or yhx_left < whx_left)
+    right_uses_yhx = math.isfinite(yhx_right) and (not math.isfinite(whx_right) or yhx_right < whx_right)
 
     return left_uses_yhx or right_uses_yhx

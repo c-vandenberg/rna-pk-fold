@@ -23,7 +23,7 @@ from rna_pk_fold.utils.energy.energy_model_utils import load_energy_model
 from rna_pk_fold.utils.sequences.nucleotide_utils import generate_random_sequence
 
 
-def build_eddy_rivas_costs(
+def build_eddy_rivas_energies(
     energy_model: SecondaryStructureEnergyModel
 ) -> eddy_rivas_dynamic_programming.PseudoknotEnergies:
     """
@@ -85,20 +85,16 @@ def eddy_rivas_fold(sequence: str, energy_model: SecondaryStructureEnergyModel) 
     zucker_engine.fill_all_matrices(sequence, zucker_state)
 
     # Phase 2: Run Eddy-Rivas (pseudoknot) algorithm
-    er_costs = build_eddy_rivas_costs(energy_model)
-
-    # Configuration matches hardcoded defaults used in the actual prediction script
+    pk_energies = build_eddy_rivas_energies(energy_model)
     er_config = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
+        pk_energies=pk_energies,
         enable_coax=True,
-        enable_coax_variants=False,
-        enable_coax_mismatch=False,
         enable_wx_overlap=True,
+        enable_coax_variants=True,
+        enable_coax_mismatch=True,
         enable_is2=True,
         enable_join_drift=False,
-        min_hole_width=0,
-        max_hole_width=0,
-        pk_penalty_gw=-5.0,
-        pk_energies=er_costs,
+        enable_strict_complement_order=True,
         verbose=False,
     )
 
@@ -174,7 +170,7 @@ def benchmark_runtime(sequence_lengths: list[int], num_trials: int = 3) -> dict:
         results['std_times'].append(np.std(trial_times))
         results['energies'].append(result['energy'])
 
-        print(f"  Mean: {results['mean_times'][-1]:.2f}s $\pm$ {results['std_times'][-1]:.2f}s")
+        print(f"  Mean: {results['mean_times'][-1]:.2f}s $\\pm$ {results['std_times'][-1]:.2f}s")
         print(f"  Energy: {results['energies'][-1]:.2f} kcal/mol")
 
     return results
@@ -350,7 +346,7 @@ def generate_markdown_table(runtime_results: dict, memory_results: dict):
     print("MARKDOWN TABLE FOR README")
     print("=" * 60 + "\n")
 
-    print("| Sequence Length ($N$) | Runtime (s) | Peak Memory (MB) | Energy ($\Delta G$, kcal/mol) |")
+    print("| Sequence Length ($N$) | Runtime (s) | Peak Memory (MB) | Energy ($\\Delta G$, kcal/mol) |")
     print("|-----------------------|-------------|------------------|-------------------------------|")
 
     for i, n in enumerate(runtime_results['lengths']):
@@ -360,7 +356,7 @@ def generate_markdown_table(runtime_results: dict, memory_results: dict):
         energy = runtime_results['energies'][i]
 
         print(
-            f"| {n:20d}| {time_mean:6.2f} $\pm$ {time_std:.2f} | {memory:16.2f} | {energy:27.2f}|")
+            f"| {n:20d}| {time_mean:6.2f} $\\pm$ {time_std:.2f} | {memory:16.2f} | {energy:27.2f}|")
 
     print("\n")
 
@@ -414,3 +410,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

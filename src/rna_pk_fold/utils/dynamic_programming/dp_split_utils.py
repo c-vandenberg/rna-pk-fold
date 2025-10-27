@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Optional
 
 import numpy as np
 
@@ -443,24 +443,65 @@ def _compute_span_length(i: int, j: int) -> int:
     return max(0, j - i)
 
 
-def safe_split_left(outer_start: int, outer_end: int, split: int | None) -> int | None:
+def validate_left_split_index(
+    outer_start: int,
+    outer_end: int,
+    split_index: Optional[int],
+) -> Optional[int]:
     """
-    Ensure a left-split index makes progress: outer_start < split < outer_end.
-    Returns the valid split or None if degenerate (no progress).
+    Validate or synthesize a left-split index that makes progress.
+
+    If ``split_index`` is ``None``, the midpoint is used. The result is valid iff
+    ``outer_start < split < outer_end``.
+
+    Parameters
+    ----------
+    outer_start : int
+        5' index (inclusive) of the outer span.
+    outer_end : int
+        3' index (inclusive) of the outer span.
+    split_index : int or None
+        Proposed split index; if ``None``, use midpoint.
+
+    Returns
+    -------
+    int or None
+        A valid split index strictly inside ``(outer_start, outer_end)``,
+        or ``None`` if no progress is possible.
     """
-    valid_split = (outer_start + outer_end) // 2 if split is None else split
+    valid_split = (outer_start + outer_end) // 2 if split_index is None else split_index
     if valid_split <= outer_start or valid_split >= outer_end:
         return None
-
     return valid_split
 
 
-def safe_split_right(outer_start: int, outer_end: int, split: int | None) -> int | None:
+def validate_right_split_index(
+    outer_start: int,
+    outer_end: int,
+    split_index: Optional[int],
+) -> Optional[int]:
     """
-    Ensure a right-split index makes progress: outer_start <= split < outer_end-1.
-    Returns the valid split or None if degenerate (no progress).
+    Validate or synthesize a right-split index that makes progress.
+
+    If ``split_index`` is ``None``, the midpoint is used. The result is valid iff
+    ``outer_start <= split < outer_end``.
+
+    Parameters
+    ----------
+    outer_start : int
+        5' index (inclusive) of the outer span.
+    outer_end : int
+        3' index (inclusive) of the outer span.
+    split_index : int or None
+        Proposed split index; if ``None``, use midpoint.
+
+    Returns
+    -------
+    int or None
+        A valid split index inside ``[outer_start, outer_end)`` or ``None`` if
+        no progress is possible.
     """
-    valid_split = (outer_start + outer_end) // 2 if split is None else split
+    valid_split = (outer_start + outer_end) // 2 if split_index is None else split_index
     if valid_split < outer_start or valid_split >= outer_end:
         return None
     return valid_split

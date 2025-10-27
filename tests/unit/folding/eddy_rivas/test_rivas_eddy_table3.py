@@ -54,8 +54,12 @@ def make_costs(**overrides) -> PseudoknotEnergies:
         # tables/maps
         dangle_outer_left={}, dangle_outer_right={},
         dangle_hole_left={}, dangle_hole_right={},
-        # caps & drift
-        short_hole_caps={}, join_drift_penalty=0.0,
+        short_hole_caps={},
+        # pruning / bounds (live in the energy model post-refactor)
+        min_hole_width=0, max_hole_width=0,
+        min_outer_left=0, min_outer_right=0,
+        # join drift knobs live on the energies post-refactor
+        join_drift_penalty=0.0, join_drift_radius=0,
     )
     defaults.update(overrides)
     return PseudoknotEnergies(**defaults)
@@ -369,15 +373,14 @@ def test_pruning_guards_do_not_worsen_optimum():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    costs = make_costs(q_ss=0.0)
+    # Put pruning knobs in the energy model (post-refactor).
+    costs_loose = make_costs(q_ss=0.0, min_hole_width=0, min_outer_left=0, min_outer_right=0)
+    costs_tight = make_costs(q_ss=0.0, min_hole_width=1, min_outer_left=1, min_outer_right=1)
+
     # Loose constraints (effectively no pruning).
-    cfg_loose = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
-        min_hole_width=0, min_outer_left=0, min_outer_right=0, pk_energies=costs
-    )
+    cfg_loose = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(pk_energies=costs_loose)
     # Tight constraints.
-    cfg_tight = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
-        min_hole_width=1, min_outer_left=1, min_outer_right=1, pk_energies=costs
-    )
+    cfg_tight = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(pk_energies=costs_tight)
 
     eng0 = eddy_rivas_dynamic_programming.EddyRivasFoldingEngine(cfg_loose)
     eng0.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
@@ -519,7 +522,9 @@ def test_wx_selects_uncharged_on_tie_and_sets_backpointer():
     nested, re_state = _try_build_states(n)
 
     # Use pk_penalty_gw=0.0 to make ties between charged and uncharged paths more likely.
-    cfg = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(pk_penalty_gw=0.0, pk_energies=make_costs())
+    cfg = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
+        pk_energies=make_costs(pk_penalty_gw=0.0)
+    )
     eng = eddy_rivas_dynamic_programming.EddyRivasFoldingEngine(cfg)
     eng.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
 
@@ -753,9 +758,14 @@ def test_join_drift_with_negative_penalty_can_win_and_sets_bp():
 
     # --- With drift enabled and made attractive ---
     nested1, re1 = _try_build_states(n)
-    drift_costs = make_costs(coax_pairs={("GC", "GC"): -2.0}, join_drift_penalty=-0.5)
+    # Radius comes from the energy model in the refactor (join_drift_radius).
+    drift_costs = make_costs(
+        coax_pairs={("GC", "GC"): -2.0},
+        join_drift_penalty=-0.5,
+        join_drift_radius=1,
+    )
     cfg_on = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
-        enable_coax=True, enable_join_drift=True, drift_radius=1, pk_energies=drift_costs
+        enable_coax=True, enable_join_drift=True, pk_energies=drift_costs
     )
     eng_on = eddy_rivas_dynamic_programming.EddyRivasFoldingEngine(cfg_on)
     eng_on.run_eddy_rivas_dp_with_costs(seq, nested1, re1)
@@ -782,18 +792,14 @@ def test_join_drift_with_negative_penalty_can_win_and_sets_bp():
 
 
 # ------------------------
-# IS2 in YHX/WHX contexts
+# IS2 in YHX/WHX contexts (monkeypatched at call-site)
 # ------------------------
-class _TablesYHX:
-    """Mock tables object to inject a constant IS2 energy."""
-
-    def __init__(self, val):
-        self.IS2_outer_yhx = lambda seq, i, j, r, s: val
-
-
-def test_IS2_outer_yhx_lowers_best_yhx_when_negative():
+def test_IS2_outer_yhx_lowers_best_yhx_when_negative(monkeypatch):
     """
     Tests that a favorable IS2 energy term improves the YHX score.
+
+    We monkeypatch the IS2 outer-bridge energy function at the call-site to avoid
+    mutating frozen/slotted energy objects.
     """
     seq = "GCAUCG"
     n = len(seq)
@@ -807,8 +813,27 @@ def test_IS2_outer_yhx_lowers_best_yhx_when_negative():
 
     # With a favorable (negative) IS2 energy.
     nested2, re_state2 = _try_build_states(n)
+    # Monkeypatch both likely locations to be robust across refactors.
+    try:
+        from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences as rr
+    except Exception:
+        rr = None
+
+    monkeypatch.setattr(
+        eddy_rivas_dynamic_programming,
+        "compute_is2_outer_bridge_energy_yhx",
+        lambda pk, s, i, j, r, t: -1.5,
+        raising=False,
+    )
+    if rr is not None:
+        monkeypatch.setattr(
+            rr,
+            "compute_is2_outer_bridge_energy_yhx",
+            lambda pk, s, i, j, r, t: -1.5,
+            raising=False,
+        )
+
     cfg1 = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(pk_energies=make_costs())
-    cfg1.tables = _TablesYHX(-1.5)
     eng1 = eddy_rivas_dynamic_programming.EddyRivasFoldingEngine(cfg1)
     eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     y1 = _min_finite_yhx(re_state2, n)
@@ -816,10 +841,13 @@ def test_IS2_outer_yhx_lowers_best_yhx_when_negative():
     assert y1 <= y0
 
 
-def test_IS2_outer_yhx_can_lower_whx_via_yhx_bridge():
+def test_IS2_outer_yhx_can_lower_whx_via_yhx_bridge(monkeypatch):
     """
     Tests that a favorable YHX-related IS2 energy can also improve the WHX score,
     as WHX recurrences depend on YHX subproblems.
+
+    We monkeypatch the IS2 outer-bridge energy function at the call-site to avoid
+    mutating frozen/slotted energy objects.
     """
     seq = "GCAUCG"
     n = len(seq)
@@ -831,8 +859,27 @@ def test_IS2_outer_yhx_can_lower_whx_via_yhx_bridge():
     w0 = _min_finite_whx(re_state, n)
 
     nested2, re_state2 = _try_build_states(n)
+
+    try:
+        from rna_pk_fold.folding.eddy_rivas import eddy_rivas_recurrences as rr
+    except Exception:
+        rr = None
+
+    monkeypatch.setattr(
+        eddy_rivas_dynamic_programming,
+        "compute_is2_outer_bridge_energy_yhx",
+        lambda pk, s, i, j, r, t: -2.0,
+        raising=False,
+    )
+    if rr is not None:
+        monkeypatch.setattr(
+            rr,
+            "compute_is2_outer_bridge_energy_yhx",
+            lambda pk, s, i, j, r, t: -2.0,
+            raising=False,
+        )
+
     cfg1 = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(pk_energies=make_costs())
-    cfg1.tables = _TablesYHX(-2.0)  # Inject favorable YHX energy
     eng1 = eddy_rivas_dynamic_programming.EddyRivasFoldingEngine(cfg1)
     eng1.run_eddy_rivas_dp_with_costs(seq, nested2, re_state2)
     w1 = _min_finite_whx(re_state2, n)
@@ -875,7 +922,9 @@ def test_vx_selects_uncharged_on_tie_and_sets_backpointer():
     n = len(seq)
     nested, re_state = _try_build_states(n)
 
-    cfg = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(pk_penalty_gw=0.0, pk_energies=make_costs())
+    cfg = eddy_rivas_dynamic_programming.EddyRivasFoldingConfig(
+        pk_energies=make_costs(pk_penalty_gw=0.0)
+    )
     eng = eddy_rivas_dynamic_programming.EddyRivasFoldingEngine(cfg)
     eng.run_eddy_rivas_dp_with_costs(seq, nested, re_state)
 
@@ -887,5 +936,7 @@ def test_vx_selects_uncharged_on_tie_and_sets_backpointer():
     # If a tie occurred, the uncharged path must be chosen.
     if re_state.vxu_matrix.get_energy(i, j) == re_state.vxc_matrix.get_energy(i, j):
         assert tag == EddyRivasBacktrackOp.RE_VX_SELECT_UNCHARGED
+
+
 
 

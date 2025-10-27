@@ -14,7 +14,7 @@ from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import (merge_nes
 from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import (get_wx_backpointer, get_whx_backpointer,
                                                                       get_yhx_backpointer, get_zhx_backpointer,
                                                                       get_vhx_backpointer)
-from rna_pk_fold.utils.dynamic_programming.dp_split_utils import safe_split_left, safe_split_right
+from rna_pk_fold.utils.dynamic_programming.dp_split_utils import validate_left_split_index, validate_right_split_index
 
 logger = logging.getLogger(__name__)
 
@@ -394,7 +394,7 @@ def traceback_with_pseudoknots(
 
             # 2.8. Bifurcation into a smaller WHX and a nested WX.
             elif op is EddyRivasBacktrackOp.RE_WHX_SPLIT_LEFT_WHX_WX:
-                split_index = safe_split_left(outer_start, outer_end, backpointer.split)
+                split_index = validate_left_split_index(outer_start, outer_end, backpointer.split)
                 if split_index is None:
                     # Do not progress split to avoid infinite loop. Fallback to nested merge of the whole span.
                     print(
@@ -414,7 +414,7 @@ def traceback_with_pseudoknots(
 
             # 2.9. Bifurcation into a nested WX and a smaller WHX.
             elif op is EddyRivasBacktrackOp.RE_WHX_SPLIT_RIGHT_WX_WHX:
-                split_index = safe_split_right(outer_start, outer_end, backpointer.split)
+                split_index = validate_right_split_index(outer_start, outer_end, backpointer.split)
                 if split_index is None:
                     # Non-progress split → avoid infinite loop. Fallback to nested merge of the whole span.
                     print(
@@ -435,7 +435,7 @@ def traceback_with_pseudoknots(
 
             # 2.10. Overlapping pseudoknot from two smaller WHX subproblems.
             elif op is EddyRivasBacktrackOp.RE_WHX_OVERLAP_SPLIT:
-                split_index = safe_split_left(outer_start, outer_end, backpointer.split)
+                split_index = validate_left_split_index(outer_start, outer_end, backpointer.split)
                 if split_index is None:
                     print(
                         f"[WHX OVERLAP] non-progress split (split={backpointer.split}) → merge [{outer_start},{outer_end}]",
@@ -526,7 +526,7 @@ def traceback_with_pseudoknots(
 
             # 3.3. Bifurcation.
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_LEFT_YHX_WX:
-                split_index = safe_split_left(outer_start, outer_end, backpointer.split)
+                split_index = validate_left_split_index(outer_start, outer_end, backpointer.split)
                 if split_index is None:
                     print(f"[YHX SPLIT LEFT] non-progress split → merge [{outer_start},{outer_end}]", flush=True)
                     merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
@@ -539,7 +539,7 @@ def traceback_with_pseudoknots(
                                               trace_nested_interval, base_pairs, pair_to_layer)
 
             elif op is EddyRivasBacktrackOp.RE_YHX_SPLIT_RIGHT_WX_YHX:
-                split_index = safe_split_right(outer_start, outer_end, backpointer.split)
+                split_index = validate_right_split_index(outer_start, outer_end, backpointer.split)
                 if split_index is None:
                     print(f"[YHX SPLIT RIGHT] non-progress split → merge [{outer_start},{outer_end}]", flush=True)
                     merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
@@ -611,7 +611,7 @@ def traceback_with_pseudoknots(
 
             # 4.3. Bifurcations
             elif op is EddyRivasBacktrackOp.RE_ZHX_SPLIT_LEFT_ZHX_WX:
-                split_index = safe_split_left(outer_start, k_idx, backpointer.split)  # Split within [i..k]
+                split_index = validate_left_split_index(outer_start, k_idx, backpointer.split)  # Split within [i..k]
                 if split_index is None:
                     print(f"[ZHX SPLIT LEFT] non-progress split → merge [{k_idx + 1},{outer_end}]",
                           flush=True)
@@ -627,7 +627,7 @@ def traceback_with_pseudoknots(
                                               trace_nested_interval, base_pairs, pair_to_layer)
 
             elif op is EddyRivasBacktrackOp.RE_ZHX_SPLIT_RIGHT_ZHX_WX:
-                split_index = safe_split_right(l_idx, outer_end, backpointer.split)  # split within [l..j]
+                split_index = validate_right_split_index(l_idx, outer_end, backpointer.split)  # split within [l..j]
                 if split_index is None:
                     print(f"[ZHX SPLIT RIGHT] non-progress split → merge [{outer_start},{l_idx - 1}]",
                           flush=True)
@@ -696,7 +696,7 @@ def traceback_with_pseudoknots(
 
             # 5.3. Bifurcation.
             elif op is EddyRivasBacktrackOp.RE_VHX_SPLIT_LEFT_ZHX_WX:
-                split_index = safe_split_left(outer_start, k_idx, backpointer.split)
+                split_index = validate_left_split_index(outer_start, k_idx, backpointer.split)
                 if split_index is None:
                     print(f"[VHX SPLIT LEFT] non-progress split → merge [{k_idx + 1},{outer_end}]",
                           flush=True)

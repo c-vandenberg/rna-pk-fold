@@ -326,29 +326,71 @@ def validate_is2_bridge_span(
 
 def choose_pk_branch(
     state,
-    side: str,
-    i: int, j: int,  # outer span
-    k: int, l: int,  # hole span for that side
-) -> Tuple[str, Tuple[int,int,int,int]]:
+    branch_side: str,
+    outer_start: int,
+    outer_end: int,
+    hole_start: int,
+    hole_end: int
+) -> Tuple[str, Tuple[int, int, int, int]]:
     """
-    Decide whether this PK branch should be traced as YHX (crossing) or WHX (nested).
-    Preference: YHX if it has a backpointer; otherwise WHX; otherwise None→flatten.
-    Returns ("YHX"|"WHX"|"FLATTEN", (i,j,k,l)).
-    """
-    yhx_backpointer = get_yhx_backpointer(state, i, j, k, l)
-    whx_backpointer = get_whx_backpointer(state, i, j, k, l)
+    Decide how to trace a pseudoknot branch: crossing (YHX), nested (WHX), or flatten.
 
-    yhx_energy = state.yhx_matrix.get_energy(i, j, k, l) if yhx_backpointer is not None else math.inf
-    whx_energy = state.whx_matrix.get_energy(i, j, k, l) if whx_backpointer is not None else math.inf
+    The decision prefers YHX when a YHX backpointer exists and its energy is
+    not worse than WHX; otherwise it prefers WHX if a WHX backpointer exists;
+    otherwise the branch is flattened.
+
+    Parameters
+    ----------
+    state : EddyRivasFoldState
+        Current Eddy–Rivas DP state containing matrices and backpointers.
+    branch_side : str
+        Label for the branch being chosen (e.g., "L" or "R") used for debug output.
+    outer_start : int
+        5' index (i) of the outer span.
+    outer_end : int
+        3' index (j) of the outer span.
+    hole_start : int
+        5' index (k) of the hole span.
+    hole_end : int
+        3' index (l) of the hole span.
+
+    Returns
+    -------
+    tuple of (str, tuple of int)
+        A pair ``(mode, indices)`` where ``mode`` is one of ``{"YHX", "WHX", "FLATTEN"}``
+        and ``indices`` is the tuple ``(outer_start, outer_end, hole_start, hole_end)``.
+
+    Notes
+    -----
+    This function queries backpointers via :func:`get_yhx_backpointer` and
+    :func:`get_whx_backpointer`. If neither exists, the branch is flattened.
+    """
+    yhx_backpointer = get_yhx_backpointer(state, outer_start, outer_end, hole_start, hole_end)
+    whx_backpointer = get_whx_backpointer(state, outer_start, outer_end, hole_start, hole_end)
+
+    yhx_energy = (
+        state.yhx_matrix.get_energy(outer_start, outer_end, hole_start, hole_end)
+        if yhx_backpointer is not None else math.inf
+    )
+    whx_energy = (
+        state.whx_matrix.get_energy(outer_start, outer_end, hole_start, hole_end)
+        if whx_backpointer is not None else math.inf
+    )
 
     # Prefer YHX when it exists and is no worse than WHX
     if yhx_backpointer is not None and yhx_energy <= whx_energy + 1e-9:
-        print(f"[WX CHOOSE-{side}] YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})", flush=True)
-        return "YHX", (i, j, k, l)
+        print(
+            f"[WX CHOOSE-{branch_side}] YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})",
+            flush=True,
+        )
+        return "YHX", (outer_start, outer_end, hole_start, hole_end)
+
     if whx_backpointer is not None:
-        print(f"[WX CHOOSE-{side}] WHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})", flush=True)
-        return "WHX", (i, j, k, l)
+        print(
+            f"[WX CHOOSE-{branch_side}] WHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})",
+            flush=True,
+        )
+        return "WHX", (outer_start, outer_end, hole_start, hole_end)
 
-    print(f"[WX CHOOSE-{side}] FLATTEN (no BP in YHX/WHX)", flush=True)
-
-    return "FLATTEN", (i, j, k, l)
+    print(f"[WX CHOOSE-{branch_side}] FLATTEN (no BP in YHX/WHX)", flush=True)
+    return "FLATTEN", (outer_start, outer_end, hole_start, hole_end)
