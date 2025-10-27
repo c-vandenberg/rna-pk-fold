@@ -636,20 +636,20 @@ special_hairpins: {}
 # ------------------------------------------------------
 pseudoknot:
   # Per-step/tilde scalars (paper: \tilde Q = 0.2, \tilde P = 0.1)
-  q_ss: 2.0                 # Q~ - unpaired bases (general)
-  P_tilde_out: -1.2          # P~ - unpaired on outer span
-  P_tilde_hole: 0.6         # P~ - unpaired on hole
-  Q_tilde_out: -0.8          # Q~ - unpaired outer (alternative)
-  Q_tilde_hole: 0.8         # Q~ - unpaired hole (alternative)
+  q_ss: 0.2                 # Q~ - unpaired bases (general)
+  P_tilde_out: 0.1          # P~ - unpaired on outer span
+  P_tilde_hole: 0.1         # P~ - unpaired on hole
+  Q_tilde_out: 0.2          # Q~ - unpaired outer (alternative)
+  Q_tilde_hole: 0.3         # Q~ - unpaired hole (alternative)
 
   # Multiloop penalties for gap structures
-  M_tilde_yhx: 0.05         # M~ - YHX multiloop
+  M_tilde_yhx: 3.4         # M~ - YHX multiloop
   M_tilde_vhx: 3.4        # M~ - VHX multiloop
-  M_tilde_whx: 10.0         # M~ - WHX multiloop
+  M_tilde_whx: 3.4         # M~ - WHX multiloop
 
   # Dangle fallbacks
-  L_tilde: 0.0              # Fallback dangle = Q~
-  R_tilde: 0.0              # Fallback dangle = Q~
+  L_tilde: 0.2              # Fallback dangle = Q~
+  R_tilde: 0.2              # Fallback dangle = Q~
 
   # Optional dangle bigram maps (paper doesn’t list numbers; keep empty or provide your own)
   dangle_hole_left: {}
@@ -666,16 +666,16 @@ pseudoknot:
     "UA|AU": -0.3
     "GU|UG": -0.2
     "UG|GU": -0.2
-  coax_scale: 2.5          # g from the paper
-  coax_scale_oo: 3.0        # software knob (not in paper)
-  coax_scale_oi: 3.0        # software knob (not in paper)
-  coax_scale_io: 3.0        # software knob (not in paper)
+  coax_scale: 0.83          # g from the paper
+  coax_scale_oo: 1.0        # software knob (not in paper)
+  coax_scale_oi: 1.0        # software knob (not in paper)
+  coax_scale_io: 1.0        # software knob (not in paper)
   coax_min_helix_len: 1     # software knob (not in paper)
-  coax_bonus: -2.0           # paper gives no bonus; keep 0
+  coax_bonus: 0.0           # paper gives no bonus; keep 0
 
   # Join drift & narrow-hole caps (not in paper)
   join_drift_penalty: 0.0
-  join_drift_radius: 2
+  join_drift_radius: 0
   short_hole_caps: {}
 
   # Minimum & maximum hole widths and outer segment lengths
@@ -686,12 +686,12 @@ pseudoknot:
 
   # Overlap/charging penalties (paper provides G_wh, G_w, G_wI)
   Gwh: 0.0                  # overlapping pseudoknots (paper)
-  Gwi: -4.0                 # “generating a pseudoknot in a multiloop” (paper’s G_wI)
-  Gwh_wx: -10.0               # software-specific; not in paper
-  Gwh_whx: 5.0              # software-specific; not in paper
+  Gwi: 1.0                 # “generating a pseudoknot in a multiloop” (paper’s G_wI)
+  Gwh_wx: 0.0               # software-specific; not in paper
+  Gwh_whx: 0.0              # software-specific; not in paper
 
   # Pseudoknot introduction penalty (paper’s G_w)
-  pk_penalty_gw: -30
+  pk_penalty_gw: -5
 
   # Beam Parameters
   beam_k: 0
