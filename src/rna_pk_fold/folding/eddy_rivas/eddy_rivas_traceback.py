@@ -245,29 +245,57 @@ def traceback_with_pseudoknots(
                     left_k, left_l = k_idx, split_index
                     right_k, right_l = split_index + 1, l_idx
 
-                # Decide per side
-                left_choice, (li, lj, lk, ll) = choose_pk_branch(eddy_rivas_fold_state, "L", outer_start, left_l,
-                                                                  left_k, left_l)
-                right_choice, (ri, rj, rk, rl) = choose_pk_branch(eddy_rivas_fold_state, "R", right_k, outer_end,
-                                                                   right_k, right_l)
+                # Place the inner hole pairs on a fresh, higher layer so they
+                # render as a distinct bracket type against nested regions.
+                try:
+                    existing_max_layer = max(pair_to_layer.values()) if pair_to_layer else -1
+                except Exception:
+                    existing_max_layer = -1
+                hole_layer = existing_max_layer + 1
+                try:
+                    place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, left_k, left_l, hole_layer)
+                except Exception:
+                    pass
+                try:
+                    place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, right_k, right_l, hole_layer)
+                except Exception:
+                    pass
+
+                # Decide per side. If this WX backpointer was flagged as a pseudoknot
+                # (has_pk), prefer crossing (YHX) branches when possible to preserve
+                # the pseudoknot topology produced by composition.
+                prefer_crossing = bool(getattr(backpointer, 'has_pk', False))
+                # Debug: show prefer_crossing and whether YHX/WHX backpointers exist for each side
+                left_ybp = get_yhx_backpointer(eddy_rivas_fold_state, outer_start, left_l, left_k, left_l)
+                left_wbp = get_whx_backpointer(eddy_rivas_fold_state, outer_start, left_l, left_k, left_l)
+                right_ybp = get_yhx_backpointer(eddy_rivas_fold_state, right_k, outer_end, right_k, right_l)
+                right_wbp = get_whx_backpointer(eddy_rivas_fold_state, right_k, outer_end, right_k, right_l)
+                print(f"[TRACE DEBUG] prefer_crossing={prefer_crossing}", flush=True)
+                print(f"[TRACE DEBUG] left_ybp={'yes' if left_ybp else 'no'} left_wbp={'yes' if left_wbp else 'no'}", flush=True)
+                print(f"[TRACE DEBUG] right_ybp={'yes' if right_ybp else 'no'} right_wbp={'yes' if right_wbp else 'no'}", flush=True)
+                left_choice, (li, lj, lk, ll) = choose_pk_branch(
+                    eddy_rivas_fold_state, "L", outer_start, left_l, left_k, left_l, prefer_crossing
+                )
+                right_choice, (ri, rj, rk, rl) = choose_pk_branch(
+                    eddy_rivas_fold_state, "R", right_k, outer_end, right_k, right_l, prefer_crossing
+                )
 
                 # Push right branch first so left runs next (stack is LIFO)
                 if right_choice == "YHX":
                     trace_stack.append(("YHX", ri, rj, rk, rl, layer_idx))
                 elif right_choice == "WHX":
-                    trace_stack.append(("WHX", ri, rj, rk, rl, 0))
+                    # WHX may collapse; instead, place nested pairs with layering
+                    place_nested_interval(ri, rj, layer_idx)
                 else:
-                    # flatten if nothing to trace
-                    merge_nested_region_pairs(seq, nested_state, ri, rj, layer_idx, trace_nested_interval, base_pairs,
-                                              pair_to_layer)
+                    place_nested_interval(ri, rj, layer_idx)
 
+                # Left side
                 if left_choice == "YHX":
                     trace_stack.append(("YHX", li, lj, lk, ll, layer_idx))
                 elif left_choice == "WHX":
-                    trace_stack.append(("WHX", li, lj, lk, ll, 0))
+                    place_nested_interval(li, lj, layer_idx)
                 else:
-                    merge_nested_region_pairs(seq, nested_state, li, lj, layer_idx, trace_nested_interval, base_pairs,
-                                              pair_to_layer)
+                    place_nested_interval(li, lj, layer_idx)
                 continue
 
             # 1.3. Handle WX composition from two YHX subproblems.
@@ -786,5 +814,14 @@ def traceback_with_pseudoknots(
     elapsed = time.perf_counter() - start_time
     logger.info(f"Traceback completed in {elapsed:.3f}s")
     logger.info(f"Found {len(ordered_pairs)} base pairs")
+
+    # Debug dump for developer: write pair assignment map and ordered pairs to a tmp file
+    try:
+        with open('/tmp/trace_debug_pairs.txt', 'w') as dbg:
+            dbg.write(f'ordered_pairs={ordered_pairs}\n')
+            dbg.write(f'pair_to_layer={pair_to_layer}\n')
+            dbg.write(f'base_pairs_set={[ (p.base_i,p.base_j) for p in base_pairs ]}\n')
+    except Exception:
+        pass
 
     return TraceResult(pairs=ordered_pairs, dot_bracket=dot_bracket)

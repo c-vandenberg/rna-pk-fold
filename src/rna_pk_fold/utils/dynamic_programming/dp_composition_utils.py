@@ -168,23 +168,24 @@ def build_wx_split_arrays(
         )
 
         # Get energies from the YHX matrix (only if the pair is allowed)
-        # Left YHX
-        if can_pair_mask is not None and can_pair_mask[k_idx][split_idx]:
-            ly = get_yhx_energy_with_collapse(fold_state.yhx_matrix, i_idx, split_idx, k_idx, split_idx)
-            if math.isfinite(ly):
-                yhx_left_energy[split_offset] = ly
-                bp_ly = fold_state.yhx_back_ptr.get_backpointer(i_idx, split_idx, k_idx, split_idx)
-                if bp_ly is not None and getattr(bp_ly, "charged", False):
-                    yhx_left_is_charged[split_offset] = 1
+        # Left YHX: consider it whenever the YHX matrix has a finite value; do not
+        # gate on the pairability mask. Some pseudoknot topologies cross seams
+        # that aren't initially Watson-Crick pairable, but can still be formed
+        # via gap-matrix assembly.
+        ly = get_yhx_energy_with_collapse(fold_state.yhx_matrix, i_idx, split_idx, k_idx, split_idx)
+        if math.isfinite(ly):
+            yhx_left_energy[split_offset] = ly
+            bp_ly = fold_state.yhx_back_ptr.get_backpointer(i_idx, split_idx, k_idx, split_idx)
+            if bp_ly is not None and getattr(bp_ly, "charged", False):
+                yhx_left_is_charged[split_offset] = 1
 
         # Right YHX
-        if can_pair_mask is not None and can_pair_mask[split_idx + 1][l_idx]:
-            ry = get_yhx_energy_with_collapse(fold_state.yhx_matrix, split_idx + 1, j_idx, split_idx + 1, l_idx)
-            if math.isfinite(ry):
-                yhx_right_energy[split_offset] = ry
-                bp_ry = fold_state.yhx_back_ptr.get_backpointer(split_idx + 1, j_idx, split_idx + 1, l_idx)
-                if bp_ry is not None and getattr(bp_ry, "charged", False):
-                    yhx_right_is_charged[split_offset] = 1
+        ry = get_yhx_energy_with_collapse(fold_state.yhx_matrix, split_idx + 1, j_idx, split_idx + 1, l_idx)
+        if math.isfinite(ry):
+            yhx_right_energy[split_offset] = ry
+            bp_ry = fold_state.yhx_back_ptr.get_backpointer(split_idx + 1, j_idx, split_idx + 1, l_idx)
+            if bp_ry is not None and getattr(bp_ry, "charged", False):
+                yhx_right_is_charged[split_offset] = 1
 
     return (
         whx_left_uncharged,

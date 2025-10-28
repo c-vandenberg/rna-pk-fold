@@ -11,7 +11,7 @@ from rna_pk_fold.energies.energy_types import PseudoknotEnergies
 from rna_pk_fold.folding.zucker.zucker_fold_state import ZuckerFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldState
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_back_pointer import EddyRivasBackPointer, EddyRivasBacktrackOp
-from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_holes_pairable, iter_holes
+from rna_pk_fold.utils.sequences.iter_utils import iter_spans, iter_holes
 from rna_pk_fold.utils.dynamic_programming.matrix_utils import (clear_matrix_lookup_caches, get_whx_energy_with_collapse,
                                                                 get_zhx_energy_with_collapse, get_yhx_energy_with_collapse)
 from rna_pk_fold.rules.constraints import build_can_pair_mask
@@ -556,10 +556,15 @@ class EddyRivasFoldingEngine:
         """
         spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
         for i, j in tqdm(spans, desc="VHX", leave=False):
-            for k, l in iter_holes_pairable(i, j, can_pair_mask):
+            # Iterate all holes (do NOT pre-filter by pairability). The Rivas & Eddy
+            # algorithm requires considering hole endpoints that may not initially
+            # form Watson-Crick pairs; restricting to only pairable (k,l) prevents
+            # valid pseudoknots from being represented (YHX/ZHX cells remain INF).
+            for k, l in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_gap_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy,
-                                        require_kl_pairable=True):
+                # Do not require (k,l) to be pairable here; the recursion can still
+                # transition via ZHX/VHX when pairing is formed.
+                if should_skip_gap_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy):
                     continue
 
                 # ---------- Initialize Best Candidate Tracker ----------
@@ -839,10 +844,12 @@ class EddyRivasFoldingEngine:
           inner WHX structure.
         """
         for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
-            for k, l in iter_holes_pairable(i, j, can_pair_mask):
+            # Iterate all holes for YHX as well; outer endpoints may wrap a hole
+            # whose inner endpoints aren't initially pairable. Restricting to only
+            # pairable holes blocks many pseudoknot topologies.
+            for k, l in iter_holes(i, j):
                 # ---------- Guards/Filters (Hole Width, Beam Threshold) ----------
-                if should_skip_gap_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy,
-                                        require_kl_pairable=True):
+                if should_skip_gap_cell(i, j, k, l, self.config, eddy_rivas_fold_state.vxu_matrix.get_energy):
                     continue
 
                 # ---------- Initialize Best Candidate Tracker ----------
@@ -999,8 +1006,18 @@ class EddyRivasFoldingEngine:
                 if cand_bp is not None and cand_bp.op == EddyRivasBacktrackOp.RE_PK_COMPOSE_WX:
                     r_star = cand_bp.split
                     if r_star is not None:
-                        cand_has_pk = wx_candidate_has_pk(eddy_rivas_fold_state, i, j, k, l, r_star)
-                        cand_bp = replace(cand_bp, has_pk=cand_has_pk, charged=cand_has_pk)
+                        # A candidate can be 'charged' because the kernel chose a cc case
+                        # (WHX charged + WHX charged) or because one side strictly
+                        # prefers YHX over WHX. Treat it as a pseudoknot if EITHER
+                        # condition holds. Preserve the original 'charged' flag from
+                        # the kernel (cand_bp.charged) instead of overwriting it.
+                        cand_kernel_charged = getattr(cand_bp, 'charged', False)
+                        cand_yhx_pref = wx_candidate_has_pk(eddy_rivas_fold_state, i, j, k, l, r_star)
+                        cand_has_pk = bool(cand_kernel_charged or cand_yhx_pref)
+
+                        # Preserve the kernel's charged flag; set has_pk according to
+                        # the OR above.
+                        cand_bp = replace(cand_bp, has_pk=cand_has_pk, charged=cand_bp.charged)
 
                         if not cand_has_pk:
                             # Evaluate_wx_composition_for_hole included Gw; remove it here

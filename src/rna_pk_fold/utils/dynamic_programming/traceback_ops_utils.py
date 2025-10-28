@@ -7,6 +7,7 @@ from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import TraceResult
 from rna_pk_fold.utils.sequences.indices_utils import canonical_pair
 from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import get_whx_backpointer, get_yhx_backpointer
+from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasBacktrackOp
 
 Span = Tuple[int, int]
 
@@ -96,9 +97,8 @@ def merge_nested_region_pairs(
     print(f"[MERGE] Found {len(trace_result.pairs)} nested pairs:", flush=True)
     for pair in trace_result.pairs:
         print(f"  → ({pair.base_i},{pair.base_j})")
-        add_canonical_pair_if_absent(
-            pairs, pair_to_layer, pair.base_i, pair.base_j, layer_index
-        )
+        # Use layer-safe placement to avoid creating intra-layer crossings.
+        place_pair_in_first_non_crossing_layer(pairs, pair_to_layer, pair.base_i, pair.base_j, layer_index)
 
 
 # --- Layer-Safe Placement for Multilayer Dot-Bracket ---
@@ -138,7 +138,7 @@ def place_pair_in_first_non_crossing_layer(
     Places a pair `(i, j)` on the lowest available layer without creating a crossing.
 
     This function is essential for rendering pseudoknots in multilayer dot-bracket
-    notation. It starts checking from `start_layer` and increments the layer
+    notation. It starts checking from the suggested layer and increments the layer
     until it finds one where the new pair `(i, j)` does not cross any existing
     pairs already assigned to that layer.
 
@@ -163,6 +163,17 @@ def place_pair_in_first_non_crossing_layer(
     while True:
         # Assume there is no conflict on the current layer.
         conflict_found = False
+        # If either nucleotide is already paired elsewhere, skip placement to
+        # prevent double-pairing. This preserves the primacy of pairs placed
+        # earlier in the traceback (e.g., pseudoknot inner helices).
+        for (ei, ej), lidx in pair_to_layer.items():
+            if ei == i_index or ej == i_index or ei == j_index or ej == j_index:
+                try:
+                    with open('/tmp/place_pair_log.txt', 'a') as dbg:
+                        dbg.write(f"SKIP: ({i_index},{j_index}) conflicts with existing ({ei},{ej}) on L{lidx}\n")
+                except Exception:
+                    pass
+                return lidx
         # Check the new pair against all existing pairs on this layer.
         for (existing_i, existing_j), layer_idx in pair_to_layer.items():
             if layer_idx == current_layer and _do_pairs_cross(
@@ -170,13 +181,24 @@ def place_pair_in_first_non_crossing_layer(
             ):
                 # If a crossing is found, mark a conflict and stop checking this layer.
                 conflict_found = True
-                print(f"  Conflict with ({existing_i},{existing_j}) on L{current_layer}", flush=True)
+                # Debug: append conflict details to a temp log so we can inspect placement logic.
+                try:
+                    with open('/tmp/place_pair_log.txt', 'a') as dbg:
+                        dbg.write(f"CONFLICT: trying ({i_index},{j_index}) vs ({existing_i},{existing_j}) on L{current_layer}\n")
+                except Exception:
+                    pass
                 break
 
         # If no conflicts were found after checking all pairs on this layer...
         if not conflict_found:
             # ...place the new pair on this layer.
             add_canonical_pair_if_absent(pairs, pair_to_layer, i_index, j_index, current_layer)
+            # Debug: record placement
+            try:
+                with open('/tmp/place_pair_log.txt', 'a') as dbg:
+                    dbg.write(f"PLACED: ({i_index},{j_index}) -> L{current_layer}\n")
+            except Exception:
+                pass
             # Return the layer where the pair was placed.
             return current_layer
 
@@ -330,7 +352,8 @@ def choose_pk_branch(
     outer_start: int,
     outer_end: int,
     hole_start: int,
-    hole_end: int
+    hole_end: int,
+    prefer_crossing: bool = False,
 ) -> Tuple[str, Tuple[int, int, int, int]]:
     """
     Decide how to trace a pseudoknot branch: crossing (YHX), nested (WHX), or flatten.
@@ -353,6 +376,8 @@ def choose_pk_branch(
         5' index (k) of the hole span.
     hole_end : int
         3' index (l) of the hole span.
+    prefer_crossing : bool, optional
+        Whether to prefer crossing (YHX) branches when possible. Default is False.
 
     Returns
     -------
@@ -376,6 +401,23 @@ def choose_pk_branch(
         state.whx_matrix.get_energy(outer_start, outer_end, hole_start, hole_end)
         if whx_backpointer is not None else math.inf
     )
+
+    # If the caller requests to prefer crossing (e.g., the top-level WX
+    # composition was itself flagged as a pseudoknot), then choose YHX
+    # whenever a valid YHX backpointer exists. This preserves the pseudoknot
+    # topology encoded by the composition stage rather than collapsing it to
+    # nested WHX traces that would lose crossings.
+    if prefer_crossing and yhx_backpointer is not None:
+        # Avoid forcing a YHX choice that immediately delegates to a WHX
+        # via IS2 (RE_YHX_IS2_INNER_WHX), which frequently results in a
+        # collapse back to nested merges and thus loses the pseudoknot.
+        if yhx_backpointer.op is not EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX:
+            print(
+                f"[WX CHOOSE-{branch_side}] (forced) YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})",
+                flush=True,
+            )
+            return "YHX", (outer_start, outer_end, hole_start, hole_end)
+        # otherwise fallthrough to regular decision logic
 
     # Prefer YHX when it exists and is no worse than WHX
     if yhx_backpointer is not None and yhx_energy <= whx_energy + 1e-9:
