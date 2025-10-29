@@ -26,7 +26,7 @@ from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (evaluate
                                                                         evaluate_wx_yhx_overlap_for_span,
                                                                         set_span_cell_with_backpointer,
                                                                         evaluate_vx_composition_for_hole,
-                                                                        wx_candidate_has_pk)
+                                                                        wx_candidate_has_pk, set_wx_debug_outer)
 from rna_pk_fold.utils.dynamic_programming.dp_split_utils import (compute_vhx_best_split_over_zhx_wx, compute_zhx_best_split_over_zhx_wx,
                                                                   compute_yhx_best_split_over_yhx_wx, VhxSplitMode, ZhxSplitMode,
                                                                   YhxSplitMode)
@@ -93,7 +93,7 @@ class EddyRivasFoldingEngine:
     """
     Implements the Rivas and Eddy dynamic programming algorithm for RNA folding.
 
-    This class orchestrates the filling of the DP matrices (`wx`, `vx`, and the
+    This class orchestrates the filling of the DP matrices (`wx`, `vx`), and the
     four "gap" matrices `whx`, `vhx`, `zhx`, `yhx`) to find the minimum free
     energy secondary structure of an RNA sequence, including pseudoknots.
 
@@ -292,6 +292,11 @@ class EddyRivasFoldingEngine:
         # WX Composition & Publish
         logger.info("Composing WX matrix...")
         wx_start = time.perf_counter()
+        # DEBUG: enable WX candidate logging for the full-sequence outer span
+        try:
+            set_wx_debug_outer((0, seq_len - 1))
+        except Exception:
+            pass
         self._compose_wx_from_gapped_fragments(
             seq,
             eddy_rivas_fold_state,
@@ -1013,7 +1018,20 @@ class EddyRivasFoldingEngine:
                         # the kernel (cand_bp.charged) instead of overwriting it.
                         cand_kernel_charged = getattr(cand_bp, 'charged', False)
                         cand_yhx_pref = wx_candidate_has_pk(eddy_rivas_fold_state, i, j, k, l, r_star)
-                        cand_has_pk = bool(cand_kernel_charged or cand_yhx_pref)
+                        # Be conservative: require either an explicit YHX preference
+                        # OR a kernel 'charged' cc-case *and* the composed candidate
+                        # to be meaningfully better than the nested baseline. This
+                        # prevents kernel bookkeeping flags from forcing PK rendering
+                        # when the composed energy does not truly beat the nested fold.
+                        energy_eps = 1e-3
+                        wxu_val = eddy_rivas_fold_state.wxu_matrix.get_energy(i, j)
+                        cand_has_pk = False
+                        if cand_yhx_pref:
+                            cand_has_pk = True
+                        elif cand_kernel_charged and math.isfinite(cand_energy) and math.isfinite(wxu_val):
+                            # Candidate must beat nested by more than eps to be treated as PK
+                            if cand_energy + energy_eps < wxu_val:
+                                cand_has_pk = True
 
                         # Preserve the kernel's charged flag; set has_pk according to
                         # the OR above.

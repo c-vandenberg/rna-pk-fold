@@ -438,22 +438,19 @@ def choose_pk_branch(
     )
 
     # If the caller requests to prefer crossing (e.g., the top-level WX
-    # composition was itself flagged as a pseudoknot), then choose YHX
-    # whenever a valid YHX backpointer exists. This preserves the pseudoknot
-    # topology encoded by the composition stage rather than collapsing it to
-    # nested WHX traces that would lose crossings.
+    # composition was itself flagged as a pseudoknot), we will only choose
+    # YHX when it shows a *strict* energy advantage over WHX. Using a
+    # strict comparison (with a tiny epsilon) avoids selecting YHX on
+    # marginal floating-point ties which often leads to spurious pseudoknots
+    # in downstream merging/placement logic.
     if prefer_crossing and yhx_backpointer is not None:
         # Avoid forcing a YHX choice that immediately delegates to a WHX
-        # via IS2 (RE_YHX_IS2_INNER_WHX), which frequently results in a
-        # collapse back to nested merges and thus loses the pseudoknot.
-        # Only *force* a crossing if its energy is not worse than the
-        # nested (WHX) alternative — otherwise prefer the lower-energy
-        # option. This preserves topology only when it doesn't come at
-        # a thermodynamic cost.
-        energy_tol = 1e-9
+        # via IS2 (RE_YHX_IS2_INNER_WHX). Only force a crossing when it is
+        # actually energetically preferred by more than `energy_eps`.
+        energy_eps = 1e-3
         if (
             yhx_backpointer.op is not EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX
-            and yhx_energy <= whx_energy + energy_tol
+            and yhx_energy + energy_eps < whx_energy
         ):
             print(
                 f"[WX CHOOSE-{branch_side}] (forced) YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})",
@@ -461,8 +458,11 @@ def choose_pk_branch(
             )
             return "YHX", (outer_start, outer_end, hole_start, hole_end)
 
-    # Prefer YHX when it exists and is no worse than WHX
-    if yhx_backpointer is not None and yhx_energy <= whx_energy + 1e-9:
+    # Prefer YHX when it exists and shows a small but *strict* advantage
+    # over WHX (avoid ties). This reduces false-positive pseudoknot picks
+    # caused by numerical noise.
+    energy_eps_default = 1e-3
+    if yhx_backpointer is not None and yhx_energy + energy_eps_default < whx_energy:
         print(
             f"[WX CHOOSE-{branch_side}] YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})",
             flush=True,

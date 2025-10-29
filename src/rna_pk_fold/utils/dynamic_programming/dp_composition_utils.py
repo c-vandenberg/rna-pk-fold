@@ -786,31 +786,13 @@ def wx_candidate_has_pk(
     for WHX and YHX (with collapse helpers). If either side **strictly** prefers
     YHX over WHX, the candidate is considered pseudoknotted.
 
-    Parameters
-    ----------
-    fold_state : EddyRivasFoldState
-        Current Eddy–Rivas DP state containing WX/WHX/YHX matrices.
-    outer_start : int
-        5' index (i) of the outer span.
-    outer_end : int
-        3' index (j) of the outer span.
-    hole_start : int
-        5' index (k) of the hole span.
-    hole_end : int
-        3' index (l) of the hole span.
-    split_index : int
-        Split position (r) that divides the outer span into left (i..r) and right (r+1..j).
-
-    Returns
-    -------
-    bool
-        ``True`` if the composition uses YHX on at least one side (left or right);
-        ``False`` otherwise.
-
-    Notes
-    -----
     Ties and non-finite comparisons default to WHX to avoid false positives.
     """
+    # Small energy epsilon to avoid flagging pseudoknots on marginal differences
+    # caused by floating-point noise or tiny model variances. Use 1e-3 kcal/mol
+    # as a conservative threshold.
+    energy_eps = 1e-3
+
     whx_left = get_whx_energy_with_collapse(
         fold_state.whx_matrix, fold_state.wxu_matrix, outer_start, split_index, hole_start, split_index
     )
@@ -825,8 +807,19 @@ def wx_candidate_has_pk(
         fold_state.yhx_matrix, split_index + 1, outer_end, split_index + 1, hole_end
     )
 
-    left_uses_yhx = math.isfinite(yhx_left) and (not math.isfinite(whx_left) or yhx_left < whx_left)
-    right_uses_yhx = math.isfinite(yhx_right) and (not math.isfinite(whx_right) or yhx_right < whx_right)
+    # Require a small margin (energy_eps) before declaring a side prefers YHX.
+    left_uses_yhx = (
+        math.isfinite(yhx_left)
+        and (
+            (not math.isfinite(whx_left)) or (yhx_left + energy_eps < whx_left)
+        )
+    )
+    right_uses_yhx = (
+        math.isfinite(yhx_right)
+        and (
+            (not math.isfinite(whx_right)) or (yhx_right + energy_eps < whx_right)
+        )
+    )
 
     return left_uses_yhx or right_uses_yhx
 

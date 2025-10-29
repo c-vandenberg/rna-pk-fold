@@ -247,19 +247,26 @@ def traceback_with_pseudoknots(
 
                 # Place the inner hole pairs on a fresh, higher layer so they
                 # render as a distinct bracket type against nested regions.
-                try:
-                    existing_max_layer = max(pair_to_layer.values()) if pair_to_layer else -1
-                except Exception:
-                    existing_max_layer = -1
-                hole_layer = existing_max_layer + 1
-                try:
-                    place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, left_k, left_l, hole_layer)
-                except Exception:
-                    pass
-                try:
-                    place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, right_k, right_l, hole_layer)
-                except Exception:
-                    pass
+                # Only pre-place the hole's inner pairs on a new layer if this
+                # WX composition was identified as a true pseudoknot. For
+                # non-pseudoknotted compositions (has_pk=False) the hole will
+                # be handled by the nested merger and its pairs assigned to the
+                # appropriate existing layer. Force-placement here caused many
+                # nested structures to be rendered as pseudoknotted.
+                if getattr(backpointer, 'has_pk', False):
+                    try:
+                        existing_max_layer = max(pair_to_layer.values()) if pair_to_layer else -1
+                    except Exception:
+                        existing_max_layer = -1
+                    hole_layer = existing_max_layer + 1
+                    try:
+                        place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, left_k, left_l, hole_layer)
+                    except Exception:
+                        pass
+                    try:
+                        place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, right_k, right_l, hole_layer)
+                    except Exception:
+                        pass
 
                 # Decide per side. If this WX backpointer was flagged as a pseudoknot
                 # (has_pk), prefer crossing (YHX) branches when possible to preserve
