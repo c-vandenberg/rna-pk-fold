@@ -98,7 +98,25 @@ def merge_nested_region_pairs(
     for pair in trace_result.pairs:
         print(f"  → ({pair.base_i},{pair.base_j})")
         # Use layer-safe placement to avoid creating intra-layer crossings.
-        place_pair_in_first_non_crossing_layer(pairs, pair_to_layer, pair.base_i, pair.base_j, layer_index)
+        try:
+            place_pair_in_first_non_crossing_layer(pairs, pair_to_layer, pair.base_i, pair.base_j, layer_index)
+        except ValueError as ve:
+            # A nucleotide in this nested pair is already consumed by a higher-priority
+            # pseudoknot pair placed earlier in the traceback. Log and skip this
+            # nested pair rather than failing the entire traceback.
+            try:
+                with open('/tmp/place_pair_log.txt', 'a') as dbg:
+                    dbg.write(f"SKIP_NESTED_CONFLICT: cannot place ({pair.base_i},{pair.base_j}) -> {ve}\n")
+            except Exception:
+                pass
+            # Additional merge-level debug file with context
+            try:
+                with open('/tmp/merge_debug.txt', 'a') as mdbg:
+                    mdbg.write(f"MERGE_SKIP outer=({i_index},{j_index}) layer={layer_index} pair=({pair.base_i},{pair.base_j}) reason={ve}\n")
+            except Exception:
+                pass
+            print(f"[MERGE] Skipping nested pair ({pair.base_i},{pair.base_j}) due to nucleotide conflict", flush=True)
+            continue
 
 
 # --- Layer-Safe Placement for Multilayer Dot-Bracket ---
@@ -158,33 +176,50 @@ def place_pair_in_first_non_crossing_layer(
     int
         The layer on which the pair was successfully placed.
     """
+    # Canonicalize the input pair
+    i_canon, j_canon = canonical_pair(i_index, j_index)
+
+    # If the exact pair is already assigned a layer, ensure it's present in the
+    # pairs set and return that layer immediately.
+    if (i_canon, j_canon) in pair_to_layer:
+        existing_layer = pair_to_layer[(i_canon, j_canon)]
+        # Ensure the Pair object exists in `pairs`.
+        add_canonical_pair_if_absent(pairs, pair_to_layer, i_canon, j_canon, existing_layer)
+        try:
+            with open('/tmp/place_pair_log.txt', 'a') as dbg:
+                dbg.write(f"EXISTS: ({i_canon},{j_canon}) already -> L{existing_layer}\n")
+        except Exception:
+            pass
+        return existing_layer
+
+    # If either nucleotide is already used in a different pair, this is a conflict.
+    for (ei, ej), lidx in pair_to_layer.items():
+        if ei == i_canon or ej == i_canon or ei == j_canon or ej == j_canon:
+            # Conflict with an existing different pair — surface this to the caller.
+            try:
+                with open('/tmp/place_pair_log.txt', 'a') as dbg:
+                    dbg.write(f"CONFLICT-NUC: ({i_canon},{j_canon}) conflicts with existing ({ei},{ej}) on L{lidx}\n")
+            except Exception:
+                pass
+            raise ValueError(f"Nucleotide already paired: cannot place ({i_canon},{j_canon}) — conflicts with ({ei},{ej})")
+
     # Start checking from the suggested layer.
     current_layer = starting_layer
     while True:
         # Assume there is no conflict on the current layer.
         conflict_found = False
-        # If either nucleotide is already paired elsewhere, skip placement to
-        # prevent double-pairing. This preserves the primacy of pairs placed
-        # earlier in the traceback (e.g., pseudoknot inner helices).
-        for (ei, ej), lidx in pair_to_layer.items():
-            if ei == i_index or ej == i_index or ei == j_index or ej == j_index:
-                try:
-                    with open('/tmp/place_pair_log.txt', 'a') as dbg:
-                        dbg.write(f"SKIP: ({i_index},{j_index}) conflicts with existing ({ei},{ej}) on L{lidx}\n")
-                except Exception:
-                    pass
-                return lidx
+
         # Check the new pair against all existing pairs on this layer.
         for (existing_i, existing_j), layer_idx in pair_to_layer.items():
             if layer_idx == current_layer and _do_pairs_cross(
-                    (i_index, j_index), (existing_i, existing_j)
+                    (i_canon, j_canon), (existing_i, existing_j)
             ):
                 # If a crossing is found, mark a conflict and stop checking this layer.
                 conflict_found = True
                 # Debug: append conflict details to a temp log so we can inspect placement logic.
                 try:
                     with open('/tmp/place_pair_log.txt', 'a') as dbg:
-                        dbg.write(f"CONFLICT: trying ({i_index},{j_index}) vs ({existing_i},{existing_j}) on L{current_layer}\n")
+                        dbg.write(f"CONFLICT: trying ({i_canon},{j_canon}) vs ({existing_i},{existing_j}) on L{current_layer}\n")
                 except Exception:
                     pass
                 break
@@ -192,11 +227,11 @@ def place_pair_in_first_non_crossing_layer(
         # If no conflicts were found after checking all pairs on this layer...
         if not conflict_found:
             # ...place the new pair on this layer.
-            add_canonical_pair_if_absent(pairs, pair_to_layer, i_index, j_index, current_layer)
+            add_canonical_pair_if_absent(pairs, pair_to_layer, i_canon, j_canon, current_layer)
             # Debug: record placement
             try:
                 with open('/tmp/place_pair_log.txt', 'a') as dbg:
-                    dbg.write(f"PLACED: ({i_index},{j_index}) -> L{current_layer}\n")
+                    dbg.write(f"PLACED: ({i_canon},{j_canon}) -> L{current_layer}\n")
             except Exception:
                 pass
             # Return the layer where the pair was placed.
@@ -411,13 +446,20 @@ def choose_pk_branch(
         # Avoid forcing a YHX choice that immediately delegates to a WHX
         # via IS2 (RE_YHX_IS2_INNER_WHX), which frequently results in a
         # collapse back to nested merges and thus loses the pseudoknot.
-        if yhx_backpointer.op is not EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX:
+        # Only *force* a crossing if its energy is not worse than the
+        # nested (WHX) alternative — otherwise prefer the lower-energy
+        # option. This preserves topology only when it doesn't come at
+        # a thermodynamic cost.
+        energy_tol = 1e-9
+        if (
+            yhx_backpointer.op is not EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX
+            and yhx_energy <= whx_energy + energy_tol
+        ):
             print(
                 f"[WX CHOOSE-{branch_side}] (forced) YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})",
                 flush=True,
             )
             return "YHX", (outer_start, outer_end, hole_start, hole_end)
-        # otherwise fallthrough to regular decision logic
 
     # Prefer YHX when it exists and is no worse than WHX
     if yhx_backpointer is not None and yhx_energy <= whx_energy + 1e-9:
@@ -436,3 +478,57 @@ def choose_pk_branch(
 
     print(f"[WX CHOOSE-{branch_side}] FLATTEN (no BP in YHX/WHX)", flush=True)
     return "FLATTEN", (outer_start, outer_end, hole_start, hole_end)
+
+def place_nested_interval(
+    i_index: int,
+    j_index: int,
+    layer_index: int,
+    *,
+    seq: Optional[str] = None,
+    nested_state: Optional[Any] = None,
+    collect_pairs: Optional[Callable[[str, Any, int, int], TraceResult]] = None,
+    pairs: Optional[Set[Pair]] = None,
+    pair_to_layer: Optional[Dict[Tuple[int, int], int]] = None,
+) -> None:
+    """
+    Backwards-compatible wrapper used historically by the traceback engine.
+
+    Preferred use: call :func:`merge_nested_region_pairs` directly with all
+    required arguments. This helper exists to provide compatibility with
+    older code that called ``place_nested_interval(i, j, layer)``. When the
+    additional context parameters are omitted this function raises a clear
+    error describing the required arguments.
+
+    Parameters
+    ----------
+    i_index, j_index : int
+        Interval to trace.
+    layer_index : int
+        The target layer for placed pairs.
+    seq : str, optional
+        The full sequence (required if calling this helper directly).
+    nested_state : object, optional
+        The nested algorithm state used by the nested tracer.
+    collect_pairs : callable, optional
+        The nested traceback function (e.g., ``traceback_nested_interval``).
+    pairs : set, optional
+        The global set of placed Pair objects.
+    pair_to_layer : dict, optional
+        Mapping of canonical (i,j) tuples to their assigned layer.
+
+    Notes
+    -----
+    If ``seq`` and ``nested_state`` / ``collect_pairs`` are not provided
+    this function will raise a ``ValueError`` instructing the caller to use
+    ``merge_nested_region_pairs`` directly (which is the canonical API).
+    """
+    # If caller provided the full context, delegate to merge_nested_region_pairs.
+    if seq is not None and nested_state is not None and collect_pairs is not None and pairs is not None and pair_to_layer is not None:
+        merge_nested_region_pairs(seq, nested_state, i_index, j_index, layer_index, collect_pairs, pairs, pair_to_layer)
+        return
+
+    # Otherwise, provide a helpful error guiding the developer to the new API.
+    raise ValueError(
+        "place_nested_interval(i, j, layer, ..., seq=..., nested_state=..., collect_pairs=..., pairs=..., pair_to_layer=...) "
+        "must be called with the full traceback context. Prefer calling merge_nested_region_pairs(seq, nested_state, i, j, layer, collect_pairs, pairs, pair_to_layer)"
+    )

@@ -9,7 +9,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldSt
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasBacktrackOp
 from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import (merge_nested_region_pairs,
                                                                        place_pair_in_first_non_crossing_layer,
-                                                                       audit_layer_assignments, validate_is2_bridge_span,
+                                                                       audit_layer_assignments,
                                                                        choose_pk_branch)
 from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import (get_wx_backpointer, get_whx_backpointer,
                                                                       get_yhx_backpointer, get_zhx_backpointer,
@@ -146,7 +146,7 @@ def traceback_with_pseudoknots(
     #     YHX: (i, j, k, l, layer)
     #     ZHX: (i, j, k, l, layer)
     #     VHX: (i, j, k, l, layer)
-    TraceFrame = Tuple
+    TraceFrame = Tuple[Any, ...]
 
     # Start with the entire sequence as a WX problem on layer 0.
     trace_stack: List[TraceFrame] = [("WX", 0, seq_len - 1, 0)]
@@ -284,18 +284,22 @@ def traceback_with_pseudoknots(
                 if right_choice == "YHX":
                     trace_stack.append(("YHX", ri, rj, rk, rl, layer_idx))
                 elif right_choice == "WHX":
-                    # WHX may collapse; instead, place nested pairs with layering
-                    place_nested_interval(ri, rj, layer_idx)
+                    # WHX may collapse; instead, merge nested pairs into the given layer
+                    merge_nested_region_pairs(seq, nested_state, ri, rj, layer_idx,
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 else:
-                    place_nested_interval(ri, rj, layer_idx)
+                    merge_nested_region_pairs(seq, nested_state, ri, rj, layer_idx,
+                                              trace_nested_interval, base_pairs, pair_to_layer)
 
                 # Left side
                 if left_choice == "YHX":
                     trace_stack.append(("YHX", li, lj, lk, ll, layer_idx))
                 elif left_choice == "WHX":
-                    place_nested_interval(li, lj, layer_idx)
+                    merge_nested_region_pairs(seq, nested_state, li, lj, layer_idx,
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 else:
-                    place_nested_interval(li, lj, layer_idx)
+                    merge_nested_region_pairs(seq, nested_state, li, lj, layer_idx,
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 continue
 
             # 1.3. Handle WX composition from two YHX subproblems.

@@ -459,6 +459,61 @@ def evaluate_wx_composition_for_hole(
         split=split_idx_star,
         charged=charged,
     )
+
+    # --- Debug instrumentation: record candidate-level diagnostics ---
+    try:
+        left_whx_u = whx_left_uncharged[split_offset_star]
+        left_whx_c = whx_left_charged[split_offset_star]
+        right_whx_u = whx_right_uncharged[split_offset_star]
+        right_whx_c = whx_right_charged[split_offset_star]
+        left_yhx = yhx_left_energy[split_offset_star]
+        right_yhx = yhx_right_energy[split_offset_star]
+        left_ok_str = 'Y' if np.isfinite(left_whx_u) or np.isfinite(left_whx_c) or np.isfinite(left_yhx) else 'N'
+        right_ok_str = 'Y' if np.isfinite(right_whx_u) or np.isfinite(right_whx_c) or np.isfinite(right_yhx) else 'N'
+
+        # Map kernel case id to a human-readable name
+        case_names = {
+            0: 'WHX(u)+WHX(u)',
+            1: 'WHX(u)+WHX(c)',
+            2: 'WHX(c)+WHX(u)',
+            3: 'WHX(c)+WHX(c)',
+            4: 'YHX+YHX',
+            5: 'YHX+WHX(u)',
+            6: 'YHX+WHX(c)',
+            7: 'WHX(u)+YHX',
+            8: 'WHX(c)+YHX',
+        }
+        case_name = case_names.get(kernel_case_id, f'CASE_{kernel_case_id}')
+
+        # Determine which fragment actually provided the minimum contributor on each side
+        def choose_fragment(left_u, left_c, left_y):
+            # Choose the finite minimum and return a short tag and its value
+            vals = [(left_u, 'WHX_u'), (left_c, 'WHX_c'), (left_y, 'YHX')]
+            finite_vals = [(v, tag) for v, tag in vals if np.isfinite(v)]
+            if not finite_vals:
+                return ('NONE', math.inf)
+            vmin, tagmin = min(finite_vals, key=lambda x: x[0])
+            return (tagmin, vmin)
+
+        left_tag, left_val = choose_fragment(left_whx_u, left_whx_c, left_yhx)
+        right_tag, right_val = choose_fragment(right_whx_u, right_whx_c, right_yhx)
+
+        # Only write debug lines for the configured outer span (if set) to avoid
+        # flooding /tmp with all candidates during normal runs.
+        should_log = (DEBUG_WX_OUTER is None) or (DEBUG_WX_OUTER == (i_idx, j_idx))
+        if should_log:
+            with open('/tmp/wx_candidate_debug.txt', 'a') as dbg:
+                dbg.write(
+                    f"OUTER=({i_idx},{j_idx}) HOLE=({k_idx},{l_idx}) SPLIT={split_idx_star} CASE={kernel_case_id}({case_name}) "
+                    f"ENG={candidate_energy:.4f} CHARGED={bool(charged)} "
+                    f"L[{left_tag}={left_val:.4f}] (WU={left_whx_u:.4f}, WC={left_whx_c:.4f}, Y={left_yhx:.4f}) "
+                    f"R[{right_tag}={right_val:.4f}] (WU={right_whx_u:.4f}, WC={right_whx_c:.4f}, Y={right_yhx:.4f}) "
+                    f"LEFT_OK={left_ok_str} RIGHT_OK={right_ok_str}\n"
+                )
+    except Exception:
+        # Never fail composition because of debug logging
+        pass
+
     return candidate_energy, backpointer
 
 
@@ -774,3 +829,38 @@ def wx_candidate_has_pk(
     right_uses_yhx = math.isfinite(yhx_right) and (not math.isfinite(whx_right) or yhx_right < whx_right)
 
     return left_uses_yhx or right_uses_yhx
+
+
+# Module-level debug filter: when set to a tuple (i,j) only WX candidates matching
+# that outer span will be appended to /tmp/wx_candidate_debug.txt. Set to `None`
+# to allow all candidates (default).
+DEBUG_WX_OUTER: tuple[int, int] | None = None
+
+
+def set_wx_debug_outer(outer: tuple[int, int] | None) -> None:
+    """Set a debug filter for WX candidate logging.
+
+    Parameters
+    ----------
+    outer : tuple[int,int] or None
+        If a tuple (i,j) is provided, only WX candidates matching that outer
+        span will be logged. If `None`, all candidates will be logged.
+    """
+    global DEBUG_WX_OUTER
+    DEBUG_WX_OUTER = outer
+
+    # When enabling a specific debug outer, ensure the debug file is created
+    # and seeded with a header so downstream runs always have a visible file
+    # to inspect. This prevents silent failures where no file appears.
+    try:
+        if outer is not None:
+            with open('/tmp/wx_candidate_debug.txt', 'w') as dbg:
+                dbg.write(f"# WX candidate debug log — filter outer={outer}\n")
+                dbg.write("# Format: OUTER=(i,j) HOLE=(k,l) SPLIT=r CASE=id(NAME) ENG=energy CHARGED=bool L[...] R[...]\n")
+        else:
+            # If clearing the filter, create/clear the file as well (helps CI/debugging)
+            with open('/tmp/wx_candidate_debug.txt', 'w') as dbg:
+                dbg.write("# WX candidate debug log — filter cleared (log all candidates)\n")
+    except Exception:
+        # Never let debug setup break the folding run.
+        pass
