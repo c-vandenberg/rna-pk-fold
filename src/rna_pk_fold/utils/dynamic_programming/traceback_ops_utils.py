@@ -50,6 +50,29 @@ def add_canonical_pair_if_absent(
         pair_to_layer[(i_canon, j_canon)] = layer_index
 
 
+def get_bracket_for_layer(layer_index: int) -> Tuple[str, str]:
+    """
+    Get the opening and closing bracket characters for a given layer.
+
+    Parameters
+    ----------
+    layer_index : int
+        The layer number (0-based)
+
+    Returns
+    -------
+    tuple[str, str]
+        A tuple of (opening_bracket, closing_bracket)
+    """
+    brackets = [
+        ('(', ')'),  # Layer 0: round brackets
+        ('[', ']'),  # Layer 1: square brackets
+        ('{', '}'),  # Layer 2: curly brackets
+        ('<', '>')   # Layer 3: angle brackets
+    ]
+    return brackets[layer_index % len(brackets)]
+
+
 def merge_nested_region_pairs(
     seq: str,
     nested_state: Any,
@@ -95,28 +118,115 @@ def merge_nested_region_pairs(
     print(f"\n[MERGE] Interval [{i_index},{j_index}] at layer={layer_index}", flush=True)
     trace_result = collect_pairs(seq, nested_state, i_index, j_index)
     print(f"[MERGE] Found {len(trace_result.pairs)} nested pairs:", flush=True)
-    for pair in trace_result.pairs:
+
+    # Group pairs into stems (consecutive base pairs)
+    stems = []
+    current_stem = []
+    sorted_pairs = sorted(trace_result.pairs, key=lambda p: (p.base_i, p.base_j))
+
+    for pair in sorted_pairs:
         print(f"  → ({pair.base_i},{pair.base_j})")
-        # Use layer-safe placement to avoid creating intra-layer crossings.
-        try:
-            place_pair_in_first_non_crossing_layer(pairs, pair_to_layer, pair.base_i, pair.base_j, layer_index)
-        except ValueError as ve:
-            # A nucleotide in this nested pair is already consumed by a higher-priority
-            # pseudoknot pair placed earlier in the traceback. Log and skip this
-            # nested pair rather than failing the entire traceback.
-            try:
-                with open('/tmp/place_pair_log.txt', 'a') as dbg:
-                    dbg.write(f"SKIP_NESTED_CONFLICT: cannot place ({pair.base_i},{pair.base_j}) -> {ve}\n")
-            except Exception:
-                pass
-            # Additional merge-level debug file with context
-            try:
-                with open('/tmp/merge_debug.txt', 'a') as mdbg:
-                    mdbg.write(f"MERGE_SKIP outer=({i_index},{j_index}) layer={layer_index} pair=({pair.base_i},{pair.base_j}) reason={ve}\n")
-            except Exception:
-                pass
-            print(f"[MERGE] Skipping nested pair ({pair.base_i},{pair.base_j}) due to nucleotide conflict", flush=True)
-            continue
+        if are_bases_complementary(seq[pair.base_i], seq[pair.base_j]):
+            # Check if this pair continues the current stem
+            if current_stem and abs(pair.base_i - current_stem[-1].base_i) == 1 and \
+               abs(pair.base_j - current_stem[-1].base_j) == 1:
+                current_stem.append(pair)
+            else:
+                # Start a new stem
+                if current_stem:
+                    stems.append(current_stem)
+                current_stem = [pair]
+    if current_stem:
+        stems.append(current_stem)
+
+    # Sort stems by length (longer first) and position
+    stems.sort(key=lambda s: (-len(s), s[0].base_i))
+
+    # Track layer assignments
+    layer_stems = {}  # Maps layers to list of stems in that layer
+
+    # First pass: try to place all stems in layer 0 first
+    for stem in stems:
+        can_place_stem = True
+        for pair in stem:
+            for existing_pair in pairs:
+                if pair_to_layer.get((existing_pair.base_i, existing_pair.base_j)) == layer_index:
+                    if pairs_conflict(pair, existing_pair):
+                        can_place_stem = False
+                        break
+            if not can_place_stem:
+                break
+
+        if can_place_stem:
+            # Place all pairs in the stem in layer 0
+            for pair in stem:
+                pairs.add(pair)
+                pair_to_layer[(pair.base_i, pair.base_j)] = layer_index
+                print(f"[MERGE] Placed pair ({pair.base_i},{pair.base_j}) in layer {layer_index} [(,)]", flush=True)
+
+            if layer_index not in layer_stems:
+                layer_stems[layer_index] = []
+            layer_stems[layer_index].append(stem)
+        else:
+            # Check if this stem forms pseudoknots with layer 0
+            forms_pseudoknot = False
+            for pair in stem:
+                for existing_pair in pairs:
+                    if pair_to_layer.get((existing_pair.base_i, existing_pair.base_j)) == layer_index:
+                        if _do_pairs_cross((pair.base_i, pair.base_j),
+                                        (existing_pair.base_i, existing_pair.base_j)):
+                            forms_pseudoknot = True
+                            break
+                if forms_pseudoknot:
+                    break
+
+            # If it forms pseudoknots, try to place in higher layers
+            if forms_pseudoknot:
+                # Try higher layers
+                for current_layer in range(layer_index + 1, layer_index + 4):
+                    can_place_in_layer = True
+                    for pair in stem:
+                        for existing_pair in pairs:
+                            if pair_to_layer.get((existing_pair.base_i, existing_pair.base_j)) == current_layer:
+                                if pairs_conflict(pair, existing_pair):
+                                    can_place_in_layer = False
+                                    break
+                        if not can_place_in_layer:
+                            break
+
+                    if can_place_in_layer:
+                        # Place all pairs in the stem in this layer
+                        open_bracket, close_bracket = get_bracket_for_layer(current_layer)
+                        for pair in stem:
+                            pairs.add(pair)
+                            pair_to_layer[(pair.base_i, pair.base_j)] = current_layer
+                            print(f"[MERGE] Placed pseudoknot pair ({pair.base_i},{pair.base_j}) in layer {current_layer} [{open_bracket},{close_bracket}]", flush=True)
+
+                        if current_layer not in layer_stems:
+                            layer_stems[current_layer] = []
+                        layer_stems[current_layer].append(stem)
+                        break
+            else:
+                # Try to place in layer 0 with conflicts resolved
+                for pair in stem:
+                    pairs.add(pair)
+                    pair_to_layer[(pair.base_i, pair.base_j)] = layer_index
+                    print(f"[MERGE] Placed conflicting pair ({pair.base_i},{pair.base_j}) in layer {layer_index} [(,)]", flush=True)
+
+                if layer_index not in layer_stems:
+                    layer_stems[layer_index] = []
+                layer_stems[layer_index].append(stem)
+
+    # Audit assignments per layer
+    for layer, stems_in_layer in sorted(layer_stems.items()):
+        total_pairs = sum(len(stem) for stem in stems_in_layer)
+        print(f"[L{layer}] {len(stems_in_layer)} stems with {total_pairs} pairs", flush=True)
+
+        # Additional layer integrity check
+        open_bracket, close_bracket = get_bracket_for_layer(layer)
+        for stem in stems_in_layer:
+            stem_len = len(stem)
+            print(f"[L{layer}] Stem length {stem_len} [{open_bracket * stem_len},{close_bracket * stem_len}]", flush=True)
 
 
 # --- Layer-Safe Placement for Multilayer Dot-Bracket ---
@@ -393,9 +503,9 @@ def choose_pk_branch(
     """
     Decide how to trace a pseudoknot branch: crossing (YHX), nested (WHX), or flatten.
 
-    The decision prefers YHX when a YHX backpointer exists and its energy is
-    not worse than WHX; otherwise it prefers WHX if a WHX backpointer exists;
-    otherwise the branch is flattened.
+    This function has been updated to be more aggressive about keeping pseudoknots,
+    with a smaller energy threshold for YHX preference and additional heuristics
+    for pseudoknot identification.
 
     Parameters
     ----------
@@ -419,11 +529,6 @@ def choose_pk_branch(
     tuple of (str, tuple of int)
         A pair ``(mode, indices)`` where ``mode`` is one of ``{"YHX", "WHX", "FLATTEN"}``
         and ``indices`` is the tuple ``(outer_start, outer_end, hole_start, hole_end)``.
-
-    Notes
-    -----
-    This function queries backpointers via :func:`get_yhx_backpointer` and
-    :func:`get_whx_backpointer`. If neither exists, the branch is flattened.
     """
     yhx_backpointer = get_yhx_backpointer(state, outer_start, outer_end, hole_start, hole_end)
     whx_backpointer = get_whx_backpointer(state, outer_start, outer_end, hole_start, hole_end)
@@ -437,32 +542,27 @@ def choose_pk_branch(
         if whx_backpointer is not None else math.inf
     )
 
-    # If the caller requests to prefer crossing (e.g., the top-level WX
-    # composition was itself flagged as a pseudoknot), we will only choose
-    # YHX when it shows a *strict* energy advantage over WHX. Using a
-    # strict comparison (with a tiny epsilon) avoids selecting YHX on
-    # marginal floating-point ties which often leads to spurious pseudoknots
-    # in downstream merging/placement logic.
-    if prefer_crossing and yhx_backpointer is not None:
-        # Avoid forcing a YHX choice that immediately delegates to a WHX
-        # via IS2 (RE_YHX_IS2_INNER_WHX). Only force a crossing when it is
-        # actually energetically preferred by more than `energy_eps`.
-        energy_eps = 1e-3
-        if (
-            yhx_backpointer.op is not EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX
-            and yhx_energy + energy_eps < whx_energy
-        ):
-            print(
-                f"[WX CHOOSE-{branch_side}] (forced) YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})",
-                flush=True,
-            )
-            return "YHX", (outer_start, outer_end, hole_start, hole_end)
+    # Use a smaller energy threshold for YHX preference to catch more pseudoknots
+    energy_eps = 0.1  # Reduced from 1e-3
 
-    # Prefer YHX when it exists and shows a small but *strict* advantage
-    # over WHX (avoid ties). This reduces false-positive pseudoknot picks
-    # caused by numerical noise.
-    energy_eps_default = 1e-3
-    if yhx_backpointer is not None and yhx_energy + energy_eps_default < whx_energy:
+    # If we're in crossing mode or the branch shows pseudoknot characteristics
+    if (prefer_crossing or
+        (hole_end - hole_start >= 3 and outer_end - outer_start >= 6)):  # Minimum sizes for reliable pk detection
+
+        # Check if YHX exists and is reasonably competitive
+        if yhx_backpointer is not None:
+            # More permissive energy comparison
+            if (yhx_backpointer.op is not EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX
+                and yhx_energy < whx_energy + 2.0):  # Allow YHX even if slightly worse
+
+                print(
+                    f"[WX CHOOSE-{branch_side}] (aggressive) YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})",
+                    flush=True,
+                )
+                return "YHX", (outer_start, outer_end, hole_start, hole_end)
+
+    # Standard comparison with smaller epsilon
+    if yhx_backpointer is not None and yhx_energy + energy_eps < whx_energy:
         print(
             f"[WX CHOOSE-{branch_side}] YHX (Ey={yhx_energy:.2f}, Ew={whx_energy:.2f})",
             flush=True,
@@ -532,3 +632,34 @@ def place_nested_interval(
         "place_nested_interval(i, j, layer, ..., seq=..., nested_state=..., collect_pairs=..., pairs=..., pair_to_layer=...) "
         "must be called with the full traceback context. Prefer calling merge_nested_region_pairs(seq, nested_state, i, j, layer, collect_pairs, pairs, pair_to_layer)"
     )
+
+def are_bases_complementary(base1: str, base2: str) -> bool:
+    """Check if two RNA bases can form a canonical pair."""
+    pairs = {
+        ('A', 'U'), ('U', 'A'),
+        ('G', 'C'), ('C', 'G'),
+        ('G', 'U'), ('U', 'G')  # Wobble pairs
+    }
+    return (base1.upper(), base2.upper()) in pairs
+
+def pairs_conflict(pair_a: Pair, pair_b: Pair) -> bool:
+    """
+    Check if two base pairs have any nucleotides in common or cross each other.
+
+    Parameters
+    ----------
+    pair_a, pair_b : Pair
+        The pairs to check for conflicts
+
+    Returns
+    -------
+    bool
+        True if pairs share nucleotides or cross each other
+    """
+    # Check for shared nucleotides
+    if (pair_a.base_i == pair_b.base_i or pair_a.base_i == pair_b.base_j or
+        pair_a.base_j == pair_b.base_i or pair_a.base_j == pair_b.base_j):
+        return True
+
+    # Check for crossing
+    return _do_pairs_cross((pair_a.base_i, pair_a.base_j), (pair_b.base_i, pair_b.base_j))

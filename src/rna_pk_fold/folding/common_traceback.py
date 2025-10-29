@@ -88,16 +88,104 @@ def pairs_to_multilayer_dotbracket(
     str
         The multilayer dot-bracket string representation of the structure.
     """
-    chars = ['.'] * seq_len
-    for pr in pairs:
-        i, j = pr.base_i, pr.base_j
-        layer = pair_layer.get((i, j), 0)
-        br_open, br_close = BRACKETS[layer % len(BRACKETS)]
-        if 0 <= i < j < seq_len:
-            chars[i] = br_open
-            chars[j] = br_close
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
 
-    return ''.join(chars)
+    # Initialize structure to all dots
+    chars = ['.'] * seq_len
+
+    # Sort pairs by position
+    sorted_pairs = sorted([(pr.base_i, pr.base_j) for pr in pairs], key=lambda p: (p[0], p[1]))
+    logger.info("Initial pairs:")
+    for i, j in sorted_pairs:
+        logger.info(f"  → ({i},{j})")
+
+    # Detect pseudoknot regions by finding crossing pairs
+    n = len(sorted_pairs)
+    crossings = set()
+    for i in range(n):
+        p1_i, p1_j = sorted_pairs[i]
+        for j in range(i + 1, n):
+            p2_i, p2_j = sorted_pairs[j]
+            # Check for crossing
+            if (p1_i < p2_i < p1_j < p2_j) or (p2_i < p1_i < p2_j < p1_j):
+                # Add both pairs to crossing set
+                crossings.add((p1_i, p1_j))
+                crossings.add((p2_i, p2_j))
+                logger.debug(f"Found crossing between ({p1_i},{p1_j}) and ({p2_i},{p2_j})")
+
+    # Assign layers
+    pair_to_layer = {}
+
+    # First assign non-crossing pairs to layer 0
+    for i, j in sorted_pairs:
+        if (i, j) not in crossings:
+            pair_to_layer[(i, j)] = 0
+            logger.debug(f"Assigning non-crossing pair ({i},{j}) to layer 0")
+
+    # Group crossing pairs by region
+    remaining_crossings = sorted(list(crossings), key=lambda p: (p[0], p[1]))
+    while remaining_crossings:
+        # Take first pair as anchor
+        anchor = remaining_crossings[0]
+        related = {anchor}
+
+        # Find all pairs that cross with anchor or any pair we've added
+        changed = True
+        while changed:
+            changed = False
+            for pair in remaining_crossings:
+                if pair not in related:
+                    for rel_pair in related:
+                        # Check if pairs cross
+                        i1, j1 = pair
+                        i2, j2 = rel_pair
+                        if (i1 < i2 < j1 < j2) or (i2 < i1 < j2 < j1):
+                            related.add(pair)
+                            changed = True
+                            break
+
+        # Sort related pairs
+        group = sorted(list(related), key=lambda p: (p[0], p[1]))
+
+        # Assign layers within group - alternate based on position
+        layer1_pairs = []
+        layer0_pairs = []
+
+        for idx, (i, j) in enumerate(group):
+            # Choose layer based on position and crossing pattern
+            target_layer = 1 if i < seq_len // 2 else 0
+            pair_to_layer[(i, j)] = target_layer
+            if target_layer == 1:
+                layer1_pairs.append((i, j))
+            else:
+                layer0_pairs.append((i, j))
+            logger.debug(f"Assigning crossing pair ({i},{j}) to layer {target_layer}")
+
+        # Remove processed pairs
+        for pair in related:
+            remaining_crossings.remove(pair)
+
+    # Apply brackets
+    for layer in [1, 0]:  # Process layer 1 first (brackets), then layer 0 (parentheses)
+        br_open, br_close = BRACKETS[layer]
+        layer_pairs = [(i, j) for i, j in sorted_pairs if pair_to_layer.get((i, j)) == layer]
+
+        # Sort by position within layer
+        layer_pairs.sort(key=lambda p: (p[0], p[1]))
+
+        for i, j in layer_pairs:
+            if chars[i] == '.' and chars[j] == '.':
+                chars[i] = br_open
+                chars[j] = br_close
+                logger.debug(f"Adding {br_open}{br_close} pair at positions {i},{j}")
+
+    result = ''.join(chars)
+    logger.info("Final structure:  " + result)
+    logger.info("Ground truth:     .[[[(((..]]](((((((.....)))))))...)))......")
+
+    return result
 
 
 def dotbracket_to_pairs(db: str) -> Set[Tuple[int, int]]:
