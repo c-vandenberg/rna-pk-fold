@@ -9,7 +9,7 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldSt
 from rna_pk_fold.folding.eddy_rivas.eddy_rivas_dynamic_programming import EddyRivasBacktrackOp
 from rna_pk_fold.utils.dynamic_programming.traceback_ops_utils import (merge_nested_region_pairs,
                                                                        place_pair_in_first_non_crossing_layer,
-                                                                       audit_layer_assignments, validate_is2_bridge_span,
+                                                                       audit_layer_assignments,
                                                                        choose_pk_branch)
 from rna_pk_fold.utils.dynamic_programming.back_pointer_utils import (get_wx_backpointer, get_whx_backpointer,
                                                                       get_yhx_backpointer, get_zhx_backpointer,
@@ -245,34 +245,88 @@ def traceback_with_pseudoknots(
                     left_k, left_l = k_idx, split_index
                     right_k, right_l = split_index + 1, l_idx
 
-                # Place the inner hole pairs on a fresh, higher layer so they
-                # render as a distinct bracket type against nested regions.
-                try:
-                    existing_max_layer = max(pair_to_layer.values()) if pair_to_layer else -1
-                except Exception:
-                    existing_max_layer = -1
-                hole_layer = existing_max_layer + 1
-                try:
-                    place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, left_k, left_l, hole_layer)
-                except Exception:
-                    pass
-                try:
-                    place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, right_k, right_l, hole_layer)
-                except Exception:
-                    pass
-
-                # Decide per side. If this WX backpointer was flagged as a pseudoknot
-                # (has_pk), prefer crossing (YHX) branches when possible to preserve
-                # the pseudoknot topology produced by composition.
+                # If the WX composition explicitly indicated a pseudoknot (has_pk),
+                # reconstruct it deterministically: place the composed inner hole
+                # pairs on a dedicated PK layer and merge nested left/right
+                # contents on the base layer. This avoids fragile YHX→WHX
+                # handoffs that often collapse the hole during traceback.
                 prefer_crossing = bool(getattr(backpointer, 'has_pk', False))
-                # Debug: show prefer_crossing and whether YHX/WHX backpointers exist for each side
-                left_ybp = get_yhx_backpointer(eddy_rivas_fold_state, outer_start, left_l, left_k, left_l)
-                left_wbp = get_whx_backpointer(eddy_rivas_fold_state, outer_start, left_l, left_k, left_l)
-                right_ybp = get_yhx_backpointer(eddy_rivas_fold_state, right_k, outer_end, right_k, right_l)
-                right_wbp = get_whx_backpointer(eddy_rivas_fold_state, right_k, outer_end, right_k, right_l)
-                print(f"[TRACE DEBUG] prefer_crossing={prefer_crossing}", flush=True)
-                print(f"[TRACE DEBUG] left_ybp={'yes' if left_ybp else 'no'} left_wbp={'yes' if left_wbp else 'no'}", flush=True)
-                print(f"[TRACE DEBUG] right_ybp={'yes' if right_ybp else 'no'} right_wbp={'yes' if right_wbp else 'no'}", flush=True)
+
+                if getattr(backpointer, 'has_pk', False):
+                    try:
+                        existing_max_layer = max(pair_to_layer.values()) if pair_to_layer else -1
+                    except Exception:
+                        existing_max_layer = -1
+                    # Ensure PK brackets are at least on layer 1 so they are
+                    # rendered with a distinct bracket type above nested layer 0.
+                    pk_layer = max(1, existing_max_layer + 1)
+
+                    # Place the composed inner pairs (these are the short helix
+                    # boundaries chosen by the WX composition kernel).
+                    try:
+                        place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, left_k, left_l, pk_layer)
+                    except Exception:
+                        pass
+                    try:
+                        place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, right_k, right_l, pk_layer)
+                    except Exception:
+                        pass
+
+                    # Collect nested pairs for left and right outer spans, but do
+                    # not yet merge them into `base_pairs`. We'll reconcile them
+                    # against the composed PK bases to avoid double-pairing.
+                    try:
+                        left_trace = trace_nested_interval(seq, nested_state, outer_start, left_l)
+                    except Exception:
+                        left_trace = TraceResult(pairs=[], dot_bracket="")
+                    try:
+                        right_trace = trace_nested_interval(seq, nested_state, right_k, outer_end)
+                    except Exception:
+                        right_trace = TraceResult(pairs=[], dot_bracket="")
+
+                    # Determine PK base indices we must not reuse in nested pairs.
+                    pk_indices = {left_k, left_l, right_k, right_l}
+
+                    # Filter out any nested pair that shares a nucleotide with the PK
+                    # inner helices (cannot double-pair). Keep the rest.
+                    kept_nested_pairs = []
+                    for pair in getattr(left_trace, 'pairs', []) + getattr(right_trace, 'pairs', []):
+                        if (pair.base_i in pk_indices) or (pair.base_j in pk_indices):
+                            # Log a debug note about conflict removal.
+                            print(f"[PK RECONCILE] Dropping nested pair ({pair.base_i},{pair.base_j}) due to PK indices {pk_indices}", flush=True)
+                            continue
+                        kept_nested_pairs.append(pair)
+
+                    # Place all kept nested pairs on the base layer (0) using
+                    # layer-safe placement so they don't create intra-layer crossings.
+                    for pair in kept_nested_pairs:
+                        place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, pair.base_i, pair.base_j, 0)
+
+                    # Force the composed inner pairs onto the PK layer so they
+                    # remain visible even if nested merges would have conflicted.
+                    try:
+                        li, lj = min(left_k, left_l), max(left_k, left_l)
+                        ri, rj = min(right_k, right_l), max(right_k, right_l)
+                        base_pairs.add(Pair(li, lj))
+                        base_pairs.add(Pair(ri, rj))
+                        pair_to_layer[(li, lj)] = pk_layer
+                        pair_to_layer[(ri, rj)] = pk_layer
+                        print(f"[PK FORCE] ({li},{lj}) and ({ri},{rj}) -> L{pk_layer}", flush=True)
+                    except Exception:
+                        pass
+
+                    # Simple validation: report the DP's WX energy for this outer span
+                    # so the user can compare it to the reconstructed structure.
+                    try:
+                        dp_energy = eddy_rivas_fold_state.wx_matrix.get_energy(outer_start, outer_end)
+                        print(f"[PK VALIDATE] WX[{outer_start},{outer_end}] DP energy = {dp_energy}", flush=True)
+                    except Exception:
+                        pass
+
+                    continue
+
+                # Fallback: if not a declared PK by the composition kernel, proceed
+                # with the regular choose_pk_branch logic below.
                 left_choice, (li, lj, lk, ll) = choose_pk_branch(
                     eddy_rivas_fold_state, "L", outer_start, left_l, left_k, left_l, prefer_crossing
                 )
@@ -280,22 +334,49 @@ def traceback_with_pseudoknots(
                     eddy_rivas_fold_state, "R", right_k, outer_end, right_k, right_l, prefer_crossing
                 )
 
+                # If choose_pk_branch selected YHX, but the YHX backpointer will
+                # immediately hand off to WHX (via IS2 or WRAP), downgrade to
+                # WHX to avoid a transient YHX → WHX collapse that loses PK pairs.
+                def yhx_will_handoff_to_whx(state, i, j, k, l):
+                    ybp = get_yhx_backpointer(state, i, j, k, l)
+                    if not ybp:
+                        return False
+                    # Immediate YHX ops that wrap/hand off to WHX
+                    if ybp.op in (
+                        EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX,
+                        EddyRivasBacktrackOp.RE_YHX_WRAP_WHX,
+                        EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_L,
+                        EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_R,
+                        EddyRivasBacktrackOp.RE_YHX_WRAP_WHX_LR,
+                    ):
+                        return True
+                    # If YHX has a bridge that would progress to WHX, prefer WHX
+                    if getattr(ybp, 'bridge', None):
+                        bi, bj = ybp.bridge
+                        return _target_will_progress_to_whx(state, bi, bj, k, l)
+                    return False
+
+                if left_choice == "YHX" and yhx_will_handoff_to_whx(eddy_rivas_fold_state, li, lj, lk, ll):
+                    print(f"[WX ADJUST] Left YHX -> WHX due to imminent handoff", flush=True)
+                    left_choice = "WHX"
+                if right_choice == "YHX" and yhx_will_handoff_to_whx(eddy_rivas_fold_state, ri, rj, rk, rl):
+                    print(f"[WX ADJUST] Right YHX -> WHX due to imminent handoff", flush=True)
+                    right_choice = "WHX"
+
                 # Push right branch first so left runs next (stack is LIFO)
                 if right_choice == "YHX":
                     trace_stack.append(("YHX", ri, rj, rk, rl, layer_idx))
-                elif right_choice == "WHX":
-                    # WHX may collapse; instead, place nested pairs with layering
-                    place_nested_interval(ri, rj, layer_idx)
                 else:
-                    place_nested_interval(ri, rj, layer_idx)
+                    # WHX or FLATTEN: merge the nested WX interval on the provided layer
+                    merge_nested_region_pairs(seq, nested_state, ri, rj, layer_idx,
+                                            trace_nested_interval, base_pairs, pair_to_layer)
 
                 # Left side
                 if left_choice == "YHX":
                     trace_stack.append(("YHX", li, lj, lk, ll, layer_idx))
-                elif left_choice == "WHX":
-                    place_nested_interval(li, lj, layer_idx)
                 else:
-                    place_nested_interval(li, lj, layer_idx)
+                    merge_nested_region_pairs(seq, nested_state, li, lj, layer_idx,
+                                              trace_nested_interval, base_pairs, pair_to_layer)
                 continue
 
             # 1.3. Handle WX composition from two YHX subproblems.
@@ -590,6 +671,15 @@ def traceback_with_pseudoknots(
                     strict_subspan = (outer_start <= wi <= wj <= outer_end) and ((wi, wj) != (outer_start, outer_end))
                     equal_span = (wi, wj) == (outer_start, outer_end)
                     ok_not_hole = ((wi, wj) != (k_idx, l_idx))
+                    # If the inner hole pair (k,l) was already placed (e.g., by
+                    # a composing WX backpointer), prefer to merge nested content
+                    # rather than hand off to WHX which may collapse the hole.
+                    existing_pair_layer = pair_to_layer.get((k_idx, l_idx), 0)
+                    if existing_pair_layer and ok_not_hole:
+                        print("[YHX IS2] inner hole already placed on higher layer; merging nested instead of WHX", flush=True)
+                        merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
+                                                  trace_nested_interval, base_pairs, pair_to_layer)
+                        continue
                     if (strict_subspan or (
                             equal_span and _target_will_progress_to_whx(eddy_rivas_fold_state, wi, wj, k_idx,
                                                                         l_idx))) and ok_not_hole:
@@ -821,6 +911,15 @@ def traceback_with_pseudoknots(
             dbg.write(f'ordered_pairs={ordered_pairs}\n')
             dbg.write(f'pair_to_layer={pair_to_layer}\n')
             dbg.write(f'base_pairs_set={[ (p.base_i,p.base_j) for p in base_pairs ]}\n')
+    except Exception:
+        pass
+
+    # Also write a concise final trace file for easy inspection by tooling/users.
+    try:
+        with open('/tmp/final_trace_result.txt', 'w') as out:
+            out.write(f'dot_bracket={dot_bracket}\n')
+            out.write(f'ordered_pairs={ordered_pairs}\n')
+            out.write(f'pair_to_layer={pair_to_layer}\n')
     except Exception:
         pass
 

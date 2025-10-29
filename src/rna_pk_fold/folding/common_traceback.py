@@ -89,13 +89,47 @@ def pairs_to_multilayer_dotbracket(
         The multilayer dot-bracket string representation of the structure.
     """
     chars = ['.'] * seq_len
+
+    # Group pairs by their assigned layer for efficient lower-layer checks
+    pairs_by_layer: Dict[int, List[Tuple[int,int]]] = {}
     for pr in pairs:
         i, j = pr.base_i, pr.base_j
         layer = pair_layer.get((i, j), 0)
-        br_open, br_close = BRACKETS[layer % len(BRACKETS)]
-        if 0 <= i < j < seq_len:
-            chars[i] = br_open
-            chars[j] = br_close
+        pairs_by_layer.setdefault(layer, []).append((i, j))
+
+    # Helper to test if two pairs cross (interleave)
+    def _pairs_cross(a: Tuple[int,int], b: Tuple[int,int]) -> bool:
+        ai, aj = a
+        bi, bj = b
+        return (ai < bi < aj < bj) or (bi < ai < bj < aj)
+
+    # For each pair decide whether it truly crosses any pair on a lower layer.
+    for pr in pairs:
+        i, j = pr.base_i, pr.base_j
+        if not (0 <= i < j < seq_len):
+            continue
+
+        assigned_layer = pair_layer.get((i, j), 0)
+
+        effective_layer = assigned_layer
+        if assigned_layer > 0:
+            # check layers strictly lower than assigned_layer for any crossing
+            crosses_lower = False
+            for lower_layer in range(0, assigned_layer):
+                for (li, lj) in pairs_by_layer.get(lower_layer, []):
+                    if _pairs_cross((i, j), (li, lj)):
+                        crosses_lower = True
+                        break
+                if crosses_lower:
+                    break
+
+            # If this pair does not cross any lower-layer pair, render as parentheses
+            if not crosses_lower:
+                effective_layer = 0
+
+        br_open, br_close = BRACKETS[effective_layer % len(BRACKETS)]
+        chars[i] = br_open
+        chars[j] = br_close
 
     return ''.join(chars)
 
