@@ -170,6 +170,7 @@ def traceback_with_pseudoknots(
     else:
         print("[WX WIN] None → nested only", flush=True)
 
+    # --- Debugging Block ---
     # If the top-level structure is a composition, probe the subproblem backpointers.
     if top_backpointer and top_backpointer.op in (
         EddyRivasBacktrackOp.RE_PK_COMPOSE_WX_YHX_WHX,
@@ -251,7 +252,7 @@ def traceback_with_pseudoknots(
                 # WX composition was identified as a true pseudoknot. For
                 # non-pseudoknotted compositions (has_pk=False) the hole will
                 # be handled by the nested merger and its pairs assigned to the
-                # appropriate existing layer. Force-placement here caused many
+                # appropriate existing layer. Previous force-placement here caused many
                 # nested structures to be rendered as pseudoknotted.
                 if getattr(backpointer, 'has_pk', False):
                     try:
@@ -272,7 +273,9 @@ def traceback_with_pseudoknots(
                 # (has_pk), prefer crossing (YHX) branches when possible to preserve
                 # the pseudoknot topology produced by composition.
                 prefer_crossing = bool(getattr(backpointer, 'has_pk', False))
-                # Debug: show prefer_crossing and whether YHX/WHX backpointers exist for each side
+
+                # --- Debugging Block ---
+                # Show prefer_crossing and whether YHX/WHX backpointers exist for each side
                 left_ybp = get_yhx_backpointer(eddy_rivas_fold_state, outer_start, left_l, left_k, left_l)
                 left_wbp = get_whx_backpointer(eddy_rivas_fold_state, outer_start, left_l, left_k, left_l)
                 right_ybp = get_yhx_backpointer(eddy_rivas_fold_state, right_k, outer_end, right_k, right_l)
@@ -438,7 +441,8 @@ def traceback_with_pseudoknots(
                     # Do not progress split to avoid infinite loop. Fallback to nested merge of the whole span.
                     print(
                         f"[WHX SPLIT LEFT] non-progress split (split={backpointer.split}) → merge [{outer_start},{outer_end}]",
-                        flush=True)
+                        flush=True
+                    )
                     merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
                                               trace_nested_interval, base_pairs, pair_to_layer)
                     continue
@@ -458,17 +462,16 @@ def traceback_with_pseudoknots(
                     # Non-progress split → avoid infinite loop. Fallback to nested merge of the whole span.
                     print(
                         f"[WHX SPLIT RIGHT] non-progress split (split={backpointer.split}) → merge [{outer_start},{outer_end}]",
-                        flush=True)
+                        flush=True
+                    )
                     merge_nested_region_pairs(seq, nested_state, outer_start, outer_end, layer_idx,
                                               trace_nested_interval, base_pairs, pair_to_layer)
                     continue
 
-                    # Left WX segment only if non-empty
                 if outer_start <= split_index:
                     merge_nested_region_pairs(seq, nested_state, outer_start, split_index, layer_idx,
                                               trace_nested_interval, base_pairs, pair_to_layer)
 
-                    # Right WHX only if it strictly advances
                 if split_index + 1 <= outer_end:
                     trace_stack.append(("WHX", split_index + 1, outer_end, k_idx, l_idx, layer_idx))
 
@@ -522,7 +525,6 @@ def traceback_with_pseudoknots(
             place_pair_in_first_non_crossing_layer(base_pairs, pair_to_layer, k_idx, l_idx, layer_idx)
             logger.debug(f"YHX[{outer_start},{outer_end},{k_idx},{l_idx}] layer={layer_idx}")
 
-
             backpointer = get_yhx_backpointer(eddy_rivas_fold_state, outer_start, outer_end, k_idx, l_idx)
             if not backpointer:
                 print(f"[YHX MISS] ({outer_start},{outer_end}:{k_idx},{l_idx}) layer={layer_idx} → no BP", flush=True)
@@ -537,6 +539,7 @@ def traceback_with_pseudoknots(
                 trace_stack.append(("VHX", outer_start, outer_end - 1, k_idx, l_idx, layer_idx))
             elif op is EddyRivasBacktrackOp.RE_YHX_DANGLE_LR:
                 trace_stack.append(("VHX", outer_start + 1, outer_end - 1, k_idx, l_idx, layer_idx))
+
             # SS trims → push YHX with modified coordinates
             elif op is EddyRivasBacktrackOp.RE_YHX_SS_LEFT:
                 trace_stack.append(("YHX", outer_start + 1, outer_end, k_idx, l_idx, layer_idx))
@@ -596,14 +599,14 @@ def traceback_with_pseudoknots(
             elif op is EddyRivasBacktrackOp.RE_YHX_IS2_INNER_WHX:
                 if backpointer.bridge:
                     wi, wj = backpointer.bridge
-                    # Accept if (a) strict subspan of [i..j], or
-                    #         (b) equal span but target WHX will make immediate progress.
+                    # Accept if:
+                    # (a) Strict subspan of [i..j], or
+                    # (b) Equal span but target WHX will make immediate progress.
                     strict_subspan = (outer_start <= wi <= wj <= outer_end) and ((wi, wj) != (outer_start, outer_end))
                     equal_span = (wi, wj) == (outer_start, outer_end)
                     ok_not_hole = ((wi, wj) != (k_idx, l_idx))
-                    if (strict_subspan or (
-                            equal_span and _target_will_progress_to_whx(eddy_rivas_fold_state, wi, wj, k_idx,
-                                                                        l_idx))) and ok_not_hole:
+                    if (strict_subspan or (equal_span and _target_will_progress_to_whx(
+                            eddy_rivas_fold_state, wi, wj, k_idx, l_idx))) and ok_not_hole:
                         print(f"[YHX IS2] handoff → WHX({wi},{wj}:{k_idx},{l_idx})", flush=True)
                         trace_stack.append(("WHX", wi, wj, k_idx, l_idx, layer_idx))
                         continue
@@ -626,10 +629,10 @@ def traceback_with_pseudoknots(
         # ZHX has a paired outer span (i,j) but an undetermined inner hole (k,l).
         if tag == "ZHX":
             _, outer_start, outer_end, k_idx, l_idx, layer_idx = trace_frame
-
             backpointer = get_zhx_backpointer(eddy_rivas_fold_state, outer_start, outer_end, k_idx, l_idx)
             if not backpointer:
                 continue
+
             op = backpointer.op
 
             # 4.1. For forming the inner pair (k,l), transition to a VHX sub-problem.
@@ -654,6 +657,7 @@ def traceback_with_pseudoknots(
                 if split_index is None:
                     print(f"[ZHX SPLIT LEFT] non-progress split → merge [{k_idx + 1},{outer_end}]",
                           flush=True)
+
                     # Choose a safe fallback (merge the WX side)
                     if k_idx + 1 <= outer_end:
                         merge_nested_region_pairs(seq, nested_state, k_idx + 1, outer_end, 0,
@@ -666,7 +670,7 @@ def traceback_with_pseudoknots(
                                               trace_nested_interval, base_pairs, pair_to_layer)
 
             elif op is EddyRivasBacktrackOp.RE_ZHX_SPLIT_RIGHT_ZHX_WX:
-                split_index = validate_right_split_index(l_idx, outer_end, backpointer.split)  # split within [l..j]
+                split_index = validate_right_split_index(l_idx, outer_end, backpointer.split)  # Split within [l..j]
                 if split_index is None:
                     print(f"[ZHX SPLIT RIGHT] non-progress split → merge [{outer_start},{l_idx - 1}]",
                           flush=True)
@@ -791,10 +795,10 @@ def traceback_with_pseudoknots(
                 # Place both helices, assigning them to non-conflicting layers.
                 layer_outer = place_pair_in_first_non_crossing_layer(
                     base_pairs, pair_to_layer, outer_start, outer_end, layer_idx
-                )  # outer helix
+                )  # Outer helix
                 layer_inner = place_pair_in_first_non_crossing_layer(
                     base_pairs, pair_to_layer, k_idx, l_idx, layer_idx
-                )  # inner helix
+                )  # Inner helix
 
                 # Optional debug to see where they landed
                 if layer_outer != layer_idx or layer_inner != layer_idx:

@@ -17,19 +17,22 @@ from rna_pk_fold.utils.dynamic_programming.matrix_utils import (clear_matrix_loo
 from rna_pk_fold.rules.constraints import build_can_pair_mask
 from rna_pk_fold.utils.dynamic_programming.dp_gap_matrix_utils import (
     should_skip_gap_cell, BestCandidateTracker, update_tracker_for_vhx_inner_dangles, scan_is2_best_outer_bridge,
-    update_tracker_for_vhx_multiloop_close_and_wrap, update_tracker_for_hole_dangles_using_vhx, update_tracker_for_hole_ss_with_right_tiebreak,
-    update_tracker_for_outer_dangles_using_vhx, update_tracker_for_outer_ss_with_right_tiebreak, update_tracker_for_yhx_multiloop_wrap_whx,
-    update_tracker_for_outer_ss_both, update_tracker_for_whx_shrink_hole, update_tracker_for_whx_trim_outer, update_tracker_for_whx_collapse_to_nested,
-    update_tracker_for_whx_ss_both_outer, update_tracker_for_whx_splits, update_tracker_for_whx_overlap_split, update_tracker_for_whx_is2_bridge
+    update_tracker_for_vhx_multiloop_close_and_wrap, update_tracker_for_hole_dangles_using_vhx,
+    update_tracker_for_hole_ss_with_right_tiebreak, update_tracker_for_outer_dangles_using_vhx,
+    update_tracker_for_outer_ss_with_right_tiebreak, update_tracker_for_yhx_multiloop_wrap_whx,
+    update_tracker_for_outer_ss_both, update_tracker_for_whx_shrink_hole, update_tracker_for_whx_trim_outer,
+    update_tracker_for_whx_collapse_to_nested, update_tracker_for_whx_ss_both_outer, update_tracker_for_whx_splits,
+    update_tracker_for_whx_overlap_split, update_tracker_for_whx_is2_bridge
 )
 from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import (evaluate_wx_composition_for_hole,
                                                                         evaluate_wx_yhx_overlap_for_span,
                                                                         set_span_cell_with_backpointer,
                                                                         evaluate_vx_composition_for_hole,
-                                                                        wx_candidate_has_pk, set_wx_debug_outer)
-from rna_pk_fold.utils.dynamic_programming.dp_split_utils import (compute_vhx_best_split_over_zhx_wx, compute_zhx_best_split_over_zhx_wx,
-                                                                  compute_yhx_best_split_over_yhx_wx, VhxSplitMode, ZhxSplitMode,
-                                                                  YhxSplitMode)
+                                                                        wx_candidate_has_pk)
+from rna_pk_fold.utils.dynamic_programming.dp_split_utils import (compute_vhx_best_split_over_zhx_wx,
+                                                                  compute_zhx_best_split_over_zhx_wx,
+                                                                  compute_yhx_best_split_over_yhx_wx,
+                                                                  VhxSplitMode, ZhxSplitMode, YhxSplitMode)
 from rna_pk_fold.utils.dynamic_programming.dp_publish_utils import (use_nested_energy_if_composed_infinite,
                                                                     publish_min_energy_with_default_backpointer)
 from rna_pk_fold.utils.logging.debug_utils import debug_print, count_finite_cells
@@ -292,11 +295,6 @@ class EddyRivasFoldingEngine:
         # WX Composition & Publish
         logger.info("Composing WX matrix...")
         wx_start = time.perf_counter()
-        # DEBUG: enable WX candidate logging for the full-sequence outer span
-        try:
-            set_wx_debug_outer((0, seq_len - 1))
-        except Exception:
-            pass
         self._compose_wx_from_gapped_fragments(
             seq,
             eddy_rivas_fold_state,
@@ -603,7 +601,7 @@ class EddyRivasFoldingEngine:
 
                 # -------- Cases 5: Split on the 5' (Left Side) - r in [i..k-1]  →  ZHX(i,j:r,l) + WX(r+1,k) --------
                 cand_left, t_left = compute_vhx_best_split_over_zhx_wx(
-                    VhxSplitMode.LEFT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
+                    VhxSplitMode, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_left >= 0:
                     r_star = i + t_left
@@ -617,7 +615,7 @@ class EddyRivasFoldingEngine:
 
                 # -------- Case 6: Split on the 3' (Right) Side - s2 in [l+1..j]  →  ZHX(i,j:k,s2) + WX(l, s2-1) --------
                 cand_right, t_right = compute_vhx_best_split_over_zhx_wx(
-                    VhxSplitMode.RIGHT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
+                    VhxSplitMode, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_right >= 0:
                     s2_star = (l + 1) + t_right
@@ -698,15 +696,15 @@ class EddyRivasFoldingEngine:
         Notes
         -----
         The recursion for ZHX involves several cases:
-        - **From VHX**: The primary case where the undetermined hole (k,l) in
+        - From VHX: The primary case where the undetermined hole (k,l) in
           ZHX becomes a defined pair, transitioning from a VHX subproblem.
-        - **Dangles**: Adding dangling bases next to the (k,l) pair, which
+        - Dangles: Adding dangling bases next to the (k,l) pair, which
           also derives from a VHX subproblem.
-        - **Add Unpaired Base**: Adding a single-stranded base to the 5' or 3'
+        - Add Unpaired Base: Adding a single-stranded base to the 5' or 3'
           side of the hole, recursing on a smaller ZHX state.
-        - **Bifurcation**: Splitting the region between i and k (or l and j)
+        - Bifurcation: Splitting the region between i and k (or l and j)
           into a nested part (WX) and another gapped part (ZHX).
-        - **IS2 Motif**: Forming an Irreducible Surface of order 2 with an
+        - IS2 Motif: Forming an Irreducible Surface of order 2 with an
           inner VHX structure.
         """
         spans = list(iter_spans(eddy_rivas_fold_state.seq_len))
@@ -749,7 +747,7 @@ class EddyRivasFoldingEngine:
                 # ---------- Case 4: Split into ZHX + WX. ----------
                 # 4.1. Split on the 5' (Left) Side: ZHX(i,j:r,l) + WX(r+1,k)
                 cand_left, t_left = compute_zhx_best_split_over_zhx_wx(
-                    ZhxSplitMode.LEFT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
+                    ZhxSplitMode, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_left >= 0:
                     r_star = i + t_left
@@ -763,7 +761,7 @@ class EddyRivasFoldingEngine:
 
                 # 4.2. Split on the 3' (Right) Side: ZHX(i,j:k,s2) + WX(l, s2-1)
                 cand_right, t_right = compute_zhx_best_split_over_zhx_wx(
-                    ZhxSplitMode.RIGHT_ZHX_WX, eddy_rivas_fold_state, i, j, k, l
+                    ZhxSplitMode, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_right >= 0:
                     s2_star = (l + 1) + t_right
@@ -837,15 +835,15 @@ class EddyRivasFoldingEngine:
         Notes
         -----
         The recursion for YHX mirrors that of ZHX but acts on the outer span:
-        - **Dangles**: Adding dangling bases next to the (i, j) pair, deriving
+        - Dangles: Adding dangling bases next to the (i, j) pair, deriving
           from a VHX subproblem.
-        - **Add Unpaired Base**: Adding a single-stranded base to the 5' or 3'
+        - Add Unpaired Base: Adding a single-stranded base to the 5' or 3'
           end of the outer span (i.e., trimming), recursing on a smaller YHX.
-        - **Bifurcation**: Splitting the outer span into a nested part (WX) and
+        - Bifurcation: Splitting the outer span into a nested part (WX) and
           another gapped part (YHX).
-        - **Multiloop Wrap**: Forming a multiloop by closing the (i,j) pair
+        - Multiloop Wrap: Forming a multiloop by closing the (i,j) pair
           around a WHX subproblem.
-        - **IS2 Motif**: Forming an Irreducible Surface of order 2 with an
+        - IS2 Motif: Forming an Irreducible Surface of order 2 with an
           inner WHX structure.
         """
         for i, j in iter_spans(eddy_rivas_fold_state.seq_len):
@@ -899,7 +897,7 @@ class EddyRivasFoldingEngine:
                 # ---------- Case 4: Split of the Outer Span Into YHX + WX. ----------
                 # 4.1. Left Split: YHX(i, r) + WX(r+1, j)
                 cand_left, t_left = compute_yhx_best_split_over_yhx_wx(
-                    YhxSplitMode.LEFT_YHX_WX, eddy_rivas_fold_state, i, j, k, l
+                    YhxSplitMode, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_left >= 0:
                     r_star = i + t_left
@@ -913,7 +911,7 @@ class EddyRivasFoldingEngine:
 
                 # 4.2. Right Split: WX(i, s) + YHX(s+1, j)
                 cand_right, t_right = compute_yhx_best_split_over_yhx_wx(
-                    YhxSplitMode.RIGHT_WX_YHX, eddy_rivas_fold_state, i, j, k, l
+                    YhxSplitMode, eddy_rivas_fold_state, i, j, k, l
                 )
                 if t_right >= 0:
                     s_star = i + t_right
@@ -1018,8 +1016,9 @@ class EddyRivasFoldingEngine:
                         # the kernel (cand_bp.charged) instead of overwriting it.
                         cand_kernel_charged = getattr(cand_bp, 'charged', False)
                         cand_yhx_pref = wx_candidate_has_pk(eddy_rivas_fold_state, i, j, k, l, r_star)
+
                         # Be conservative: require either an explicit YHX preference
-                        # OR a kernel 'charged' cc-case *and* the composed candidate
+                        # OR a kernel 'charged' cc-case AND the composed candidate
                         # to be meaningfully better than the nested baseline. This
                         # prevents kernel bookkeeping flags from forcing PK rendering
                         # when the composed energy does not truly beat the nested fold.

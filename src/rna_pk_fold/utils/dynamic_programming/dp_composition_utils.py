@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 
 from rna_pk_fold.energies.energy_pk_ops import short_hole_penalty, coax_pack
 from rna_pk_fold.folding.eddy_rivas.numba_kernels import compose_wx_min_energy_over_splits, compose_vx_min_energy_over_splits
@@ -15,7 +15,12 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_fold_state import EddyRivasFoldSt
 # Small shared helpers
 # ---------------------------------------------------------------------
 def set_span_cell_with_backpointer(
-        matrix, backpointer_store, i_idx: int, j_idx: int, value: float, backpointer
+    matrix: Any,
+    backpointer_store: Any,
+    i_idx: int,
+    j_idx: int,
+    value: float,
+    backpointer: Optional[EddyRivasBackPointer]
 ) -> None:
     """
     Set a span cell and its backpointer if provided.
@@ -127,9 +132,9 @@ def build_wx_split_arrays(
     split_count = l_idx - k_idx
 
     # WHX (energies + charged flags)
-    whx_left_uncharged = np.full(split_count, np.inf, dtype=np.float64)  # (nested sub-problem)
+    whx_left_uncharged = np.full(split_count, np.inf, dtype=np.float64)  # (Nested sub-problem)
     whx_right_uncharged = np.full(split_count, np.inf, dtype=np.float64)
-    whx_left_charged = np.full(split_count, np.inf, dtype=np.float64)    # (pseudoknotted sub-problem)
+    whx_left_charged = np.full(split_count, np.inf, dtype=np.float64)    # (Pseudoknotted sub-problem)
     whx_right_charged = np.full(split_count, np.inf, dtype=np.float64)
 
     # YHX alternative (energies + charged flags)
@@ -168,10 +173,11 @@ def build_wx_split_arrays(
         )
 
         # Get energies from the YHX matrix (only if the pair is allowed)
-        # Left YHX: consider it whenever the YHX matrix has a finite value; do not
+        # For both sides, consider it whenever the YHX matrix has a finite value; do not
         # gate on the pairability mask. Some pseudoknot topologies cross seams
         # that aren't initially Watson-Crick pairable, but can still be formed
         # via gap-matrix assembly.
+        # Left YHX
         ly = get_yhx_energy_with_collapse(fold_state.yhx_matrix, i_idx, split_idx, k_idx, split_idx)
         if math.isfinite(ly):
             yhx_left_energy[split_offset] = ly
@@ -435,8 +441,7 @@ def evaluate_wx_composition_for_hole(
     if not (hole_has_internal_bases(hole_left) and hole_has_internal_bases(hole_right)):
         return math.inf, None
 
-    # # Decode the 'case_id' and backpointer fields from the kernel to determine the backtrack
-    # operation.
+    # # Decode the 'case_id' and backpointer fields from the kernel to determine the backtrack operation.
     op, hole_left, hole_right, charged = decode_wx_case_to_backpointer(
         kernel_case_id,
         i_idx,
@@ -460,60 +465,6 @@ def evaluate_wx_composition_for_hole(
         charged=charged,
     )
 
-    # --- Debug instrumentation: record candidate-level diagnostics ---
-    try:
-        left_whx_u = whx_left_uncharged[split_offset_star]
-        left_whx_c = whx_left_charged[split_offset_star]
-        right_whx_u = whx_right_uncharged[split_offset_star]
-        right_whx_c = whx_right_charged[split_offset_star]
-        left_yhx = yhx_left_energy[split_offset_star]
-        right_yhx = yhx_right_energy[split_offset_star]
-        left_ok_str = 'Y' if np.isfinite(left_whx_u) or np.isfinite(left_whx_c) or np.isfinite(left_yhx) else 'N'
-        right_ok_str = 'Y' if np.isfinite(right_whx_u) or np.isfinite(right_whx_c) or np.isfinite(right_yhx) else 'N'
-
-        # Map kernel case id to a human-readable name
-        case_names = {
-            0: 'WHX(u)+WHX(u)',
-            1: 'WHX(u)+WHX(c)',
-            2: 'WHX(c)+WHX(u)',
-            3: 'WHX(c)+WHX(c)',
-            4: 'YHX+YHX',
-            5: 'YHX+WHX(u)',
-            6: 'YHX+WHX(c)',
-            7: 'WHX(u)+YHX',
-            8: 'WHX(c)+YHX',
-        }
-        case_name = case_names.get(kernel_case_id, f'CASE_{kernel_case_id}')
-
-        # Determine which fragment actually provided the minimum contributor on each side
-        def choose_fragment(left_u, left_c, left_y):
-            # Choose the finite minimum and return a short tag and its value
-            vals = [(left_u, 'WHX_u'), (left_c, 'WHX_c'), (left_y, 'YHX')]
-            finite_vals = [(v, tag) for v, tag in vals if np.isfinite(v)]
-            if not finite_vals:
-                return ('NONE', math.inf)
-            vmin, tagmin = min(finite_vals, key=lambda x: x[0])
-            return (tagmin, vmin)
-
-        left_tag, left_val = choose_fragment(left_whx_u, left_whx_c, left_yhx)
-        right_tag, right_val = choose_fragment(right_whx_u, right_whx_c, right_yhx)
-
-        # Only write debug lines for the configured outer span (if set) to avoid
-        # flooding /tmp with all candidates during normal runs.
-        should_log = (DEBUG_WX_OUTER is None) or (DEBUG_WX_OUTER == (i_idx, j_idx))
-        if should_log:
-            with open('/tmp/wx_candidate_debug.txt', 'a') as dbg:
-                dbg.write(
-                    f"OUTER=({i_idx},{j_idx}) HOLE=({k_idx},{l_idx}) SPLIT={split_idx_star} CASE={kernel_case_id}({case_name}) "
-                    f"ENG={candidate_energy:.4f} CHARGED={bool(charged)} "
-                    f"L[{left_tag}={left_val:.4f}] (WU={left_whx_u:.4f}, WC={left_whx_c:.4f}, Y={left_yhx:.4f}) "
-                    f"R[{right_tag}={right_val:.4f}] (WU={right_whx_u:.4f}, WC={right_whx_c:.4f}, Y={right_yhx:.4f}) "
-                    f"LEFT_OK={left_ok_str} RIGHT_OK={right_ok_str}\n"
-                )
-    except Exception:
-        # Never fail composition because of debug logging
-        pass
-
     return candidate_energy, backpointer
 
 
@@ -521,7 +472,11 @@ def evaluate_wx_composition_for_hole(
 # WX composition: Optional YHX-Overlap Path
 # ---------------------------------------------------------------------
 def evaluate_wx_yhx_overlap_for_span(
-    fold_state, config, i_idx: int, j_idx: int, wx_overlap_penalty: float
+    fold_state,
+    config: Any,
+    i_idx: int,
+    j_idx: int,
+    wx_overlap_penalty: float
 ) -> Tuple[float, Optional["EddyRivasBackPointer"]]:
     """
     Evaluate the WX YHX-overlap path for a given outer span.
@@ -822,38 +777,3 @@ def wx_candidate_has_pk(
     )
 
     return left_uses_yhx or right_uses_yhx
-
-
-# Module-level debug filter: when set to a tuple (i,j) only WX candidates matching
-# that outer span will be appended to /tmp/wx_candidate_debug.txt. Set to `None`
-# to allow all candidates (default).
-DEBUG_WX_OUTER: tuple[int, int] | None = None
-
-
-def set_wx_debug_outer(outer: tuple[int, int] | None) -> None:
-    """Set a debug filter for WX candidate logging.
-
-    Parameters
-    ----------
-    outer : tuple[int,int] or None
-        If a tuple (i,j) is provided, only WX candidates matching that outer
-        span will be logged. If `None`, all candidates will be logged.
-    """
-    global DEBUG_WX_OUTER
-    DEBUG_WX_OUTER = outer
-
-    # When enabling a specific debug outer, ensure the debug file is created
-    # and seeded with a header so downstream runs always have a visible file
-    # to inspect. This prevents silent failures where no file appears.
-    try:
-        if outer is not None:
-            with open('/tmp/wx_candidate_debug.txt', 'w') as dbg:
-                dbg.write(f"# WX candidate debug log — filter outer={outer}\n")
-                dbg.write("# Format: OUTER=(i,j) HOLE=(k,l) SPLIT=r CASE=id(NAME) ENG=energy CHARGED=bool L[...] R[...]\n")
-        else:
-            # If clearing the filter, create/clear the file as well (helps CI/debugging)
-            with open('/tmp/wx_candidate_debug.txt', 'w') as dbg:
-                dbg.write("# WX candidate debug log — filter cleared (log all candidates)\n")
-    except Exception:
-        # Never let debug setup break the folding run.
-        pass

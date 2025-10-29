@@ -183,7 +183,6 @@ def pairs_to_multilayer_dotbracket(
 
     result = ''.join(chars)
     logger.info("Final structure:  " + result)
-    logger.info("Ground truth:     .[[[(((..]]](((((((.....)))))))...)))......")
 
     return result
 

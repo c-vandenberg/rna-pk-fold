@@ -43,7 +43,6 @@ from rna_pk_fold.folding.eddy_rivas.eddy_rivas_traceback import traceback_with_p
 # Utility functions
 from rna_pk_fold.utils.sequences.nucleotide_utils import validate_and_normalize_seq
 from rna_pk_fold.utils.energy.energy_model_utils import load_energy_model
-from rna_pk_fold.utils.dynamic_programming.dp_composition_utils import set_wx_debug_outer
 
 # Set up module logger
 logger = logging.getLogger(__name__)
@@ -308,35 +307,12 @@ def main(argv=None) -> int:
     parser.add_argument("--strict_compliment_order", action="store_true", default=True,
                         help="Enable strict ordering i < k <= r < l <= j for pseudoknots (default: on).")
 
-    parser.add_argument("--dbg-outer", default=None,
-                        help="(optional) Debug filter for WX candidates in the form i,j (e.g. 0,42).")
-
     cli_args = parser.parse_args(argv)
 
     # --- Setup ---
     # Configure logging based on --verbose, --quiet, and --log-file flags.
     verbose_level = 0 if cli_args.quiet else cli_args.verbose
     setup_cli_logging(verbose_level, cli_args.log_file)
-
-    # If user requested a WX debug outer filter, parse it and set the module filter.
-    if cli_args.dbg_outer is not None:
-        try:
-            parts = cli_args.dbg_outer.split(',')
-            if len(parts) != 2:
-                raise ValueError("--dbg-outer expects two comma-separated integers like 0,42")
-            outer_i = int(parts[0].strip())
-            outer_j = int(parts[1].strip())
-            set_wx_debug_outer((outer_i, outer_j))
-            logger.info(f"WX debug filter set to outer=({outer_i},{outer_j}) — candidate lines will be written to /tmp/wx_candidate_debug.txt")
-
-            # User-visible helper suggestion for deeper debugging (added per request).
-            logger.info("""
-If you want, I can also add a small helper function or CLI flag to dump all candidate lines for a given outer span (e.g., --dbg-outer 0,42) so future debugging is easier. If you prefer immediate deeper analysis, I can (a) instrument the traceback to record which nested intervals were skipped and why, and (b) attempt a fix to merge_nested_region_pairs to avoid skipping valid nested pairs when they should be placed in another layer.
-""")
-        except Exception as e:
-            logger.error(f"Failed to parse --dbg-outer: {e}")
-            print(f"Failed to parse --dbg-outer: {e}", file=sys.stderr)
-            return 2
 
     logger.info("=" * 60)
     logger.info("RNA Structure Prediction CLI")

@@ -65,10 +65,10 @@ def get_bracket_for_layer(layer_index: int) -> Tuple[str, str]:
         A tuple of (opening_bracket, closing_bracket)
     """
     brackets = [
-        ('(', ')'),  # Layer 0: round brackets
-        ('[', ']'),  # Layer 1: square brackets
-        ('{', '}'),  # Layer 2: curly brackets
-        ('<', '>')   # Layer 3: angle brackets
+        ('(', ')'),  # Layer 0: Round brackets
+        ('[', ']'),  # Layer 1: Square brackets
+        ('{', '}'),  # Layer 2: Curly brackets
+        ('<', '>')   # Layer 3: Angle brackets
     ]
     return brackets[layer_index % len(brackets)]
 
@@ -109,6 +109,7 @@ def merge_nested_region_pairs(
     pair_to_layer : Dict[Tuple[int, int], int]
         The main dictionary mapping pairs to layers, which will be updated.
     """
+
     # Fast path: degenerate intervals cannot contain pairs.
     if j_index <= i_index:
         print(f"\n[MERGE] Interval [{i_index},{j_index}] at layer={layer_index}")
@@ -136,6 +137,7 @@ def merge_nested_region_pairs(
                 if current_stem:
                     stems.append(current_stem)
                 current_stem = [pair]
+
     if current_stem:
         stems.append(current_stem)
 
@@ -200,7 +202,10 @@ def merge_nested_region_pairs(
                         for pair in stem:
                             pairs.add(pair)
                             pair_to_layer[(pair.base_i, pair.base_j)] = current_layer
-                            print(f"[MERGE] Placed pseudoknot pair ({pair.base_i},{pair.base_j}) in layer {current_layer} [{open_bracket},{close_bracket}]", flush=True)
+                            print(
+                                f"[MERGE] Placed pseudoknot pair ({pair.base_i},{pair.base_j}) in layer "
+                                f"{current_layer} [{open_bracket},{close_bracket}]", flush=True
+                            )
 
                         if current_layer not in layer_stems:
                             layer_stems[current_layer] = []
@@ -211,7 +216,10 @@ def merge_nested_region_pairs(
                 for pair in stem:
                     pairs.add(pair)
                     pair_to_layer[(pair.base_i, pair.base_j)] = layer_index
-                    print(f"[MERGE] Placed conflicting pair ({pair.base_i},{pair.base_j}) in layer {layer_index} [(,)]", flush=True)
+                    print(
+                        f"[MERGE] Placed conflicting pair ({pair.base_i},{pair.base_j}) in layer {layer_index} [(,)]",
+                        flush=True
+                    )
 
                 if layer_index not in layer_stems:
                     layer_stems[layer_index] = []
@@ -300,6 +308,7 @@ def place_pair_in_first_non_crossing_layer(
                 dbg.write(f"EXISTS: ({i_canon},{j_canon}) already -> L{existing_layer}\n")
         except Exception:
             pass
+
         return existing_layer
 
     # If either nucleotide is already used in a different pair, this is a conflict.
@@ -311,7 +320,9 @@ def place_pair_in_first_non_crossing_layer(
                     dbg.write(f"CONFLICT-NUC: ({i_canon},{j_canon}) conflicts with existing ({ei},{ej}) on L{lidx}\n")
             except Exception:
                 pass
-            raise ValueError(f"Nucleotide already paired: cannot place ({i_canon},{j_canon}) — conflicts with ({ei},{ej})")
+            raise ValueError(
+                f"Nucleotide already paired: cannot place ({i_canon},{j_canon}) — conflicts with ({ei},{ej})"
+            )
 
     # Start checking from the suggested layer.
     current_layer = starting_layer
@@ -329,7 +340,9 @@ def place_pair_in_first_non_crossing_layer(
                 # Debug: append conflict details to a temp log so we can inspect placement logic.
                 try:
                     with open('/tmp/place_pair_log.txt', 'a') as dbg:
-                        dbg.write(f"CONFLICT: trying ({i_canon},{j_canon}) vs ({existing_i},{existing_j}) on L{current_layer}\n")
+                        dbg.write(
+                            f"CONFLICT: trying ({i_canon},{j_canon}) vs ({existing_i},{existing_j}) on L{current_layer}\n"
+                        )
                 except Exception:
                     pass
                 break
@@ -338,12 +351,7 @@ def place_pair_in_first_non_crossing_layer(
         if not conflict_found:
             # ...place the new pair on this layer.
             add_canonical_pair_if_absent(pairs, pair_to_layer, i_canon, j_canon, current_layer)
-            # Debug: record placement
-            try:
-                with open('/tmp/place_pair_log.txt', 'a') as dbg:
-                    dbg.write(f"PLACED: ({i_canon},{j_canon}) -> L{current_layer}\n")
-            except Exception:
-                pass
+
             # Return the layer where the pair was placed.
             return current_layer
 
@@ -545,7 +553,7 @@ def choose_pk_branch(
     # Use a smaller energy threshold for YHX preference to catch more pseudoknots
     energy_eps = 0.1  # Reduced from 1e-3
 
-    # If we're in crossing mode or the branch shows pseudoknot characteristics
+    # Check if this is a crossing mode or the branch shows pseudoknot characteristics
     if (prefer_crossing or
         (hole_end - hole_start >= 3 and outer_end - outer_start >= 6)):  # Minimum sizes for reliable pk detection
 
@@ -577,70 +585,21 @@ def choose_pk_branch(
         return "WHX", (outer_start, outer_end, hole_start, hole_end)
 
     print(f"[WX CHOOSE-{branch_side}] FLATTEN (no BP in YHX/WHX)", flush=True)
+
     return "FLATTEN", (outer_start, outer_end, hole_start, hole_end)
 
-def place_nested_interval(
-    i_index: int,
-    j_index: int,
-    layer_index: int,
-    *,
-    seq: Optional[str] = None,
-    nested_state: Optional[Any] = None,
-    collect_pairs: Optional[Callable[[str, Any, int, int], TraceResult]] = None,
-    pairs: Optional[Set[Pair]] = None,
-    pair_to_layer: Optional[Dict[Tuple[int, int], int]] = None,
-) -> None:
+
+def are_bases_complementary(base_a: str, base_b: str) -> bool:
     """
-    Backwards-compatible wrapper used historically by the traceback engine.
-
-    Preferred use: call :func:`merge_nested_region_pairs` directly with all
-    required arguments. This helper exists to provide compatibility with
-    older code that called ``place_nested_interval(i, j, layer)``. When the
-    additional context parameters are omitted this function raises a clear
-    error describing the required arguments.
-
-    Parameters
-    ----------
-    i_index, j_index : int
-        Interval to trace.
-    layer_index : int
-        The target layer for placed pairs.
-    seq : str, optional
-        The full sequence (required if calling this helper directly).
-    nested_state : object, optional
-        The nested algorithm state used by the nested tracer.
-    collect_pairs : callable, optional
-        The nested traceback function (e.g., ``traceback_nested_interval``).
-    pairs : set, optional
-        The global set of placed Pair objects.
-    pair_to_layer : dict, optional
-        Mapping of canonical (i,j) tuples to their assigned layer.
-
-    Notes
-    -----
-    If ``seq`` and ``nested_state`` / ``collect_pairs`` are not provided
-    this function will raise a ``ValueError`` instructing the caller to use
-    ``merge_nested_region_pairs`` directly (which is the canonical API).
+    Check if two RNA bases can form a canonical pair.
     """
-    # If caller provided the full context, delegate to merge_nested_region_pairs.
-    if seq is not None and nested_state is not None and collect_pairs is not None and pairs is not None and pair_to_layer is not None:
-        merge_nested_region_pairs(seq, nested_state, i_index, j_index, layer_index, collect_pairs, pairs, pair_to_layer)
-        return
-
-    # Otherwise, provide a helpful error guiding the developer to the new API.
-    raise ValueError(
-        "place_nested_interval(i, j, layer, ..., seq=..., nested_state=..., collect_pairs=..., pairs=..., pair_to_layer=...) "
-        "must be called with the full traceback context. Prefer calling merge_nested_region_pairs(seq, nested_state, i, j, layer, collect_pairs, pairs, pair_to_layer)"
-    )
-
-def are_bases_complementary(base1: str, base2: str) -> bool:
-    """Check if two RNA bases can form a canonical pair."""
     pairs = {
         ('A', 'U'), ('U', 'A'),
         ('G', 'C'), ('C', 'G'),
         ('G', 'U'), ('U', 'G')  # Wobble pairs
     }
-    return (base1.upper(), base2.upper()) in pairs
+    return (base_a.upper(), base_b.upper()) in pairs
+
 
 def pairs_conflict(pair_a: Pair, pair_b: Pair) -> bool:
     """
