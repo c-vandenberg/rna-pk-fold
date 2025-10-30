@@ -636,20 +636,20 @@ special_hairpins: {}
 # ------------------------------------------------------
 pseudoknot:
   # Per-step/tilde scalars (paper: \tilde Q = 0.2, \tilde P = 0.1)
-  q_ss: 0.2                 # Q~ - unpaired bases (general)
-  P_tilde_out: 0.1          # P~ - unpaired on outer span
-  P_tilde_hole: 0.1         # P~ - unpaired on hole
-  Q_tilde_out: 0.2          # Q~ - unpaired outer (alternative)
-  Q_tilde_hole: 0.3         # Q~ - unpaired hole (alternative)
+  q_ss: 0.0                 # Q~ - unpaired bases (general)
+  P_tilde_out: 0.0          # P~ - unpaired on outer span
+  P_tilde_hole: 0.0         # P~ - unpaired on hole
+  Q_tilde_out: 0.0          # Q~ - unpaired outer (alternative)
+  Q_tilde_hole: 0.0         # Q~ - unpaired hole (alternative)
 
   # Multiloop penalties for gap structures
-  M_tilde_yhx: 3.4         # M~ - YHX multiloop
-  M_tilde_vhx: 3.4        # M~ - VHX multiloop
-  M_tilde_whx: 3.4         # M~ - WHX multiloop
+  M_tilde_yhx: 2.0         # M~ - YHX multiloop
+  M_tilde_vhx: 2.0        # M~ - VHX multiloop
+  M_tilde_whx: 2.0         # M~ - WHX multiloop
 
   # Dangle fallbacks
-  L_tilde: 0.2              # Fallback dangle = Q~
-  R_tilde: 0.2              # Fallback dangle = Q~
+  L_tilde: 0.0              # Fallback dangle = Q~
+  R_tilde: 0.0              # Fallback dangle = Q~
 
   # Optional dangle bigram maps (paper doesn’t list numbers; keep empty or add if found in other papers)
   dangle_hole_left: {}
@@ -674,8 +674,8 @@ pseudoknot:
   coax_bonus: 0.0           # paper gives no bonus; keep 0
 
   # Join drift & narrow-hole caps (not in paper)
-  join_drift_penalty: 0.0
-  join_drift_radius: 0
+  join_drift_penalty: 0.2
+  join_drift_radius: 2
   short_hole_caps: {}
 
   # Minimum & maximum hole widths and outer segment lengths
