@@ -318,26 +318,6 @@ def main(argv=None) -> int:
     verbose_level = 0 if cli_args.quiet else cli_args.verbose
     setup_cli_logging(verbose_level, cli_args.log_file)
 
-    # If user requested a WX debug outer filter, parse it and set the module filter.
-    if cli_args.dbg_outer is not None:
-        try:
-            parts = cli_args.dbg_outer.split(',')
-            if len(parts) != 2:
-                raise ValueError("--dbg-outer expects two comma-separated integers like 0,42")
-            outer_i = int(parts[0].strip())
-            outer_j = int(parts[1].strip())
-            set_wx_debug_outer((outer_i, outer_j))
-            logger.info(f"WX debug filter set to outer=({outer_i},{outer_j}) — candidate lines will be written to /tmp/wx_candidate_debug.txt")
-
-            # User-visible helper suggestion for deeper debugging (added per request).
-            logger.info("""
-If you want, I can also add a small helper function or CLI flag to dump all candidate lines for a given outer span (e.g., --dbg-outer 0,42) so future debugging is easier. If you prefer immediate deeper analysis, I can (a) instrument the traceback to record which nested intervals were skipped and why, and (b) attempt a fix to merge_nested_region_pairs to avoid skipping valid nested pairs when they should be placed in another layer.
-""")
-        except Exception as e:
-            logger.error(f"Failed to parse --dbg-outer: {e}")
-            print(f"Failed to parse --dbg-outer: {e}", file=sys.stderr)
-            return 2
-
     logger.info("=" * 60)
     logger.info("RNA Structure Prediction CLI")
     logger.info("=" * 60)
