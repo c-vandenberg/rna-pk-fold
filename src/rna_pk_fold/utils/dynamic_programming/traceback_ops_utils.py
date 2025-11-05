@@ -1,7 +1,7 @@
 from __future__ import annotations
 import math
 import logging
-from typing import Set, Dict, Tuple, Callable, Any, Optional
+from typing import Set, Dict, Tuple, Callable, Any
 
 from rna_pk_fold.structures import Pair
 from rna_pk_fold.folding.common_traceback import TraceResult
@@ -274,113 +274,6 @@ def audit_layer_assignments(pair_to_layer: dict[tuple[int, int], int]) -> None:
         )
 
 
-def is_strict_subspan(outer_span: Span, candidate_span: Span) -> bool:
-    """
-    Check whether a span lies strictly inside another span.
-
-    A *strict subspan* means the candidate is fully contained within the outer
-    span and is not equal to it.
-
-    Parameters
-    ----------
-    outer_span : tuple[int, int]
-        Inclusive indices ``(i, j)`` of the outer span, with ``i <= j``.
-    candidate_span : tuple[int, int]
-        Inclusive indices ``(a, b)`` of the candidate span, with ``a <= b``.
-
-    Returns
-    -------
-    bool
-        ``True`` if ``candidate_span`` satisfies ``i <= a <= b <= j`` and
-        ``(a, b) != (i, j)``; ``False`` otherwise.
-
-    Notes
-    -----
-    Indices are assumed to be 0-based and inclusive.
-    """
-    outer_start, outer_end = outer_span
-    cand_start, cand_end = candidate_span
-    return (outer_start <= cand_start <= cand_end <= outer_end) and (
-            (cand_start, cand_end) != (outer_start, outer_end)
-    )
-
-
-def is_noncollapsed_hole(hole_span: Span) -> bool:
-    """
-    Determine whether a hole span is non-collapsed.
-
-    In this context, a hole ``(k, l)`` is *non-collapsed* if there is at least
-    one index strictly between ``k`` and ``l`` (i.e., ``k + 1 < l``).
-
-    Parameters
-    ----------
-    hole_span : tuple[int, int]
-        Inclusive indices ``(k, l)`` of the hole span, with ``k <= l``.
-
-    Returns
-    -------
-    bool
-        ``True`` if ``k + 1 < l``; ``False`` otherwise.
-
-    Notes
-    -----
-    Indices are assumed to be 0-based and inclusive.
-    """
-    k, l = hole_span
-    return (k + 1) < l
-
-
-def validate_is2_bridge_span(
-    outer_span: Span,
-    hole_span: Span,
-    bridge_span: Optional[Span],
-    *,
-    require_noncollapsed_hole: bool = False,
-) -> Optional[Span]:
-    """
-    Validate an IS2 bridge span and return it if it guarantees progress.
-
-    The bridge must exist, be a strict subspan of the outer span, differ from
-    the hole span, and (optionally) the hole must be non-collapsed.
-
-    Parameters
-    ----------
-    outer_span : tuple[int, int]
-        Inclusive indices ``(i, j)`` of the outer span.
-    hole_span : tuple[int, int]
-        Inclusive indices ``(k, l)`` of the hole span.
-    bridge_span : tuple[int, int] or None
-        Inclusive indices ``(r, s)`` of the proposed bridge span. If ``None``,
-        the validation fails.
-    require_noncollapsed_hole : bool, optional
-        If ``True``, additionally require that ``hole_span`` be non-collapsed
-        (i.e., ``k + 1 < l``). Default is ``False``.
-
-    Returns
-    -------
-    tuple[int, int] or None
-        The validated ``bridge_span`` if all conditions are met; otherwise ``None``.
-
-    Notes
-    -----
-    Validation conditions:
-
-    * ``bridge_span`` is provided (not ``None``).
-    * ``bridge_span`` is a strict subspan of ``outer_span``.
-    * ``bridge_span`` is not equal to ``hole_span``.
-    * If ``require_noncollapsed_hole`` is ``True``, then ``k + 1 < l`` for ``hole_span``.
-    """
-    if bridge_span is None:
-        return None
-    if require_noncollapsed_hole and not is_noncollapsed_hole(hole_span):
-        return None
-    if not is_strict_subspan(outer_span, bridge_span):
-        return None
-    if bridge_span == hole_span:
-        return None
-    return bridge_span
-
-
 def choose_pk_branch(
     state,
     branch_side: str,
@@ -478,57 +371,3 @@ def choose_pk_branch(
 
     print(f"[WX CHOOSE-{branch_side}] FLATTEN (no BP in YHX/WHX)", flush=True)
     return "FLATTEN", (outer_start, outer_end, hole_start, hole_end)
-
-def place_nested_interval(
-    i_index: int,
-    j_index: int,
-    layer_index: int,
-    *,
-    seq: Optional[str] = None,
-    nested_state: Optional[Any] = None,
-    collect_pairs: Optional[Callable[[str, Any, int, int], TraceResult]] = None,
-    pairs: Optional[Set[Pair]] = None,
-    pair_to_layer: Optional[Dict[Tuple[int, int], int]] = None,
-) -> None:
-    """
-    Backwards-compatible wrapper used historically by the traceback engine.
-
-    Preferred use: call :func:`merge_nested_region_pairs` directly with all
-    required arguments. This helper exists to provide compatibility with
-    older code that called ``place_nested_interval(i, j, layer)``. When the
-    additional context parameters are omitted this function raises a clear
-    error describing the required arguments.
-
-    Parameters
-    ----------
-    i_index, j_index : int
-        Interval to trace.
-    layer_index : int
-        The target layer for placed pairs.
-    seq : str, optional
-        The full sequence (required if calling this helper directly).
-    nested_state : object, optional
-        The nested algorithm state used by the nested tracer.
-    collect_pairs : callable, optional
-        The nested traceback function (e.g., ``traceback_nested_interval``).
-    pairs : set, optional
-        The global set of placed Pair objects.
-    pair_to_layer : dict, optional
-        Mapping of canonical (i,j) tuples to their assigned layer.
-
-    Notes
-    -----
-    If ``seq`` and ``nested_state`` / ``collect_pairs`` are not provided
-    this function will raise a ``ValueError`` instructing the caller to use
-    ``merge_nested_region_pairs`` directly (which is the canonical API).
-    """
-    # If caller provided the full context, delegate to merge_nested_region_pairs.
-    if seq is not None and nested_state is not None and collect_pairs is not None and pairs is not None and pair_to_layer is not None:
-        merge_nested_region_pairs(seq, nested_state, i_index, j_index, layer_index, collect_pairs, pairs, pair_to_layer)
-        return
-
-    # Otherwise, provide a helpful error guiding the developer to the new API.
-    raise ValueError(
-        "place_nested_interval(i, j, layer, ..., seq=..., nested_state=..., collect_pairs=..., pairs=..., pair_to_layer=...) "
-        "must be called with the full traceback context. Prefer calling merge_nested_region_pairs(seq, nested_state, i, j, layer, collect_pairs, pairs, pair_to_layer)"
-    )
