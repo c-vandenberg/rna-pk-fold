@@ -7,7 +7,7 @@ INF_FLOAT64 = np.float64(np.inf)
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
-@nb.njit(cache=False, fastmath=True)
+@nb.njit(cache=True, fastmath=True)
 def _min_of_four_with_index(val_a: float, val_b: float, val_c: float, val_d: float):
     """
     Compute the minimum of four values and return it with the winning index.
@@ -46,7 +46,7 @@ def _min_of_four_with_index(val_a: float, val_b: float, val_c: float, val_d: flo
     return minimum, which
 
 
-@nb.njit(cache=False, fastmath=True)
+@nb.njit(cache=True, fastmath=True)
 def min_sum_over_index(left: np.ndarray, right: np.ndarray):
     """
     Calculates `min(left + right)` over a shared index `t` and return the value and index.
@@ -80,7 +80,7 @@ def min_sum_over_index(left: np.ndarray, right: np.ndarray):
     return best, best_idx
 
 
-@nb.njit(cache=False, fastmath=True)
+@nb.njit(cache=True, fastmath=True)
 def min_sum_with_penalty_over_index(left: np.ndarray, right: np.ndarray, penalty: float):
     """
     Calculates `min(left + right + penalty)` over a shared index `t` and return the value and index.
@@ -119,7 +119,7 @@ def min_sum_with_penalty_over_index(left: np.ndarray, right: np.ndarray, penalty
 # -------------------------
 # WX Composition Kernel
 # -------------------------
-@nb.njit(cache=False, fastmath=True)
+@nb.njit(cache=True, fastmath=True)
 def compose_wx_min_energy_over_splits(
     left_whx_uncharged: np.ndarray,
     right_whx_uncharged: np.ndarray,
@@ -253,7 +253,7 @@ def compose_wx_min_energy_over_splits(
 # -------------------------
 # VX Composition Kernel
 # -------------------------
-@nb.njit(cache=False, fastmath=True)
+@nb.njit(cache=True, fastmath=True)
 def compose_vx_min_energy_over_splits(
     left_zhx_uncharged: np.ndarray,
     right_zhx_uncharged: np.ndarray,
