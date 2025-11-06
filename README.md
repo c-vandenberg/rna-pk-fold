@@ -290,13 +290,13 @@ All test RNA predictions were carried out using the `turner2004_eddyrivas1999_mi
 | GGAUACGUACCU | ............ | -0.00 | ✅ |
 | CGAUGCAGCUAG | ............ | -0.00 | ✅ |
 | AAAAUAAAAUAAAAUAAAA | ................... | -0.00 | ✅ |
-| UUUUUAAAUUUUUAAAUUUU | ...[.((....))(])(.). | -0.80 | ❌ |
 | AUCCCUA | ....... | 0.00 | ✅ |
 | GUCCUGU | ....... | 0.00 | ✅ |
 
 ## Pseudoknot RNA Sequences
 | Sequence | Predicted Dot-Bracket Notation | Predicted $\Delta G$ (kcal/mol) | IPknot Prediction Match |
 | :--- | :--- | :--- | :--- |
+| UUUUUAAAUUUUUAAAUUUU | ...[.((....))(])(.). | -0.80 | ❌ |
 | AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU | (((((...)))))((((((.....))))))............. | -10.31 | ❌ |
 | UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC | ............(((.....))).(((..((((.....))))(((((....(((...))).))))).))) | -19.91 | ❌ |
 
