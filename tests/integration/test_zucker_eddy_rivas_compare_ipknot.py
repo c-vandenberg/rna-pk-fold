@@ -189,7 +189,7 @@ def engines_and_costs(energy_model: SecondaryStructureEnergyModel) -> Tuple[
         enable_coax_mismatch=True,
         enable_wx_overlap=True,
         enable_strict_complement_order=True,
-        enable_join_drift=False,
+        enable_join_drift=True,
         enable_is2=True,
         pk_energies=pk_params,
     )
@@ -255,7 +255,8 @@ TEST_SEQUENCES = [
     "AUCCCUA", "GUCCUGU",
 
     # Pseudoknot sequences
-    "AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU"
+    "AGCUUUGAAAGCUUUCGAGUCUGUUUCGAAAUCACAAGGACCU",
+    "UUCUUUUUUAGUGGCAGUAAGCCUGGGAAUGGGGGCGACCCAGGCGUAUGAACAUAGUGUAACGCUCCCC"
 ]
 
 

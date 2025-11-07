@@ -52,7 +52,7 @@ class BestCandidateTracker:
         left_energy: float,
         right_energy: float,
         left_backpointer: "EddyRivasBackPointer",
-        right_backpointer: "EddyRivasBackPointer",
+        right_backpointer: "EddyRivasBackpointer",
     ) -> None:
         """
         Compare two candidates and prefer the right candidate on ties.
@@ -63,9 +63,9 @@ class BestCandidateTracker:
             Energy of the left candidate.
         right_energy : float
             Energy of the right candidate.
-        left_backpointer : EddyRivasBackPointer
+        left_backpointer : EddyRivasBackpointer
             Backpointer for the left candidate.
-        right_backpointer : EddyRivasBackPointer
+        right_backpointer : EddyRivasBackpointer
             Backpointer for the right candidate.
         """
         if right_energy <= left_energy:
